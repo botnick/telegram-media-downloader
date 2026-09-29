@@ -134,7 +134,12 @@ async function start(mode, dataDir) {
     }
     const h = await new Promise((resolve) => {
         http.get(
-            { host: '127.0.0.1', port, path: '/api/system/health', headers: { Cookie: ADMIN } },
+            {
+                host: '127.0.0.1',
+                port,
+                path: '/api/system/health?front=1',
+                headers: { Cookie: ADMIN },
+            },
             (res) => {
                 let b = '';
                 res.on('data', (c) => {

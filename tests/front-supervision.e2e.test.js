@@ -33,7 +33,7 @@ let bin = null;
 let resolved = false;
 
 async function health(port) {
-    const r = await rawRequest(port, { path: '/api/system/health', headers: ADMIN });
+    const r = await rawRequest(port, { path: '/api/system/health?front=1', headers: ADMIN });
     return JSON.parse(r.body).goCoreFront;
 }
 

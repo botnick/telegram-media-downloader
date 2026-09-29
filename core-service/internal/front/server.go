@@ -32,7 +32,9 @@ package front
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,6 +74,7 @@ type Server struct {
 	stats     frontStats
 	startedAt time.Time
 	listen    string
+	rawHeader string // see rawtarget.go
 }
 
 type frontStats struct {
@@ -128,6 +131,7 @@ func New(cfg Config, log *slog.Logger) *Server {
 		photos:    rootDir{lex: cfg.PhotosDir},
 		thumbs:    rootDir{lex: cfg.ThumbsDir},
 		startedAt: time.Now(),
+		rawHeader: "X-Tgdl-Raw-" + randomHex(12),
 	}
 	if !s.trust.exact {
 		log.Warn("TRUST_PROXY not reproduced by the front server; with forceHttps on, media requests go through Node", "value", cfg.TrustProxy)
@@ -159,6 +163,12 @@ func New(cfg Config, log *slog.Logger) *Server {
 // ServeHTTP is the public handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.stats.requests.Add(1)
+	// A target Go's parser couldn't take as is (rawtarget.go): Node gets
+	// the original, and nothing here answers it.
+	if raw := r.Header.Get(s.rawHeader); raw != "" {
+		r.RequestURI = raw
+		r = r.WithContext(context.WithValue(r.Context(), rawTargetKey{}, raw))
+	}
 	// Private headers from the client never reach Node.
 	for k := range r.Header {
 		if strings.HasPrefix(k, "X-Tgdl-") {
@@ -169,10 +179,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.tunnel(w, r)
 		return
 	}
-	if s.serveFast(w, r) {
+	if r.Context().Value(rawTargetKey{}) == nil && s.serveFast(w, r) {
 		return
 	}
 	s.forward(w, r)
+}
+
+type rawTargetKey struct{}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(b)
 }
 
 // clientAddr is the peer address the way Node's socket.remoteAddress
@@ -331,6 +351,7 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer, log
 		s.dualStack = true
 	}
 	s.listen = pub.Addr().String()
+	pub = &rawTargetListener{Listener: pub, header: s.rawHeader}
 
 	ctlSrv := &http.Server{
 		Handler:           s.Control(),

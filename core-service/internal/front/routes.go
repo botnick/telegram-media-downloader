@@ -319,6 +319,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, plan sendPlan, f 
 		defer f.Close()
 	}
 	plan.headers.writeTo(w)
+	keep304Headers(w.Header(), plan.status)
 	setConnectionHeaders(w, r)
 	w.WriteHeader(plan.status)
 	if f != nil && plan.body && plan.length > 0 {

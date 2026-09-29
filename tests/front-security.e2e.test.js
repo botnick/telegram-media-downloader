@@ -74,7 +74,10 @@ function visible(r) {
  * or when the front isn't running).
  */
 async function fastCounts(p) {
-    const r = await rawRequest(p.front.port, { path: '/api/system/health', headers: ADMIN });
+    const r = await rawRequest(p.front.port, {
+        path: '/api/system/health?front=1',
+        headers: ADMIN,
+    });
     return JSON.parse(r.body)?.goCoreFront?.stats?.fast ?? null;
 }
 

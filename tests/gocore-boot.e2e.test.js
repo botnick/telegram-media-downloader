@@ -142,7 +142,7 @@ describe.skipIf(SKIP)('boot without a usable tgdl-core', () => {
 
         const cookie = await login(s.base);
         const h = await (
-            await fetch(`${s.base}/api/system/health`, { headers: { cookie } })
+            await fetch(`${s.base}/api/system/health?front=1`, { headers: { cookie } })
         ).json();
         // Existing fields untouched, goCore added.
         for (const k of ['process', 'system', 'disk', 'database', 'connections']) {

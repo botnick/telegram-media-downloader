@@ -94,6 +94,24 @@ func respellHeaders(h http.Header) {
 	}
 }
 
+// keep304Headers: on a 304, Go's server drops Content-Type and
+// Content-Length, which Node sends when the route set them (the
+// thumbnail route does). Stored under a lower-case name — header names
+// are case-insensitive — they reach the client as Node sent them.
+func keep304Headers(h http.Header, code int) {
+	if code != http.StatusNotModified {
+		return
+	}
+	for _, k := range []string{"Content-Type", "Content-Length"} {
+		if v, ok := h[k]; ok {
+			delete(h, k)
+			if len(v) > 0 {
+				h[strings.ToLower(k)] = v
+			}
+		}
+	}
+}
+
 // keepAliveTimeoutSec is Node's server.keepAliveTimeout (65 s), announced
 // in the Keep-Alive header of every response on a kept-alive connection.
 const keepAliveTimeoutSec = "65"

@@ -4008,17 +4008,24 @@ app.get('/api/system/health', async (req, res) => {
                     return null;
                 }
             })(),
-            goCoreFront: await (async () => {
-                try {
-                    return {
-                        ...getFrontStatus(),
-                        servedByNode: _frontProblem,
-                        stats: await frontStats(),
-                    };
-                } catch {
-                    return null;
-                }
-            })(),
+            // The tgdl-core front server (who serves PORT, restarts,
+            // request counters): only when asked, so the default payload
+            // stays what it has always been.
+            ...(req.query.front === '1'
+                ? {
+                      goCoreFront: await (async () => {
+                          try {
+                              return {
+                                  ...getFrontStatus(),
+                                  servedByNode: _frontProblem,
+                                  stats: await frontStats(),
+                              };
+                          } catch {
+                              return null;
+                          }
+                      })(),
+                  }
+                : {}),
         });
     } catch (e) {
         res.status(500).json({ error: e.message });

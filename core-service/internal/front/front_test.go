@@ -32,6 +32,8 @@ const (
 
 var testMtime = time.Date(2024, 5, 6, 7, 8, 9, 123_600_000, time.UTC)
 
+const fakeNodeRaw = "X-Fake-Node-Raw"
+
 type upstreamCall struct {
 	method, uri, host string
 	header            http.Header
@@ -78,9 +80,15 @@ func newHarness(t *testing.T) *harness {
 	db := filepath.Join(root, "db.sqlite")
 	h.seedSessions(db)
 
-	h.upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// The fake Node takes any request target, as Node's parser does.
+	h.upstream = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uri := r.RequestURI
+		if raw := r.Header.Get(fakeNodeRaw); raw != "" {
+			uri = raw
+			r.Header.Del(fakeNodeRaw)
+		}
 		h.mu.Lock()
-		h.calls = append(h.calls, upstreamCall{r.Method, r.RequestURI, r.Host, r.Header.Clone()})
+		h.calls = append(h.calls, upstreamCall{r.Method, uri, r.Host, r.Header.Clone()})
 		reply := h.reply
 		h.mu.Unlock()
 		if reply != nil {
@@ -90,6 +98,8 @@ func newHarness(t *testing.T) *harness {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprint(w, "from node")
 	}))
+	h.upstream.Listener = &rawTargetListener{Listener: h.upstream.Listener, header: fakeNodeRaw}
+	h.upstream.Start()
 	t.Cleanup(h.upstream.Close)
 
 	cfg := Config{
@@ -454,7 +464,8 @@ func TestPhotosAndThumbs(t *testing.T) {
 		t.Errorf("thumb: %d %v", res.StatusCode, res.Header)
 	}
 	res, _ = h.do("GET", "/api/thumbs/1", map[string]string{"Cookie": c, "If-None-Match": etag})
-	if res.StatusCode != 304 || res.Header.Get("Accept-Ranges") != "" {
+	// Node's thumbnail route keeps its Content-Type on the 304.
+	if res.StatusCode != 304 || res.Header.Get("Accept-Ranges") != "" || res.Header.Get("Content-Type") != "image/webp" {
 		t.Errorf("thumb 304: %d %v", res.StatusCode, res.Header)
 	}
 	if h.upstreamCalls() != 0 {

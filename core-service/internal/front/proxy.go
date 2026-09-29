@@ -56,6 +56,16 @@ func (s *Server) forward(w http.ResponseWriter, r *http.Request) {
 func (s *Server) rewrite(pr *httputil.ProxyRequest) {
 	pr.Out.URL.Scheme = "http"
 	pr.Out.URL.Host = s.cfg.Upstream
+	// The query exactly as sent: ReverseProxy re-encodes one with a ';' or
+	// a malformed escape (dropping pairs it can't parse); Node takes it raw.
+	pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+	pr.Out.URL.ForceQuery = pr.In.URL.ForceQuery
+	// The path exactly as sent too (url.URL would re-escape raw UTF-8 or
+	// an unusual escape; for a target only Node can parse, RequestURI is
+	// the original — see rawtarget.go).
+	if p, _, _ := strings.Cut(pr.In.RequestURI, "?"); strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "//") {
+		pr.Out.URL.Opaque = p
+	}
 	pr.Out.Host = pr.In.Host
 	for _, k := range []string{"X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto"} {
 		if v, ok := pr.In.Header[k]; ok {
@@ -156,6 +166,7 @@ func (pw *proxyWriter) WriteHeader(code int) {
 	if _, ok := h["Content-Type"]; !ok {
 		h["Content-Type"] = nil // don't sniff: Node sent none
 	}
+	keep304Headers(h, code)
 	setConnectionHeaders(pw.ResponseWriter, pw.r)
 	pw.ResponseWriter.WriteHeader(code)
 	if pw.slot != nil && pw.slot.f != nil && pw.r.Method != http.MethodHead {

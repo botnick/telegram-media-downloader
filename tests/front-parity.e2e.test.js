@@ -34,33 +34,8 @@ const FIXTURE = JSON.parse(
     fs.readFileSync(path.join(import.meta.dirname, 'fixtures', 'front-parity.json'), 'utf8'),
 );
 
-// Differences between the Node-only server and the front server that are
-// intended, with the reason. Everything else must match exactly.
-export const ACCEPTED = {
-    'files bad encoding': {
-        why:
-            "A request target with an invalid percent-escape (%E0%A4%A) is rejected by Go's HTTP " +
-            'parser with a bare 400 before any handler runs; Node answered 400 "Bad request" with ' +
-            'the app headers. Same status, different headers/body.',
-        check: (a) => a.status === 400,
-    },
-    'thumb If-None-Match exact': {
-        why:
-            'Go never writes Content-Type on a 304 (RFC 9110 §15.4.5); the thumbnail route sent ' +
-            'image/webp on it. Browsers merge a 304 into the cached response, which already has ' +
-            'that type.',
-        check: (a, e) => sameExcept(a, e, ['content-type']),
-    },
-    'thumb If-Modified-Since exact': {
-        why: 'Same as "thumb If-None-Match exact".',
-        check: (a, e) => sameExcept(a, e, ['content-type']),
-    },
-};
-
-function sameExcept(actual, expected, names) {
-    const strip = (r) => ({ ...r, headers: r.headers.filter(([k]) => !names.includes(k)) });
-    return diff(strip(expected), strip(actual)).length === 0;
-}
+// No accepted differences: every case must match exactly (header-name
+// case aside, which HTTP ignores; those are listed in the output).
 
 let srv;
 let dataDir;
@@ -81,7 +56,7 @@ beforeAll(async () => {
         env: bin ? { TGDL_CORE_BIN: bin } : {},
     });
     results = await runAll(port, await parityFileTokens());
-    const health = await fetch(`http://127.0.0.1:${port}/api/system/health`, {
+    const health = await fetch(`http://127.0.0.1:${port}/api/system/health?front=1`, {
         headers: { Cookie: `tg_dl_session=${'a'.repeat(64)}` },
     }).then((r) => r.json());
     frontRunning = health?.goCoreFront?.state === 'running';
@@ -123,7 +98,6 @@ describe.skipIf(SKIP)('front server parity with the Node-only server', () => {
 
     it('every case matches the frozen Node responses', () => {
         const failures = [];
-        const accepted = [];
         const caseOnly = [];
         for (const c of PARITY_CASES) {
             const expected = FIXTURE.cases[c.name];
@@ -139,14 +113,8 @@ describe.skipIf(SKIP)('front server parity with the Node-only server', () => {
                 if (k.length) caseOnly.push(`${c.name}: ${k.join(', ')}`);
                 continue;
             }
-            const acc = frontRunning ? ACCEPTED[c.name] : null;
-            if (acc?.check(act, exp)) {
-                accepted.push(`${c.name}: ${acc.why}`);
-                continue;
-            }
             failures.push(`${c.name}\n    ${d.join('\n    ')}`);
         }
-        if (accepted.length) console.log(`accepted differences:\n  ${accepted.join('\n  ')}`);
         if (caseOnly.length) console.log(`header-name case only:\n  ${caseOnly.join('\n  ')}`);
         expect(failures, failures.join('\n')).toEqual([]);
     });
@@ -158,7 +126,6 @@ describe.skipIf(SKIP)('front server parity with the Node-only server', () => {
             const act = normalize(results[c.name], c);
             const d = diff(exp, act);
             if (!d.length) continue;
-            if (frontRunning && ACCEPTED[c.name]?.check(act, exp)) continue;
             failures.push(`${c.name}\n    ${d.join('\n    ')}`);
         }
         expect(failures, failures.join('\n')).toEqual([]);
