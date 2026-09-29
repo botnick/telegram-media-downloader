@@ -22,7 +22,10 @@ import net from 'net';
 
 // ---- seed ------------------------------------------------------------------
 
-export const PARITY_MTIME_MS = Date.UTC(2024, 4, 6, 7, 8, 9, 123);
+// .125 s is exact in binary: utimes() takes seconds as a double, and a
+// fraction like .123 comes back from ext4 as .122999… (Windows rounds it to
+// 100 ns), which changed every mtime-derived ETag between the two.
+export const PARITY_MTIME_MS = Date.UTC(2024, 4, 6, 7, 8, 9, 125);
 export const PARITY_PASSWORD = 'parity-password-123';
 export const PARITY_SHARE_SECRET =
     'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
