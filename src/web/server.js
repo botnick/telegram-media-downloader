@@ -141,8 +141,14 @@ import {
     health as seekbarClientHealth,
     probeHwaccel as probeSeekbarHwaccel,
 } from '../core/seekbar/client.js';
-import { getGoCoreStatus, startGoCore, stopGoCore } from '../core/gocore/spawn.js';
-import { sanitizeConfigBlock as sanitizeGoCoreConfig } from '../core/gocore/flags.js';
+import { diskUsage as coreDiskUsage } from '../core/gocore/fs.js';
+import {
+    getCoreBanner,
+    getGoCoreStatus,
+    requireGoCore,
+    startGoCore,
+    stopGoCore,
+} from '../core/gocore/spawn.js';
 import { countSeekbarSprites, countVideoDownloads, getSeekbarSprite } from '../core/db.js';
 import { normalizeSidecarUrl, probeSidecar } from '../core/sidecar-remote.js';
 import {
@@ -425,31 +431,32 @@ _wsBroadcaster.startHeartbeat();
 // catalogue is empty. We can't trust `data/disk_usage.json` alone because
 // older builds wrote it sparingly and never invalidated on `Purge all`, so a
 // purged dashboard would footer-report a multi-week-old "930 KB" snapshot.
+//
+// tgdl-core walks the tree: every directory entered (links to directories
+// are not), every other entry fs.stat'ed and counted when it is a file,
+// unreadable directories and vanished files skipped. Resolves null when
+// tgdl-core can't answer, so the caller keeps its current figure.
+let _diskScanWarned = '';
 async function scanDirectorySize(dir) {
-    let total = 0;
-    async function walk(current) {
-        let entries;
-        try {
-            entries = await fs.readdir(current, { withFileTypes: true });
-        } catch {
-            return;
+    try {
+        return await coreDiskUsage(dir, { readyWaitMs: 3_000 });
+    } catch (e) {
+        const msg = String(e?.message || e);
+        if (msg !== _diskScanWarned) {
+            _diskScanWarned = msg;
+            console.warn('[stats] disk-usage scan unavailable:', msg);
         }
-        for (const entry of entries) {
-            const fullPath = path.join(current, entry.name);
-            if (entry.isDirectory()) {
-                await walk(fullPath);
-                continue;
-            }
-            try {
-                const st = await fs.stat(fullPath);
-                if (st.isFile()) total += st.size;
-            } catch {
-                /* file disappeared mid-scan */
-            }
-        }
+        return null;
     }
-    await walk(dir);
-    return total;
+}
+
+/** Last disk-usage figure written by writeDiskUsageCache / the downloader. */
+function readDiskUsageCache() {
+    try {
+        return Number(kvGet('disk_usage')?.size) || 0;
+    } catch {
+        return 0;
+    }
 }
 
 function writeDiskUsageCache(size) {
@@ -2409,6 +2416,11 @@ async function _buildMonitorStatusSnapshot() {
               : (config.groups || []).filter((g) => g.enabled).length === 0
                 ? 'enable-group'
                 : null;
+    // tgdl-core can't run (missing binary, unsupported platform, …):
+    // the dashboard shows a persistent banner with the fix. Only present
+    // while there is a problem, so the status shape is otherwise unchanged.
+    const coreBanner = getCoreBanner();
+    if (coreBanner) status.core = coreBanner;
     return status;
 }
 
@@ -3745,8 +3757,14 @@ async function _computeStatsPayload(role) {
     const config = loadConfig();
     let diskUsage = Number(dbStats.totalSize) || 0;
     if (diskUsage <= 0) {
-        diskUsage = await scanDirectorySize(DOWNLOADS_DIR);
-        writeDiskUsageCache(diskUsage);
+        const scanned = await scanDirectorySize(DOWNLOADS_DIR);
+        if (scanned !== null) {
+            diskUsage = scanned;
+            writeDiskUsageCache(diskUsage);
+        } else {
+            // tgdl-core can't answer right now: keep the last figure.
+            diskUsage = readDiskUsageCache();
+        }
     }
     let accountCount = 0;
     try {
@@ -3942,8 +3960,13 @@ async function _stats_legacy_block_removed(req, res) {
 
         let diskUsage = Number(dbStats.totalSize) || 0;
         if (diskUsage <= 0) {
-            diskUsage = await scanDirectorySize(DOWNLOADS_DIR);
-            writeDiskUsageCache(diskUsage);
+            const scanned = await scanDirectorySize(DOWNLOADS_DIR);
+            if (scanned !== null) {
+                diskUsage = scanned;
+                writeDiskUsageCache(diskUsage);
+            } else {
+                diskUsage = readDiskUsageCache();
+            }
         }
 
         // Account count: reflect the on-disk session files even when no
@@ -6694,7 +6717,7 @@ app.get('/api/maintenance/db/integrity/status', async (req, res) => {
 // open for a while. POST returns 200 immediately; progress + result land
 // over WS as `files_verify_progress` / `files_verify_done`. Page hydrates
 // running state from `/files/verify/status` on mount.
-app.post('/api/maintenance/files/verify', async (req, res) => {
+app.post('/api/maintenance/files/verify', requireGoCore('stat'), async (req, res) => {
     const t = _jobTrackers.filesVerify;
     const r = t.tryStart(async ({ onProgress }) => {
         const result = await integrity.sweep(onProgress);
@@ -6747,7 +6770,7 @@ app.get('/api/maintenance/files/verify/stats', async (req, res) => {
 // which component owned the job. Now there's one tracker. Prefix
 // 'reindex' is preserved so the duplicates page's listeners need no
 // change.
-app.post('/api/maintenance/reindex', async (req, res) => {
+app.post('/api/maintenance/reindex', requireGoCore('walk'), async (req, res) => {
     const tracker = _jobTrackers.reindex;
     const r = tracker.tryStart(async ({ onProgress }) => {
         const cfg = await readConfigSafe();
@@ -6847,7 +6870,7 @@ app.get('/api/maintenance/db/vacuum/status', async (req, res) => {
 // duration tracking. WS event prefix stays 'dedup' — the duplicates
 // page's existing `dedup_progress` / `dedup_done` listeners are
 // unaffected.
-app.post('/api/maintenance/dedup/scan', async (req, res) => {
+app.post('/api/maintenance/dedup/scan', requireGoCore('hash'), async (req, res) => {
     const tracker = _jobTrackers.dedupScan;
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         const result = await dedupFindDuplicates({
@@ -8999,7 +9022,7 @@ app.post('/api/ai/faces/install-deps', async (req, res) => {
 // libraries this lands in Phase B immediately. For partially-indexed
 // libraries (a scan was cancelled mid-way), Phase A picks up where it
 // left off — same as clicking "Scan now".
-app.post('/api/ai/faces/recluster', async (_req, res) => {
+app.post('/api/ai/faces/recluster', requireGoCore('dbscan'), async (_req, res) => {
     try {
         const cfg = _aiCfg();
         if (aiIsScanRunning('faces')) {
@@ -12329,23 +12352,9 @@ app.post('/api/config', async (req, res) => {
             sk.pathMap = typeof sk.pathMap === 'string' ? sk.pathMap.slice(0, 4096) : '';
             delete sk.apiTokenSet;
 
-            // Go companion flags (`advanced.goCore`: { mode, features }).
-            // Only stored once somebody sets them, so existing configs
-            // stay as they are; `null` clears the block. TGDL_GO_CORE /
-            // TGDL_GO_FEATURES still win over whatever is saved here.
-            if (inc.goCore !== undefined || cur.goCore !== undefined) {
-                const base = cur.goCore && typeof cur.goCore === 'object' ? cur.goCore : {};
-                const patch = inc.goCore && typeof inc.goCore === 'object' ? inc.goCore : {};
-                const gc =
-                    inc.goCore === null
-                        ? null
-                        : sanitizeGoCoreConfig({
-                              ...base,
-                              ...patch,
-                              features: { ...(base.features || {}), ...(patch.features || {}) },
-                          });
-                if (gc) merged.goCore = gc;
-            }
+            // `advanced.goCore` (the old tgdl-core mode switches) is no
+            // longer read; like any key not listed above it is dropped on
+            // the next save.
 
             newConfig.advanced = merged;
         }
@@ -13865,9 +13874,10 @@ ${tip}
         console.warn('[seekbar-sidecar] wiring failed:', e?.message || e);
     }
 
-    // Go companion (tgdl-core) — find / download / spawn in the
-    // background. Never awaited: until it is healthy (or when it never
-    // is) every feature runs on its Node implementation.
+    // tgdl-core (the Go file engine) — find / download / spawn in the
+    // background. Never awaited, so boot time and /api/auth_check don't
+    // depend on it; features that need it wait briefly for it or answer
+    // 503 with the fix.
     import('../config/manager.js')
         .then(({ watchConfig }) =>
             startGoCore({

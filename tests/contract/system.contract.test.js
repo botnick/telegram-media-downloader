@@ -59,6 +59,11 @@ const HEALTH_MASKS = {
     'system.totalMemMB': 'host memory',
     'system.freeMemMB': 'host memory',
     'system.usedMemPercent': 'host memory',
+    'goCore.binary.path': 'where this host found tgdl-core (dev build, install dir, TGDL_CORE_BIN)',
+    'goCore.binary.source': 'how this host got tgdl-core (dev build vs npm-installed release)',
+    'goCore.platform': 'host OS / CPU slug',
+    'goCore.version': 'tgdl-core version, bumped with every core release',
+    'goCore.expectedVersion': 'tgdl-core version, bumped with every core release',
 };
 
 describe('/api/system/health', () => {

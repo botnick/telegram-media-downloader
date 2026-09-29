@@ -15,10 +15,13 @@
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS gocore
 ARG TARGETOS=linux
 ARG TARGETARCH
+ARG TARGETVARIANT
 WORKDIR /src
 COPY core-service/ ./
+# linux/arm/v7 → GOARM=7 (ignored for every other GOARCH).
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    GOARM_V="${TARGETVARIANT#v}"; \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${GOARM_V:-7} \
     go build -trimpath -ldflags "-s -w" -o /out/tgdl-core ./cmd/tgdl-core
 
 # Just the binary, for `docker buildx build --target gocore-bin -o …` (CI
@@ -29,7 +32,9 @@ COPY --from=gocore /out/tgdl-core /tgdl-core
 FROM node:24.18.0-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund
+# tgdl-core comes from the gocore stage above, never from the npm
+# postinstall download.
+RUN TGDL_CORE_SKIP_INSTALL=1 npm ci --omit=dev --no-audit --no-fund
 
 FROM node:24.18.0-bookworm-slim AS runtime
 

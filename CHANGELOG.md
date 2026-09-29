@@ -5,7 +5,31 @@ All notable changes to this project are documented here. The format is based on 
 ## [Unreleased]
 
 ### Added
+- **tgdl-core 0.2.0** answers the integrity file checks (`fs.stat` for up to 1000 paths per call), walks folders (recursive `fs.readdir` + `fs.stat`, streamed) and clusters faces (DBSCAN), next to hashing. New release builds for 32-bit ARM Linux (`linux-arm`, ARMv7: Raspberry Pi 2+, older ARM NAS) and Intel Macs (`mac-x64`).
+- **`npm install` installs tgdl-core**: it downloads the pinned `core-v0.2.0` build for your platform and checks it against the release's `SHA256SUMS`, or builds it when Go is installed. `npm run install:core` runs the same step by hand; `TGDL_CORE_SKIP_INSTALL=1` skips it.
+- **A banner when tgdl-core can't run** (missing binary, failed download, unsupported platform, or it keeps crashing) with the exact fix. The same text is in `GET /api/system/health` → `goCore.problem` and in the log.
+- `scripts/bench-gocore.js` compares the old Node code with tgdl-core for hashing, the integrity sweep, folder walks and face clustering. It reports wall time and event-loop delay. See [docs/GO-CORE.md](docs/GO-CORE.md#measured).
 - **Configurable Content-Security-Policy.** Settings → Dashboard security now has a CSP editor: enable/disable, report-only mode, and the full source list per directive, applied on the next request. Saved as `web.csp`; installs without it keep today's exact header. `frame-ancestors` changes drop `X-Frame-Options` so embedding works. `TGDL_CSP=off` disables the CSP regardless of the setting (recovery).
+
+### Changed
+- **tgdl-core, the app's Go engine, now does the heavy file work, and it is required.** It handles:
+  - file hashing (download-time duplicate check, Find duplicates, the NSFW hash blocklist);
+  - Verify files and the boot and hourly integrity sweep;
+  - Re-index from disk;
+  - the disk-usage figure shown while the library is empty;
+  - face clustering.
+  The Node code it replaced is removed: the hash worker pool, the `fs.stat` sweep, the folder walks and the DBSCAN worker. Results don't change. Tests prove it against the removed Node code, against Node's own `fs.stat` / `fs.readdir` on the machine they run on, and against frozen fixtures. That covers the exact error codes Verify files relies on before it removes a library entry.
+  The dashboard stays responsive while these jobs run. Face clustering uses every core: 5,000 faces take ~0.3 s instead of ~7 s, and 20,000 take ~4 s instead of ~2 min. Folder walks are 6–7× faster. See [docs/GO-CORE.md](docs/GO-CORE.md).
+- **If tgdl-core can't run, the app still starts and everything else works** (dashboard, `/api/auth_check`, downloads).
+  - Verify files, Re-index from disk, Find duplicates and Re-cluster answer `503 TGDL_CORE_UNAVAILABLE` with the fix instead of starting.
+  - A finished download is stored without a hash, as after a read error before.
+  - The integrity sweep removes nothing.
+  - Nothing crash-loops.
+- `TGDL_GO_CORE`, `TGDL_GO_FEATURES`, `config.advanced.goCore` and `HASH_WORKER_DISABLE` no longer do anything. They are harmless if set, and a saved `advanced.goCore` block is dropped the next time settings are saved.
+- **`GET /api/system/health` → `goCore`:**
+  - loses `mode` and `modeSource`, and the per-feature shadow and breaker counters;
+  - gains `problem`, `platform` and `features.<hash|stat|walk|dbscan>.available`.
+- **`/metrics`:** `tgdl_gocore_parity_*` is gone, and `tgdl_gocore_calls_total` now also counts `feature="stat"`, `"walk"` and `"dbscan"`.
 
 ## [2.29.1] — 2026-09-29
 
@@ -13,6 +37,7 @@ Security fixes: the update endpoint now requires an admin, saving a group no lon
 
 ### Service worker
 - `VERSION = 'v2291'`
+
 ## [2.29.0] — 2026-09-29
 
 Chats the app can no longer read — deleted, banned, private or left, moved to a supergroup — are now paused instead of retried, so they stop using Telegram's limits. The dashboard says why and what to do (Check again, switch account, follow the new group, stop monitoring), with a Needs attention list and automatic re-checks.
