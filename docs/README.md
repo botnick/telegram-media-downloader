@@ -1,8 +1,8 @@
 ---
-title: "Home"
+title: "Documentation"
 description: "Documentation for Telegram Media Downloader: a self-hosted Telegram channel and group media downloader with a web dashboard, Docker images and an optional Go engine."
 nav_order: 1
-permalink: /
+permalink: /docs/
 ---
 
 # Documentation
