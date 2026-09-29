@@ -15,6 +15,14 @@ import { colorize } from '../cli/colors.js';
 import { suppressNoise } from './logger.js';
 import { buildProxy } from './proxy.js';
 import { loadConfig, saveConfig } from '../config/manager.js';
+import { createRequire } from 'module';
+
+// gramJS request iterators (iterMessages / iterDialogs over a large range)
+// compute their pause between chunks as a negative number, which makes
+// Node print a TimeoutNegativeWarning. Below zero just means "don't wait".
+const gramHelpers = createRequire(import.meta.url)('telegram/Helpers');
+const gramSleep = gramHelpers.sleep;
+gramHelpers.sleep = (ms, isUnref) => gramSleep(Math.max(0, ms), isUnref);
 
 function deferred() {
     let resolve, reject;
