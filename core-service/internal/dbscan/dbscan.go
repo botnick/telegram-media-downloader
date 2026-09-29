@@ -355,6 +355,14 @@ func Labels(ctx context.Context, data []float32, n, dim int, eps, minPts float64
 	if n < 0 || dim < 0 {
 		return nil, fmt.Errorf("%w: n=%d dim=%d", ErrInput, n, dim)
 	}
+	// The request limits (handler.go), checked here too so every
+	// allocation below is sized from a bounded n.
+	if n > MaxPoints {
+		return nil, fmt.Errorf("%w: n=%d is over %d", ErrInput, n, MaxPoints)
+	}
+	if dim > MaxDim {
+		return nil, fmt.Errorf("%w: dim=%d is over %d", ErrInput, dim, MaxDim)
+	}
 	if int64(len(data)) < int64(n)*int64(dim) {
 		return nil, fmt.Errorf("%w: %d values for n=%d dim=%d", ErrInput, len(data), n, dim)
 	}

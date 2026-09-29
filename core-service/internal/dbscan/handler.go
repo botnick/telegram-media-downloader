@@ -21,12 +21,37 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/hash"
 )
 
-// Request limits.
+// Request limits. MaxPoints × 512 (the face embedding size) is exactly
+// maxValues; an O(n²) clustering of more faces than that would not finish
+// anyway.
 const (
-	maxPoints  = 1 << 24 // points per request
+	MaxPoints  = 1 << 19 // points per request (524 288)
+	MaxDim     = 1 << 12 // floats per point (4 096)
 	maxValues  = 1 << 28 // n*dim float32s (1 GiB of body)
 	maxWaiting = 4       // requests queued behind the running one
 )
+
+// errTooLarge marks a request over the limits (413 instead of 400).
+var errTooLarge = errors.New("request too large")
+
+// checkSize validates n and dim against the limits. Every allocation sized
+// from them happens after this check, in the same function, so the bound
+// is visible where the memory is allocated.
+func checkSize(n, dim int) error {
+	if n < 0 || dim < 0 {
+		return fmt.Errorf("n and dim must be >= 0 (n=%d dim=%d)", n, dim)
+	}
+	if n > MaxPoints {
+		return fmt.Errorf("%w: n must be at most %d", errTooLarge, MaxPoints)
+	}
+	if dim > MaxDim {
+		return fmt.Errorf("%w: dim must be at most %d", errTooLarge, MaxDim)
+	}
+	if n*dim > maxValues {
+		return fmt.Errorf("%w: n*dim must be at most %d", errTooLarge, maxValues)
+	}
+	return nil
+}
 
 // ErrQueueFull is returned when too many clusterings are already waiting.
 var ErrQueueFull = errors.New("dbscan queue is full")
@@ -51,7 +76,8 @@ var ErrQueueFull = errors.New("dbscan queue is full")
 // starts / members are base64 of int32 little-endian arrays, centroids of
 // float32 little-endian (count*dim), packed exactly like cluster-worker.js.
 // Bad parameters or a body of the wrong size answer 400 EINVAL before any
-// streaming; more than 4 requests waiting behind the running one, 503
+// streaming; n over MaxPoints, dim over MaxDim or n*dim over 2^28, 413
+// EINVAL; more than 4 requests waiting behind the running one, 503
 // EQUEUEFULL. One clustering runs at a time.
 type Handler struct {
 	Log *slog.Logger
@@ -109,14 +135,14 @@ func (h *Handler) release() { <-h.slot }
 func parseParams(q url.Values) (params, error) {
 	var p params
 	var err error
-	if p.n, err = strconv.Atoi(q.Get("n")); err != nil || p.n < 0 || p.n > maxPoints {
-		return p, fmt.Errorf("n must be an integer in [0, %d]", maxPoints)
+	if p.n, err = strconv.Atoi(q.Get("n")); err != nil || p.n < 0 {
+		return p, errors.New("n must be an integer >= 0")
 	}
-	if p.dim, err = strconv.Atoi(q.Get("dim")); err != nil || p.dim < 0 || p.dim > maxValues {
-		return p, fmt.Errorf("dim must be an integer in [0, %d]", maxValues)
+	if p.dim, err = strconv.Atoi(q.Get("dim")); err != nil || p.dim < 0 {
+		return p, errors.New("dim must be an integer >= 0")
 	}
-	if int64(p.n)*int64(p.dim) > maxValues {
-		return p, fmt.Errorf("n*dim must be at most %d", maxValues)
+	if err := checkSize(p.n, p.dim); err != nil {
+		return p, err
 	}
 	if p.eps, err = strconv.ParseFloat(q.Get("eps"), 64); err != nil {
 		return p, errors.New("eps must be a number")
@@ -137,7 +163,22 @@ func parseParams(q url.Values) (params, error) {
 // readBody decodes exactly n*dim float32s (and n float64 weights) from r,
 // refusing a body that is shorter or longer.
 func readBody(r io.Reader, p params) ([]float32, []float64, error) {
-	data := make([]float32, p.n*p.dim)
+	// parseParams has checked these; the bounds are checked again right
+	// here so every allocation below is visibly sized from capped values.
+	n, dim := p.n, p.dim
+	if n < 0 || dim < 0 {
+		return nil, nil, checkSize(n, dim)
+	}
+	if n > MaxPoints {
+		return nil, nil, checkSize(n, dim)
+	}
+	if dim > MaxDim {
+		return nil, nil, checkSize(n, dim)
+	}
+	if n*dim > maxValues {
+		return nil, nil, checkSize(n, dim)
+	}
+	data := make([]float32, n*dim)
 	var weights []float64
 	buf := make([]byte, 64<<10)
 	for off := 0; off < len(data); {
@@ -154,7 +195,7 @@ func readBody(r io.Reader, p params) ([]float32, []float64, error) {
 		}
 	}
 	if p.weights {
-		weights = make([]float64, p.n)
+		weights = make([]float64, n)
 		for off := 0; off < len(weights); {
 			want := (len(weights) - off) * 8
 			if want > len(buf) {
@@ -193,6 +234,16 @@ func bodyError(err error, p params) error {
 		return fmt.Errorf("body is shorter than the %d bytes n=%d dim=%d weights=%v need", expectedSize(p), p.n, p.dim, p.weights)
 	}
 	return fmt.Errorf("reading body: %v", err)
+}
+
+// writeParamError answers a request refused before any streaming: 413
+// over the limits, 400 otherwise.
+func writeParamError(w http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	if errors.Is(err, errTooLarge) {
+		status = http.StatusRequestEntityTooLarge
+	}
+	hash.WriteError(w, status, "EINVAL", err.Error())
 }
 
 type progressLine struct {
@@ -236,13 +287,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.init()
 	p, err := parseParams(r.URL.Query())
 	if err != nil {
-		hash.WriteError(w, http.StatusBadRequest, "EINVAL", err.Error())
+		writeParamError(w, err)
+		return
+	}
+	// A declared length must be the exact size n, dim and weights call for
+	// (a chunked body is checked while it is read).
+	if want := expectedSize(p); r.ContentLength >= 0 && r.ContentLength != want {
+		hash.WriteError(w, http.StatusBadRequest, "EINVAL", fmt.Sprintf("body is %d bytes; n=%d dim=%d weights=%v need %d", r.ContentLength, p.n, p.dim, p.weights, want))
 		return
 	}
 	body := http.MaxBytesReader(w, r.Body, expectedSize(p)+1)
 	data, weights, err := readBody(body, p)
 	if err != nil {
-		hash.WriteError(w, http.StatusBadRequest, "EINVAL", err.Error())
+		writeParamError(w, err)
 		return
 	}
 

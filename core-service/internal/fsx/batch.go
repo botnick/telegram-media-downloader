@@ -168,8 +168,10 @@ func (c *containment) resolvedInside(p string) bool {
 	return err == nil && c.roots.WithinResolved(real)
 }
 
-// checkPath validates and lexically contains a path from the app.
-// ok=false comes with the answer to send instead of a stat.
+// checkPath validates and lexically contains a path from the app. It
+// returns the path rebuilt from its allowed root (hash.Roots.Contain) —
+// the only form of it the file system ever sees. ok=false comes with the
+// answer to send instead of a stat.
 func checkPath(roots *hash.Roots, p string) (string, Result, bool) {
 	if strings.IndexByte(p, 0) >= 0 {
 		// fs.stat throws before touching the disk.
@@ -178,11 +180,11 @@ func checkPath(roots *hash.Roots, p string) (string, Result, bool) {
 	if p == "" || !filepath.IsAbs(p) {
 		return "", codeResult("EINVAL"), false
 	}
-	clean := filepath.Clean(p)
-	if !roots.WithinLexical(clean) {
+	contained, ok := roots.Contain(p)
+	if !ok {
 		return "", codeResult(CodeOutside), false
 	}
-	return clean, Result{}, true
+	return contained, Result{}, true
 }
 
 // statOne answers one path: containment as written, then the resolved

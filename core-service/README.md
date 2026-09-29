@@ -126,9 +126,11 @@ without an `end` line was cut off.
 
 ### `/v1/dbscan` — face clustering
 
-Query `n`, `dim` (n × dim ≤ 2²⁸), `eps`, `minPts`, `weights=1` when per-face
-float64 weights follow the n × dim float32 embeddings in the body (little
-endian). One clustering runs at a time (4 may wait; more → 503
+Query `n` (≤ 524 288), `dim` (≤ 4 096, n × dim ≤ 2²⁸), `eps`, `minPts`,
+`weights=1` when per-face float64 weights follow the n × dim float32
+embeddings in the body (little endian). Over those limits: 413 `EINVAL`;
+bad parameters or a body that is not exactly the size they call for: 400
+`EINVAL`, both before anything is allocated. One clustering runs at a time (4 may wait; more → 503
 `EQUEUEFULL`). The answer streams `{"t":"progress","done":D,"n":N}` about
 once a second, then
 `{"t":"result","count":C,"noiseCount":K,"starts":b64,"members":b64,"centroids":b64}`

@@ -103,6 +103,26 @@ func TestRootsDotDotTraversal(t *testing.T) {
 	if !sameFile(t, got, p) {
 		t.Fatalf("resolved %q", got)
 	}
+
+	// Contain: the same verdicts, and the path rebuilt from the root.
+	for _, bad := range []string{
+		root + sep + ".." + sep + filepath.Base(other) + sep + "secret.bin",
+		root + sep + "..",
+		other,
+	} {
+		if c, ok := r.Contain(bad); ok {
+			t.Fatalf("Contain(%q) = %q, want refused", bad, c)
+		}
+	}
+	for in, want := range map[string]string{
+		root + sep + "a" + sep + "c" + sep + ".." + sep + "b.bin": filepath.Join(root, "a", "b.bin"),
+		root + sep + "a" + sep + sep + "b.bin":                    filepath.Join(root, "a", "b.bin"),
+		root:                                                      root,
+	} {
+		if c, ok := r.Contain(in); !ok || c != want {
+			t.Fatalf("Contain(%q) = %q, %v; want %q", in, c, ok, want)
+		}
+	}
 }
 
 func TestRootsSymlinkEscapingRoot(t *testing.T) {

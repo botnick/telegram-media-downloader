@@ -194,18 +194,39 @@ func Outside(p string) error { return outside(p) }
 // a root as written (or inside a root's resolved form), without touching
 // the file system.
 func (r *Roots) WithinLexical(p string) bool {
+	_, ok := r.Contain(p)
+	return ok
+}
+
+// Contain returns p rebuilt from the allowed root it lies in, as written:
+// the root joined with p's path relative to it (filepath.Rel +
+// filepath.IsLocal), so nothing but the relative part of the caller's
+// path is ever used. Callers must touch the file system only through the
+// returned path. false when p is outside every root; the file system is
+// not touched (except to resolve a root that didn't exist yet, on a miss).
+func (r *Roots) Contain(p string) (string, bool) {
 	if r == nil {
-		return false
+		return "", false
 	}
+	clean := filepath.Clean(p)
 	lexRoots, _ := r.snapshot()
-	if anyWithin(lexRoots, p) {
-		return true
+	if c, ok := firstWithin(lexRoots, clean); ok {
+		return c, true
 	}
 	if r.refresh() {
 		lexRoots, _ = r.snapshot()
-		return anyWithin(lexRoots, p)
+		return firstWithin(lexRoots, clean)
 	}
-	return false
+	return "", false
+}
+
+func firstWithin(bases []string, p string) (string, bool) {
+	for _, base := range bases {
+		if c, ok := within(base, p); ok {
+			return c, true
+		}
+	}
+	return "", false
 }
 
 // IsRoot reports whether p (absolute, cleaned) is one of the roots, as

@@ -665,8 +665,6 @@ func TestHandlerRejectsBadRequests(t *testing.T) {
 		{"missing n", "dim=2&eps=1&minPts=2", body3x2},
 		{"negative n", "n=-1&dim=2&eps=1&minPts=2", body3x2},
 		{"bad dim", "n=3&dim=x&eps=1&minPts=2", body3x2},
-		{"too many values", "n=65536&dim=8192&eps=1&minPts=2", nil},
-		{"too many points", fmt.Sprintf("n=%d&dim=0&eps=1&minPts=2", maxPoints+1), nil},
 		{"bad eps", "n=3&dim=2&eps=abc&minPts=2", body3x2},
 		{"infinite minPts", "n=3&dim=2&eps=1&minPts=Inf", body3x2},
 		{"NaN minPts", "n=3&dim=2&eps=1&minPts=NaN", body3x2},
@@ -680,6 +678,29 @@ func TestHandlerRejectsBadRequests(t *testing.T) {
 		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"EINVAL"`) {
 			t.Fatalf("%s: status %d body %s", c.name, rec.Code, rec.Body.String())
 		}
+	}
+	// Over the limits: 413, before anything is allocated or read.
+	tooLarge := []struct {
+		name, q string
+		body    []byte
+	}{
+		{"too many values", "n=65537&dim=4096&eps=1&minPts=2", nil},
+		{"too many points", fmt.Sprintf("n=%d&dim=0&eps=1&minPts=2", MaxPoints+1), nil},
+		{"dim too large", fmt.Sprintf("n=1&dim=%d&eps=1&minPts=2", MaxDim+1), nil},
+		{"huge n", "n=2147483647&dim=1&eps=1&minPts=2", nil},
+	}
+	for _, c := range tooLarge {
+		rec := post(h, c.q, c.body)
+		if rec.Code != http.StatusRequestEntityTooLarge || !strings.Contains(rec.Body.String(), `"EINVAL"`) {
+			t.Fatalf("%s: status %d body %s", c.name, rec.Code, rec.Body.String())
+		}
+	}
+	// Labels refuses the same sizes on its own.
+	if _, err := Labels(context.Background(), nil, MaxPoints+1, 0, 1, 2, 1, nil); !errors.Is(err, ErrInput) {
+		t.Fatalf("Labels(n > MaxPoints): %v", err)
+	}
+	if _, err := Labels(context.Background(), nil, 0, MaxDim+1, 1, 2, 1, nil); !errors.Is(err, ErrInput) {
+		t.Fatalf("Labels(dim > MaxDim): %v", err)
 	}
 }
 
