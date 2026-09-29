@@ -2299,8 +2299,8 @@ app.use('/photos', requireFront);
 // Serve CHANGELOG.md from the project root for the in-app changelog
 // viewer (changelog-viewer.js). Read on every request so a `git pull`
 // without a process restart picks up the new content. Cap at a sane
-// size so we never accidentally try to stream a 50 MB file. 1 hour
-// browser cache is fine — the SPA invalidates it via the `?v=` token.
+// size so we never accidentally try to stream a 50 MB file. The viewer
+// fetches with `cache: 'no-cache'`, so the max-age never hides a release.
 app.get('/CHANGELOG.md', async (req, res) => {
     try {
         const p = path.resolve(__dirname, '../../CHANGELOG.md');
