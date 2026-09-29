@@ -9,9 +9,11 @@
 //     /api/thumbs/<id> cache hits, for a request that is authenticated by
 //     a file token or a session cookie that needs no renewal;
 //   - everything that decides the response — Range, conditional
-//     requests, Content-Type, Content-Disposition, security headers —
-//     reproduces the Node code path (send / serve-static / helmet /
-//     checkAuth) exactly, and any branch it doesn't reproduce (416, 412,
+//     requests, Content-Type, Content-Disposition — reproduces the Node
+//     code path (send / serve-static / checkAuth) exactly; the security
+//     and cache headers (HSTS, CSP and the rest of helmet, Cache-Control)
+//     are the ones Node's own middlewares produce, pushed over the control
+//     channel on every config change; any branch it doesn't reproduce (416, 412,
 //     redirects, 401s, renewals, HEIC transcoding, auto-prune on 404, …)
 //     goes to Node.
 //

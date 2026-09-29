@@ -24,9 +24,12 @@ type State struct {
 	RateLimit bool `json:"rateLimit"`
 	// config.web.shareSecret (hex), for the /files bearer tokens.
 	ShareSecret string `json:"shareSecret"`
-	// The headers helmet sets on every response, in order, with Node's
-	// spelling, e.g. ["Content-Security-Policy", "default-src 'self';…"].
-	Helmet [][2]string `json:"helmet"`
+	// The headers Node's middleware chain (HSTS, helmet / CSP, the cache
+	// policy) and the route put on a response, per fast-path route
+	// ("files", "photos", "thumbs"), in order, with Node's spelling. Node
+	// computes them from its own middlewares at every push; nothing here
+	// hardcodes a value.
+	Headers map[string][][2]string `json:"headers"`
 
 	secret []byte
 }
@@ -46,35 +49,29 @@ func decodeState(r io.Reader) (*State, error) {
 		}
 		st.secret = b
 	}
-	for _, h := range st.Helmet {
-		if h[0] == "" || strings.ContainsAny(h[0]+h[1], "\r\n") {
-			return nil, errors.New("invalid helmet header")
+	for _, list := range st.Headers {
+		for _, h := range list {
+			if h[0] == "" || strings.ContainsAny(h[0]+h[1], "\r\n") {
+				return nil, errors.New("invalid header in state")
+			}
 		}
 	}
 	return &st, nil
 }
 
-// baseHeaders are the headers every Node response starts with: the HSTS
-// value of the forceHttps middleware, then helmet's (with
-// upgrade-insecure-requests appended to the CSP when forceHttps is on and
-// the request is secure).
-func (st *State) baseHeaders(secure bool) hdrList {
-	h := make(hdrList, 0, len(st.Helmet)+8)
-	if st.ForceHTTPS {
-		// Only reached for secure requests (others are Node's to redirect).
-		h = append(h, hdr{"Strict-Transport-Security", "max-age=31536000; includeSubDomains"})
-	} else {
-		h = append(h, hdr{"Strict-Transport-Security", "max-age=0"})
+// routeHeaders are the headers Node's response to a fast-path route
+// starts with. ok is false when Node didn't push them (older Node, or a
+// route it doesn't want answered here): the request is proxied.
+func (st *State) routeHeaders(route string) (hdrList, bool) {
+	list, ok := st.Headers[route]
+	if !ok {
+		return nil, false
 	}
-	for _, x := range st.Helmet {
-		v := x[1]
-		if st.ForceHTTPS && secure && strings.EqualFold(x[0], "Content-Security-Policy") &&
-			!strings.Contains(v, "upgrade-insecure-requests") {
-			v += ";upgrade-insecure-requests"
-		}
-		h = append(h, hdr{x[0], v})
+	h := make(hdrList, 0, len(list)+8)
+	for _, x := range list {
+		h = append(h, hdr{x[0], x[1]})
 	}
-	return h
+	return h, true
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

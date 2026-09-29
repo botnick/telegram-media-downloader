@@ -168,10 +168,32 @@ func (h *harness) setState(st State) {
 	if st.ShareSecret != "" {
 		st.secret, _ = hex.DecodeString(st.ShareSecret)
 	}
-	if st.Helmet == nil {
-		st.Helmet = [][2]string{{"Content-Security-Policy", "default-src 'self'"}, {"X-DNS-Prefetch-Control", "off"}}
+	if st.Headers == nil {
+		st.Headers = testHeaders(st.ForceHTTPS)
 	}
 	h.front.state.Store(&st)
+}
+
+// Stand-ins for what Node pushes (captured from its own middlewares).
+const (
+	testFilesCC  = "private, max-age=2592000, immutable"
+	testPhotosCC = "private, max-age=86400"
+	testThumbCC  = "private, max-age=3600"
+)
+
+func testHeaders(forceHTTPS bool) map[string][][2]string {
+	hsts, csp := "max-age=0", "default-src 'self'"
+	if forceHTTPS {
+		hsts, csp = "max-age=31536000; includeSubDomains", csp+";upgrade-insecure-requests"
+	}
+	with := func(extra ...[2]string) [][2]string {
+		return append([][2]string{{"Strict-Transport-Security", hsts}, {"Content-Security-Policy", csp}, {"X-DNS-Prefetch-Control", "off"}}, extra...)
+	}
+	return map[string][][2]string{
+		"files":  with([2]string{"Cache-Control", testFilesCC}),
+		"photos": with([2]string{"Cache-Control", testPhotosCC}),
+		"thumbs": with([2]string{"Cache-Control", testThumbCC}, [2]string{"Pragma", "no-cache"}, [2]string{"Vary", "Cookie"}),
+	}
 }
 
 func (h *harness) upstreamCalls() int {
@@ -226,7 +248,7 @@ func TestFastFile(t *testing.T) {
 		"Strict-Transport-Security": "max-age=0",
 		"Content-Security-Policy":   "default-src 'self'",
 		"X-DNS-Prefetch-Control":    "off",
-		"Cache-Control":             filesCacheControl,
+		"Cache-Control":             testFilesCC,
 		"Content-Disposition":       `inline; filename="clip.mp4"; filename*=UTF-8''clip.mp4`,
 		"Accept-Ranges":             "bytes",
 		"Last-Modified":             lm,
@@ -402,11 +424,23 @@ func TestForceHTTPS(t *testing.T) {
 	}
 }
 
+// Headers are Node's: a route it pushed none for is never answered here.
+func TestNoPushedHeadersProxies(t *testing.T) {
+	h := newHarness(t)
+	h.setState(State{AuthReady: true, ShareSecret: secretHex, Headers: map[string][][2]string{}})
+	h.do("GET", "/files/G1/videos/clip.mp4", cookie(tokAdmin))
+	h.do("GET", "/photos/-100123.jpg", cookie(tokAdmin))
+	h.do("GET", "/api/thumbs/1", cookie(tokAdmin))
+	if h.upstreamCalls() != 3 {
+		t.Fatalf("%d of 3 requests reached Node", h.upstreamCalls())
+	}
+}
+
 func TestPhotosAndThumbs(t *testing.T) {
 	h := newHarness(t)
 	c := cookie(tokGuest)["Cookie"]
 	res, body := h.do("GET", "/photos/-100123.jpg", map[string]string{"Cookie": c})
-	if res.StatusCode != 200 || string(body) != "jpegbytes" || res.Header.Get("Cache-Control") != photosCacheControl ||
+	if res.StatusCode != 200 || string(body) != "jpegbytes" || res.Header.Get("Cache-Control") != testPhotosCC ||
 		res.Header.Get("Content-Type") != "image/jpeg" {
 		t.Errorf("photo: %d %q %v", res.StatusCode, body, res.Header)
 	}
@@ -414,7 +448,7 @@ func TestPhotosAndThumbs(t *testing.T) {
 	ms := statMtimeMs(testMtime)
 	etag := fmt.Sprintf(`"thumb-1-320-%d"`, int64(ms))
 	if res.StatusCode != 200 || string(body) != "RIFFwebpbytes" || res.Header.Get("ETag") != etag ||
-		res.Header.Get("Content-Type") != "image/webp" || res.Header.Get("Cache-Control") != thumbCacheControl ||
+		res.Header.Get("Content-Type") != "image/webp" || res.Header.Get("Cache-Control") != testThumbCC ||
 		res.Header.Get("Pragma") != "no-cache" || res.Header.Get("Vary") != "Cookie" ||
 		res.Header.Get("Last-Modified") != utcString(int64(ms)) {
 		t.Errorf("thumb: %d %v", res.StatusCode, res.Header)

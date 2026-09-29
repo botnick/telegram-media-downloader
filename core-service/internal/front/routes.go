@@ -14,15 +14,9 @@ import (
 	"unicode/utf8"
 )
 
-// Response headers src/web/server.js sets per path prefix (the cache
-// policy middleware) and per route. The parity suite
-// (tests/front-parity.e2e.test.js) fails when these drift from Node.
-const (
-	filesCacheControl  = "private, max-age=2592000, immutable"
-	photosCacheControl = "private, max-age=86400, stale-while-revalidate=604800"
-	thumbCacheControl  = "private, max-age=3600, stale-while-revalidate=2592000" // THUMB_CACHE_CONTROL
-	thumbWidth         = 320                                                     // the only cached width
-)
+// thumbWidth is the only thumbnail width the cache key covers here
+// (GET /api/thumbs/:id without ?w=).
+const thumbWidth = 320
 
 // serveFast answers the request itself when it can; false means "proxy it".
 func (s *Server) serveFast(w http.ResponseWriter, r *http.Request) bool {
@@ -53,8 +47,9 @@ func splitTarget(uri string) (path, query string, ok bool) {
 // precheck covers what every middleware in front of the route agrees on:
 // a GET/HEAD without a body, the dashboard's auth configured, and — with
 // forceHttps on — a request that is already secure. It returns the state
-// and the headers Node's middleware chain puts first.
-func (s *Server) precheck(r *http.Request) (*State, hdrList, bool) {
+// and the headers Node's middleware chain and the route put first (pushed
+// by Node for exactly this case: forceHttps off, or a secure request).
+func (s *Server) precheck(r *http.Request, route string) (*State, hdrList, bool) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return nil, nil, false
 	}
@@ -65,16 +60,18 @@ func (s *Server) precheck(r *http.Request) (*State, hdrList, bool) {
 	if st == nil || !st.AuthReady {
 		return nil, nil, false
 	}
-	secure := false
 	if st.ForceHTTPS {
 		xfp, ok := nodeHeader(r.Header, "X-Forwarded-Proto")
 		proto, exact := s.trust.protocol(s.clientAddr(r), xfp, ok)
 		if !exact || proto != "https" {
 			return nil, nil, false // Node redirects, refuses, or lets a local request through
 		}
-		secure = true
 	}
-	return st, st.baseHeaders(secure), true
+	h, ok := st.routeHeaders(route)
+	if !ok {
+		return nil, nil, false
+	}
+	return st, h, true
 }
 
 // ---- /files ---------------------------------------------------------------
@@ -82,7 +79,7 @@ func (s *Server) precheck(r *http.Request) (*State, hdrList, bool) {
 // fastFiles is the local branch of app.use('/files', …): token or session,
 // safeResolveDownload, Content-Disposition, res.sendFile.
 func (s *Server) fastFiles(w http.ResponseWriter, r *http.Request, rawRel, rawQuery string) bool {
-	st, h, ok := s.precheck(r)
+	st, h, ok := s.precheck(r, "files")
 	if !ok {
 		return false
 	}
@@ -122,7 +119,6 @@ func (s *Server) fastFiles(w http.ResponseWriter, r *http.Request, rawRel, rawQu
 		kind = "inline"
 	}
 	h = append(h,
-		hdr{"Cache-Control", filesCacheControl},
 		hdr{"Content-Disposition", kind + `; filename="` + asciiFilename(base) + `"; filename*=UTF-8''` + encodeURIComponent(base)},
 	)
 	plan, ok := planSend(r, h, fi.Size(), fi.ModTime(), real)
@@ -240,7 +236,7 @@ var photoNameRE = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9_.-]*$`)
 // file name. Anything else (missing file → Express's 404 page, dotfiles,
 // directories, encoded names) goes to Node.
 func (s *Server) fastPhotos(w http.ResponseWriter, r *http.Request, name string) bool {
-	_, h, ok := s.precheck(r)
+	_, h, ok := s.precheck(r, "photos")
 	if !ok || !photoNameRE.MatchString(name) || strings.HasSuffix(name, ".") {
 		return false
 	}
@@ -251,7 +247,6 @@ func (s *Server) fastPhotos(w http.ResponseWriter, r *http.Request, name string)
 	if !ok {
 		return false
 	}
-	h = append(h, hdr{"Cache-Control", photosCacheControl})
 	plan, ok := planSend(r, h, fi.Size(), fi.ModTime(), real)
 	if !ok {
 		_ = f.Close()
@@ -267,7 +262,7 @@ func (s *Server) fastPhotos(w http.ResponseWriter, r *http.Request, name string)
 // fastThumbs answers a cache hit of GET /api/thumbs/:id. A miss is Node's:
 // it generates the thumbnail (and hands the bytes back to us to stream).
 func (s *Server) fastThumbs(w http.ResponseWriter, r *http.Request, rawID string) bool {
-	st, h, ok := s.precheck(r)
+	st, h, ok := s.precheck(r, "thumbs")
 	if !ok || st.RateLimit {
 		return false // the /api limiter must count the request
 	}
@@ -287,18 +282,12 @@ func (s *Server) fastThumbs(w http.ResponseWriter, r *http.Request, rawID string
 	if !ok {
 		return false
 	}
-	// The /api cache policy, then the route's own headers.
+	// The route's own headers on top of what Node pushed.
 	mtimeMs := statMtimeMs(fi.ModTime())
 	etag := `"thumb-` + strconv.FormatInt(id, 10) + "-" + strconv.Itoa(thumbWidth) + "-" +
 		strconv.FormatInt(int64(math.Floor(mtimeMs)), 10) + `"`
 	lastMod := utcString(dateMs(mtimeMs))
-	h = append(h,
-		hdr{"Cache-Control", "no-store, max-age=0"},
-		hdr{"Pragma", "no-cache"},
-		hdr{"Vary", "Cookie"},
-	)
 	h.set("Content-Type", "image/webp")
-	h.set("Cache-Control", thumbCacheControl)
 	h.set("ETag", etag)
 	h.set("Last-Modified", lastMod)
 	inm, ok1 := nodeHeader(r.Header, "If-None-Match")

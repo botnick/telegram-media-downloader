@@ -276,7 +276,7 @@ import { createWsBroadcaster } from './lib/ws-broadcaster.js';
 import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
-    captureHelmetHeaders,
+    captureHeaders,
     frontRequestMiddleware,
     installClientAddressView,
     installSendAccel,
@@ -613,7 +613,7 @@ app.use(frontRequestMiddleware(frontToken));
 // reverse-proxy users must export TRUST_PROXY=1 for this to work.
 // Non-GET/HEAD requests get a 403 instead of a 308 — clients shouldn't
 // silently retry mutations on a different scheme.
-app.use(async (req, res, next) => {
+const _forceHttpsMw = async (req, res, next) => {
     const config = await readConfigSafe();
     if (!config.web?.forceHttps) {
         // Clear HSTS so browsers that previously cached the 1-year policy
@@ -637,7 +637,8 @@ app.use(async (req, res, next) => {
     const host = req.headers.host;
     if (!host) return res.status(400).end();
     return res.redirect(308, `https://${host}${req.originalUrl}`);
-});
+};
+app.use(_forceHttpsMw);
 
 // gzip/deflate/br for text responses (see lib/http-compression.js for what
 // is skipped: raw file routes, Range requests, media types). Level via
@@ -714,13 +715,11 @@ const _helmet = helmet({
     crossOriginResourcePolicy: { policy: 'same-origin' },
 });
 app.use(_helmet);
-// The same headers, for tgdl-core's own responses (pushed as front state).
-const _helmetHeaderList = captureHelmetHeaders(_helmet);
 
 // Dynamic CSP: re-inject upgrade-insecure-requests only when forceHttps is
 // active and the response is already on a secure channel. Helmet's static
 // middleware can't vary per-request, so we patch the header after it runs.
-app.use(async (req, res, next) => {
+const _dynamicCspMw = async (req, res, next) => {
     const config = await readConfigSafe();
     if (config.web?.forceHttps && req.secure) {
         const orig = res.getHeader('Content-Security-Policy');
@@ -729,7 +728,8 @@ app.use(async (req, res, next) => {
         }
     }
     next();
-});
+};
+app.use(_dynamicCspMw);
 
 // HTTP caching policy. Browsers (and intermediaries like Cloudflare) will
 // happily serve a 200 from disk for several seconds even on responses with
@@ -746,7 +746,7 @@ app.use(async (req, res, next) => {
 //
 // Sits BEFORE the static handlers so res.setHeader wins over express.static's
 // default ETag/Last-Modified-only behaviour.
-app.use((req, res, next) => {
+const _cachePolicyMw = (req, res, next) => {
     const p = req.path;
     if (p.startsWith('/api/')) {
         // Auth-dependent — vary on the session cookie so a shared cache
@@ -797,7 +797,14 @@ app.use((req, res, next) => {
         res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
     }
     next();
-});
+};
+app.use(_cachePolicyMw);
+
+// The middlewares above that put headers on every response. tgdl-core
+// answers /files, /photos and thumbnail hits itself with the headers this
+// chain produces for them — captured from these functions at every state
+// push (config change), never copied into Go (_frontState).
+const _frontHeaderChain = [_forceHttpsMw, _helmet, _dynamicCspMw, _cachePolicyMw];
 
 // Defense-in-depth: a coarse global rate limit on every API path. The login
 // endpoint has its own stricter limiter below (which is NOT user-toggleable
@@ -13952,12 +13959,24 @@ async function _serveOnPortDirectly(reason) {
 async function _frontState() {
     const config = await readConfigSafe();
     const web = config.web || {};
+    const forceHttps = Boolean(web.forceHttps);
+    // tgdl-core answers only when the request is secure or forceHttps is
+    // off, so one header set per route is all it needs.
+    const headersFor = (p, route) =>
+        captureHeaders(_frontHeaderChain, { path: p, secure: forceHttps }, route);
     return {
         authReady: web.enabled !== false && isAuthConfigured(web),
-        forceHttps: Boolean(web.forceHttps),
+        forceHttps,
         rateLimit: _rateLimitConfig.enabled === true,
         shareSecret: getShareSecretForFront() || '',
-        helmet: _helmetHeaderList,
+        headers: {
+            files: await headersFor('/files/x'),
+            photos: await headersFor('/photos/x'),
+            // + what GET /api/thumbs/:id sets before its per-file validators
+            thumbs: await headersFor('/api/thumbs/1', (res) =>
+                res.setHeader('Cache-Control', THUMB_CACHE_CONTROL),
+            ),
+        },
     };
 }
 

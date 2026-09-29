@@ -146,10 +146,12 @@ export function markAccel(req, res) {
 }
 
 /**
- * The headers a helmet middleware sets, in order: [[name, value], …].
- * Pushed to tgdl-core so its own responses carry exactly the same set.
+ * The headers a chain of middlewares puts on the response to a GET of
+ * `path` from a non-local client, in order: [[name, value], …]; `route`
+ * may add what the route sets. Pushed to tgdl-core so the responses it
+ * builds itself carry exactly the set Node would send.
  */
-export function captureHelmetHeaders(mw) {
+export async function captureHeaders(chain, { path, secure }, route) {
     const list = [];
     const find = (n) => list.findIndex(([k]) => k.toLowerCase() === String(n).toLowerCase());
     const res = {
@@ -157,6 +159,7 @@ export function captureHelmetHeaders(mw) {
             const i = find(n);
             if (i >= 0) list[i][1] = String(v);
             else list.push([String(n), String(v)]);
+            return res;
         },
         removeHeader(n) {
             const i = find(n);
@@ -166,12 +169,32 @@ export function captureHelmetHeaders(mw) {
             const i = find(n);
             return i >= 0 ? list[i][1] : undefined;
         },
+        vary(field) {
+            const cur = res.getHeader('Vary');
+            res.setHeader('Vary', cur ? `${cur}, ${field}` : field);
+            return res;
+        },
         locals: {},
     };
-    let called = false;
-    mw({ headers: {}, method: 'GET', url: '/', originalUrl: '/' }, res, () => {
-        called = true;
-    });
-    if (!called) throw new Error('helmet did not call next() synchronously');
+    const req = {
+        method: 'GET',
+        url: path,
+        originalUrl: path,
+        path,
+        query: {},
+        headers: { host: 'tgdl-core' },
+        secure,
+        protocol: secure ? 'https' : 'http',
+        ip: '192.0.2.1',
+        socket: { remoteAddress: '192.0.2.1' },
+    };
+    for (const mw of chain) {
+        let called = false;
+        await mw(req, res, () => {
+            called = true;
+        });
+        if (!called) throw new Error(`header middleware ${mw.name || '?'} ended the request`);
+    }
+    route?.(res);
     return list;
 }

@@ -67,6 +67,7 @@ let dataDir;
 let results;
 let direct;
 let frontRunning = false;
+let fastAnswers = null;
 
 beforeAll(async () => {
     if (SKIP) return;
@@ -84,6 +85,7 @@ beforeAll(async () => {
         headers: { Cookie: `tg_dl_session=${'a'.repeat(64)}` },
     }).then((r) => r.json());
     frontRunning = health?.goCoreFront?.state === 'running';
+    fastAnswers = health?.goCoreFront?.stats?.fast || null;
 
     // The same cases against Node alone, on a fresh copy of the seed.
     const dir2 = makeDataDir('tgdl-front-parity-node-');
@@ -109,7 +111,14 @@ afterAll(async () => {
 
 describe.skipIf(SKIP)('front server parity with the Node-only server', () => {
     it('runs through tgdl-core when the suite asks for it', () => {
-        if (GOCORE_TEST) expect(frontRunning).toBe(true);
+        if (GOCORE_TEST) {
+            expect(frontRunning).toBe(true);
+            // tgdl-core answered each kind itself (with the headers Node
+            // pushed), not just proxied everything.
+            expect(fastAnswers.files).toBeGreaterThan(0);
+            expect(fastAnswers.photos).toBeGreaterThan(0);
+            expect(fastAnswers.thumbs).toBeGreaterThan(0);
+        }
     });
 
     it('every case matches the frozen Node responses', () => {

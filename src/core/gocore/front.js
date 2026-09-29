@@ -175,7 +175,7 @@ export async function frontStats() {
 
 /**
  * Push the current state if it changed (or `force`). The state comes from
- * opts.getState(): { authReady, forceHttps, rateLimit, shareSecret, helmet }.
+ * opts.getState(): { authReady, forceHttps, rateLimit, shareSecret, headers }.
  */
 export function pushFrontState({ force = false } = {}) {
     if (!_ctl || !_opts?.getState) return Promise.resolve(false);
