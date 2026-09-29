@@ -173,11 +173,12 @@ const TRIGGER_TIMEOUT_MS = 15_000;
 
 /**
  * Confirm the watchtower sidecar is reachable BEFORE we touch the DB.
- * A bare HEAD against `/v1/update` is enough — watchtower has no health
- * endpoint, but any HTTP response (incl. 405 Method Not Allowed for HEAD
- * on a POST-only route) means the host is up. Connection refused / DNS
- * failure / timeout = sidecar down. 5 s cap so a hung gateway doesn't
- * stall the operator click.
+ * A GET on `/` is enough — watchtower has no health endpoint, but any
+ * HTTP response (its 404 for an unknown path included) means the host is
+ * up. Never ping `/v1/update`: watchtower ignores the method, so even a
+ * HEAD there runs a full update and blocks until the pull finishes.
+ * Connection refused / DNS failure / timeout = sidecar down. 5 s cap so a
+ * hung gateway doesn't stall the operator click.
  */
 async function _pingWatchtower() {
     const ep = _watchtowerEndpoint();
@@ -187,8 +188,8 @@ async function _pingWatchtower() {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), PING_TIMEOUT_MS);
     try {
-        const res = await fetch(`${ep.url}/v1/update`, {
-            method: 'HEAD',
+        const res = await fetch(`${ep.url}/`, {
+            method: 'GET',
             headers: { Authorization: `Bearer ${ep.token}` },
             signal: ctrl.signal,
         });
@@ -414,12 +415,11 @@ async function _snapshotDb() {
 // ---- Watchtower client -----------------------------------------------------
 
 /**
- * POST watchtower's `/v1/update` with bearer auth. Watchtower returns
- * 200 immediately and does the work asynchronously, so we don't await
- * the actual swap — the browser detects it via the WS disconnect.
- *
- * Wrap the fetch in a 30 s AbortController so a misconfigured
- * WATCHTOWER_URL doesn't hang the request indefinitely.
+ * POST watchtower's `/v1/update` with bearer auth. Watchtower answers
+ * only after it has pulled the new image, which can take minutes, so we
+ * don't await the swap — the browser detects it via the WS disconnect.
+ * The ping just proved the sidecar is up, so hitting the timeout means
+ * watchtower is still pulling, not that the update failed.
  */
 async function _triggerWatchtower() {
     const ep = _watchtowerEndpoint();
@@ -439,6 +439,9 @@ async function _triggerWatchtower() {
         // Watchtower's response body is empty / "Updates triggered." —
         // return what we know.
         return { triggered: true };
+    } catch (e) {
+        if (e?.name === 'AbortError') return { triggered: true, pending: true };
+        throw e;
     } finally {
         clearTimeout(t);
     }

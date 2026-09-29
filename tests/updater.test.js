@@ -111,10 +111,13 @@ describe('_pingWatchtower', () => {
         expect(r.status).toBe(200);
     });
 
-    it('returns ok=true on a 405 (HEAD on POST-only route)', async () => {
-        globalThis.fetch = vi.fn(async () => ({ status: 405, ok: false }));
+    it('returns ok=true on a 404 and never touches /v1/update', async () => {
+        globalThis.fetch = vi.fn(async () => ({ status: 404, ok: false }));
         const r = await ping();
         expect(r.ok).toBe(true);
+        const [url, init] = globalThis.fetch.mock.calls[0];
+        expect(url).not.toMatch(/v1\/update/);
+        expect(init.method).toBe('GET');
     });
 
     it('classifies 401 as WATCHTOWER_UNAUTHENTICATED', async () => {
@@ -312,9 +315,26 @@ describe('runAutoUpdate', () => {
         });
     });
 
+    it('treats a POST timeout after a good ping as triggered', async () => {
+        _fakeDockerEnv = true;
+        let n = 0;
+        globalThis.fetch = vi.fn(async () => {
+            n += 1;
+            if (n === 1) return { status: 404, ok: false };
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            throw err;
+        });
+        const r = await updater.runAutoUpdate();
+        expect(r.success).toBe(true);
+        try {
+            fs.unlinkSync(r.backup.path);
+        } catch {}
+    });
+
     it('threads TRIGGER_FAILED when ping passes but POST fails', async () => {
         _fakeDockerEnv = true;
-        // First call (HEAD) succeeds, second call (POST) returns 5xx.
+        // First call (ping) succeeds, second call (POST) returns 5xx.
         let n = 0;
         globalThis.fetch = vi.fn(async () => {
             n += 1;
