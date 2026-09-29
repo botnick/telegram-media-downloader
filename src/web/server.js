@@ -10826,7 +10826,7 @@ app.use('/api/cluster', (_req, _res, next) => {
 });
 
 function _peerHmacGate(req, res, opts) {
-    const v = verifyPeerHmac(req, opts);
+    const v = verifyPeerHmac(req, { pairedOnly: true, ...opts });
     if (!v.ok) {
         recordClusterAudit({
             kind: 'request',
@@ -10852,7 +10852,9 @@ app.post('/api/cluster/handshake', async (req, res) => {
     // 401 bad_signature.
     const pairingCode = typeof req.body?.pairing_code === 'string' ? req.body.pairing_code : null;
     const v = _peerHmacGate(req, res, {
-        expectedToken: pairingCode ? pairingKeysFor(pairingCode) : null,
+        expectedToken: pairingCode
+            ? [...pairingKeysFor(pairingCode), getClusterToken()]
+            : getClusterToken(),
     });
     if (!v) return;
     try {

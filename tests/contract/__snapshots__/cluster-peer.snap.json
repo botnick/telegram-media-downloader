@@ -239,14 +239,14 @@
         }
       }
     },
-    "health signed with cluster token as unknown peer": {
+    "health signed with cluster token as unknown peer → 401": {
       "route": "GET /api/cluster/health",
       "request": {
         "method": "GET",
         "path": "/api/cluster/health",
         "as": "peer:00000000-0000-4000-8000-00000000beef/token"
       },
-      "status": 200,
+      "status": 401,
       "headers": {
         "cache-control": "no-store, max-age=0",
         "content-type": "application/json; charset=utf-8",
@@ -257,11 +257,8 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
-          "name": "contract-node",
-          "ok": true,
-          "peer_id": "00000000-0000-4000-8000-00000000c0de",
-          "ts": "<time:ms>",
-          "version": null
+          "code": "no_secret",
+          "error": "cluster auth failed"
         }
       }
     },
@@ -543,7 +540,7 @@
           "entries": [
             {
               "detail": "GET /api/cluster/accounts/snapshot: missing_headers",
-              "id": 14,
+              "id": 15,
               "kind": "request",
               "ok": 0,
               "peer_id": null,
@@ -551,22 +548,6 @@
             },
             {
               "detail": "GET /api/cluster/downloads/since: missing_headers",
-              "id": 12,
-              "kind": "request",
-              "ok": 0,
-              "peer_id": null,
-              "ts": "<time:ms>"
-            },
-            {
-              "detail": "GET /api/cluster/files/Alpha%20Photos/images/IMG_0001.jpg: missing_headers",
-              "id": 19,
-              "kind": "request",
-              "ok": 0,
-              "peer_id": null,
-              "ts": "<time:ms>"
-            },
-            {
-              "detail": "GET /api/cluster/groups/snapshot: missing_headers",
               "id": 13,
               "kind": "request",
               "ok": 0,
@@ -574,8 +555,24 @@
               "ts": "<time:ms>"
             },
             {
+              "detail": "GET /api/cluster/files/Alpha%20Photos/images/IMG_0001.jpg: missing_headers",
+              "id": 20,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/groups/snapshot: missing_headers",
+              "id": 14,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
               "detail": "GET /api/cluster/health: bad_signature",
-              "id": 10,
+              "id": 11,
               "kind": "request",
               "ok": 0,
               "peer_id": "00000000-0000-4000-8000-0000000000b2",
@@ -630,6 +627,14 @@
               "ts": "<time:ms>"
             },
             {
+              "detail": "GET /api/cluster/health: no_secret",
+              "id": 10,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": "<uuid:1>",
+              "ts": "<time:ms>"
+            },
+            {
               "detail": "GET /api/cluster/health: replay",
               "id": 8,
               "kind": "request",
@@ -639,7 +644,7 @@
             },
             {
               "detail": "GET /api/cluster/peer-thumbs/1: missing_headers",
-              "id": 20,
+              "id": 21,
               "kind": "request",
               "ok": 0,
               "peer_id": null,
@@ -647,7 +652,7 @@
             },
             {
               "detail": "GET /api/cluster/search/peer?q=x: missing_headers",
-              "id": 18,
+              "id": 19,
               "kind": "request",
               "ok": 0,
               "peer_id": null,
@@ -655,7 +660,7 @@
             },
             {
               "detail": "POST /api/cluster/files/delete: missing_headers",
-              "id": 17,
+              "id": 18,
               "kind": "request",
               "ok": 0,
               "peer_id": null,
@@ -663,7 +668,7 @@
             },
             {
               "detail": "POST /api/cluster/handshake: missing_headers",
-              "id": 11,
+              "id": 12,
               "kind": "request",
               "ok": 0,
               "peer_id": null,
@@ -671,7 +676,7 @@
             },
             {
               "detail": "POST /api/cluster/relay/proxy: missing_headers",
-              "id": 16,
+              "id": 17,
               "kind": "request",
               "ok": 0,
               "peer_id": null,
@@ -679,7 +684,7 @@
             },
             {
               "detail": "POST /api/cluster/sign-url: missing_headers",
-              "id": 15,
+              "id": 16,
               "kind": "request",
               "ok": 0,
               "peer_id": null,
@@ -755,7 +760,7 @@
         "path": "/api/cluster/handshake",
         "as": "peer:00000000-0000-4000-8000-0000000000d4/token",
         "body": {
-          "peer_id": "<uuid:1>",
+          "peer_id": "<uuid:2>",
           "url": "http://peer-delta.invalid:3000"
         }
       },
@@ -811,7 +816,7 @@
         "as": "peer:00000000-0000-4000-8000-0000000000d4/token",
         "body": {
           "name": "peer-delta",
-          "peer_id": "<uuid:1>"
+          "peer_id": "<uuid:2>"
         }
       },
       "status": 500,
@@ -839,7 +844,7 @@
         "body": {
           "name": "peer-delta",
           "pairing_code": "NOPE1234",
-          "peer_id": "<uuid:1>",
+          "peer_id": "<uuid:2>",
           "url": "http://peer-delta.invalid:3000"
         }
       },
@@ -867,7 +872,7 @@
         "as": "peer:00000000-0000-4000-8000-0000000000d4/token",
         "body": {
           "name": "peer-delta",
-          "peer_id": "<uuid:1>",
+          "peer_id": "<uuid:2>",
           "shared_secret": "<hex64:1>",
           "ts": 1717200000000,
           "url": "http://peer-delta.invalid:3000/",
@@ -934,7 +939,7 @@
         "as": "peer:00000000-0000-4000-8000-0000000000d4/token",
         "body": {
           "name": "peer-delta renamed",
-          "peer_id": "<uuid:1>",
+          "peer_id": "<uuid:2>",
           "url": "http://peer-delta.invalid:3000"
         }
       },
@@ -1017,7 +1022,7 @@
               "name": "peer-delta renamed",
               "notes": null,
               "pairedAt": "<time:ms>",
-              "peerId": "<uuid:1>",
+              "peerId": "<uuid:2>",
               "role": "admin",
               "status": "online",
               "streamMode": "proxy",
@@ -1038,7 +1043,7 @@
         "body": {
           "name": "peer-epsilon",
           "pairing_code": "<pairing-code>",
-          "peer_id": "<uuid:2>",
+          "peer_id": "<uuid:3>",
           "url": "http://peer-epsilon.invalid:3000"
         }
       },
@@ -1071,7 +1076,7 @@
         "body": {
           "name": "peer-epsilon",
           "pairing_code": "<pairing-code>",
-          "peer_id": "<uuid:2>",
+          "peer_id": "<uuid:3>",
           "url": "http://peer-epsilon.invalid:3000"
         }
       },
@@ -1100,7 +1105,7 @@
         "body": {
           "name": "peer-zeta",
           "pairing_code": "<pairing-code>",
-          "peer_id": "<uuid:3>",
+          "peer_id": "<uuid:4>",
           "url": "http://peer-zeta.invalid:3000"
         }
       },
@@ -1133,7 +1138,7 @@
         "body": {
           "name": "peer-eta",
           "pairing_code": "<pairing-code>",
-          "peer_id": "<uuid:4>",
+          "peer_id": "<uuid:5>",
           "url": "http://peer-eta.invalid:3000"
         }
       },
@@ -1166,7 +1171,7 @@
         "body": {
           "name": "peer-eta",
           "pairing_code": "<pairing-code>",
-          "peer_id": "<uuid:4>",
+          "peer_id": "<uuid:5>",
           "url": "http://peer-eta.invalid:3000"
         }
       },
@@ -1195,7 +1200,7 @@
         "body": {
           "name": "peer-theta",
           "pairing_code": "ZZZZ2345",
-          "peer_id": "<uuid:5>",
+          "peer_id": "<uuid:6>",
           "url": "http://peer-theta.invalid:3000"
         }
       },
@@ -1274,7 +1279,7 @@
               "name": "peer-delta renamed",
               "notes": null,
               "pairedAt": "<time:ms>",
-              "peerId": "<uuid:1>",
+              "peerId": "<uuid:2>",
               "role": "admin",
               "status": "online",
               "streamMode": "proxy",
@@ -1290,7 +1295,7 @@
               "name": "peer-epsilon",
               "notes": null,
               "pairedAt": "<time:ms>",
-              "peerId": "<uuid:2>",
+              "peerId": "<uuid:3>",
               "role": "admin",
               "status": "online",
               "streamMode": "proxy",
@@ -1306,7 +1311,7 @@
               "name": "peer-zeta",
               "notes": null,
               "pairedAt": "<time:ms>",
-              "peerId": "<uuid:3>",
+              "peerId": "<uuid:4>",
               "role": "admin",
               "status": "online",
               "streamMode": "proxy",
@@ -1322,7 +1327,7 @@
               "name": "peer-eta",
               "notes": null,
               "pairedAt": "<time:ms>",
-              "peerId": "<uuid:4>",
+              "peerId": "<uuid:5>",
               "role": "admin",
               "status": "online",
               "streamMode": "proxy",
@@ -2816,7 +2821,7 @@
         "body": {
           "method": "GET",
           "path": "/api/cluster/health",
-          "to_peer_id": "<uuid:6>"
+          "to_peer_id": "<uuid:1>"
         }
       },
       "status": 404,
@@ -3124,14 +3129,6 @@
           "entries": [
             {
               "detail": "Delta Mixed/images/IMG_0014.jpg (reason=-)",
-              "id": 35,
-              "kind": "cross_delete",
-              "ok": 1,
-              "peer_id": "00000000-0000-4000-8000-0000000000a1",
-              "ts": "<time:ms>"
-            },
-            {
-              "detail": "Delta Mixed/images/IMG_0014.jpg (reason=-)",
               "id": 36,
               "kind": "cross_delete",
               "ok": 1,
@@ -3139,8 +3136,16 @@
               "ts": "<time:ms>"
             },
             {
+              "detail": "Delta Mixed/images/IMG_0014.jpg (reason=-)",
+              "id": 37,
+              "kind": "cross_delete",
+              "ok": 1,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
               "detail": "Gamma Docs/documents/notes.txt (reason=contract)",
-              "id": 34,
+              "id": 35,
               "kind": "cross_delete",
               "ok": 1,
               "peer_id": "00000000-0000-4000-8000-0000000000a1",

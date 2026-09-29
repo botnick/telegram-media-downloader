@@ -160,3 +160,31 @@ describe('verifyRequest with explicit token', () => {
         expect(fail.reason).toBe('bad_signature');
     });
 });
+
+describe('legacy cluster-token fallback', () => {
+    it('accepts only an already-paired X-Peer-Id', async () => {
+        const peers = await import('../src/core/cluster/peers.js');
+        peers.upsertPeer({
+            peerId: 'abcdef0123456789abcdef0123456789',
+            name: 'Known',
+            url: 'http://127.0.0.1:9',
+            sharedSecret: null,
+        });
+        const unknown = signRequest({
+            method: 'GET',
+            path: '/api/cluster/health',
+            peerId: '0123456789abcdef0123456789abcdef',
+        });
+        const vu = verifyRequest(asReq({ headers: unknown }), { pairedOnly: true });
+        expect(vu.ok).toBe(false);
+        expect(vu.reason).toBe('no_secret');
+
+        const known = signRequest({
+            method: 'GET',
+            path: '/api/cluster/health',
+            peerId: 'abcdef0123456789abcdef0123456789',
+        });
+        const vk = verifyRequest(asReq({ headers: known }), { pairedOnly: true });
+        expect(vk.ok).toBe(true);
+    });
+});
