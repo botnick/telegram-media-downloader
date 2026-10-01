@@ -78,25 +78,25 @@
     "author": "botnick",
     "license": "MIT",
     "dependencies": {
-        "@aws-sdk/client-s3": "^3.1097.0",
-        "@aws-sdk/lib-storage": "^3.1097.0",
+        "@aws-sdk/client-s3": "^3.1141.0",
+        "@aws-sdk/lib-storage": "^3.1141.0",
         "@huggingface/transformers": "^4.3.0",
         "better-sqlite3": "^12.11.1",
         "compression": "^1.8.2",
-        "express": "^4.22.2",
+        "express": "^4.22.3",
         "express-rate-limit": "^7.4.1",
         "helmet": "^8.3.0",
         "sharp": "^0.35.5",
         "ssh2-sftp-client": "^11.0.0",
         "telegram": "^2.19.0",
         "undici": "^7.30.0",
-        "ws": "^8.21.1"
+        "ws": "^8.22.0"
     },
     "optionalDependencies": {
         "@ffmpeg-installer/ffmpeg": "^1.1.0",
         "@ffprobe-installer/ffprobe": "^2.1.2",
         "basic-ftp": "^5.0.5",
-        "dropbox": "^10.38.0",
+        "dropbox": "^10.47.0",
         "googleapis": "^144.0.0"
     },
     "devDependencies": {
