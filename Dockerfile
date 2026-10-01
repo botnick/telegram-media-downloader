@@ -12,7 +12,7 @@
 #
 # Pin a specific patch version. Floating tags drift; this image is reproducible.
 
-FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS gocore
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS gocore
 ARG TARGETOS=linux
 ARG TARGETARCH
 ARG TARGETVARIANT
