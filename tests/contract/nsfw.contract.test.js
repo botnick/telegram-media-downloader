@@ -304,6 +304,14 @@ describe('review actions (mutations, in order)', () => {
                 body: { ids: [4] },
             },
         );
+        await t.exchange(
+            'v2 bulk-delete unknown tier fails closed → 400',
+            'POST',
+            '/api/maintenance/nsfw/v2/bulk-delete',
+            {
+                body: { tier: 'bogus', confirm: true },
+            },
+        );
         await bulk(t, ws, 'v2 bulk-delete tier=def', '/api/maintenance/nsfw/v2/bulk-delete', {
             tier: 'def',
             confirm: true,

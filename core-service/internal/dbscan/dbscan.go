@@ -56,6 +56,11 @@ const parallelMinPoints = 512
 // minChunkRows is the smallest row range one goroutine scans for a query.
 const minChunkRows = 256
 
+// neighbourHint covers the common small-cluster case without reserving a
+// full row range for every parallel task. It removes repeated slice growth
+// while keeping sparse/noise-heavy scans bounded.
+const neighbourHint = 32
+
 // RejectBound returns the smallest-ish B such that sum > B guarantees
 // math.Sqrt(sum) > eps (a port of _rejectBound in dbscan.js).
 func RejectBound(eps float64) float64 {
@@ -219,6 +224,15 @@ func (e *engine) row(j int) []float32 { return e.data[j*e.dim : (j+1)*e.dim] }
 
 // scanOne appends the neighbours of idx among rows [j0, j1) to out.
 func (e *engine) scanOne(idx int32, j0, j1 int, out []int32) []int32 {
+	if out == nil {
+		hint := j1 - j0
+		if hint > neighbourHint {
+			hint = neighbourHint
+		}
+		if hint > 0 {
+			out = make([]int32, 0, hint)
+		}
+	}
 	q := e.row(int(idx))
 	self := int(idx)
 	j := j0
@@ -253,6 +267,17 @@ func (e *engine) scanGroup(qs []int32, j0, j1 int, outs [][]int32) {
 			outs[k] = e.scanOne(idx, j0, j1, outs[k])
 		}
 		return
+	}
+	hint := j1 - j0
+	if hint > neighbourHint {
+		hint = neighbourHint
+	}
+	if hint > 0 {
+		for i := range outs {
+			if outs[i] == nil {
+				outs[i] = make([]int32, 0, hint)
+			}
+		}
 	}
 	i0, i1, i2, i3 := int(qs[0]), int(qs[1]), int(qs[2]), int(qs[3])
 	q0, q1, q2, q3 := e.row(i0), e.row(i1), e.row(i2), e.row(i3)

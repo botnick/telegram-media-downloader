@@ -303,7 +303,25 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                       )
                       .get().n
                 : 0;
-            state.total = phaseATotal + videoTotal;
+            // Keep the denominator tied to the live queue. New downloads may
+            // arrive while a scan is running; recomputing from the remaining
+            // unindexed rows prevents scanned/total from ever exceeding 100%.
+            const progressTypes = [
+                ...new Set(scanVideos ? [...fileTypes, 'video'] : fileTypes),
+            ];
+            const countPendingForProgress = () => {
+                const placeholders = progressTypes.map(() => '?').join(',');
+                return db
+                    .prepare(
+                        `SELECT COUNT(*) AS n FROM downloads
+                          WHERE file_type IN (${placeholders}) AND ai_indexed_at IS NULL`,
+                    )
+                    .get(...progressTypes).n;
+            };
+            const refreshProgressTotal = () => {
+                state.total = Math.max(state.scanned, state.scanned + countPendingForProgress());
+            };
+            refreshProgressTotal();
             bump();
             log(
                 'info',
@@ -513,6 +531,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 }
                 state.scanned +=
                     skipItems.length + nullItems.length + results.size + givenUp.length;
+                refreshProgressTotal();
                 bump();
 
                 if (state.scanned >= _nextStatLog) {
@@ -561,6 +580,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                         _vNull++;
                         setAiIndexedAt(row.id);
                         state.scanned += 1;
+                        refreshProgressTotal();
                         bump();
                         continue;
                     }
@@ -584,6 +604,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                         if (noteFailure(row, abs, outage, true)) {
                             _vNull++;
                             state.scanned += 1;
+                            refreshProgressTotal();
                             bump();
                         }
                         await ensureSidecar(outage?.message || String(outage));
@@ -600,6 +621,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                     }
                     await _writeTx(db, () => _persistDetection(row.id, detected));
                     state.scanned += 1;
+                    refreshProgressTotal();
                     bump();
                     if (!outage) await _throttleSleep(Date.now() - _tv0, throttleRatio);
                     await _yield();

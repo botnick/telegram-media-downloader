@@ -37,14 +37,9 @@ services:
       # container memory limit (`TGDL_MEM_LIMIT`) so the kernel doesn't
       # OOM-kill the process before V8 can recover.
       - NODE_OPTIONS=--max-old-space-size=${TGDL_HEAP_MB:-8192}
-      # Default to trusting one hop of `X-Forwarded-For` because most
-      # Docker deployments sit behind a reverse proxy (Caddy / Traefik /
-      # nginx). Without this, express-rate-limit floods stderr with
-      # `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` validation warnings on every
-      # request. Override to a different value (loopback, uniquelocal, IP
-      # list) or empty string to disable when running directly on the
-      # host without a proxy.
-      - TRUST_PROXY=${TRUST_PROXY:-1}
+      # Direct port publishing is the safe default. Set TRUST_PROXY=1 only
+      # when this service is behind one trusted reverse-proxy hop.
+      - TRUST_PROXY=${TRUST_PROXY:-loopback}
       # Auto-update wiring — used by the `watchtower` service below. With these set, Settings → Maintenance shows an
       # **Install update** button that hands the swap off to the watchtower
       # sidecar below. Tokens read from .env (see .env.example).

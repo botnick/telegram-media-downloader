@@ -16,6 +16,8 @@
 // port is replaced by `<fake-sidecar>` in the recorded request.
 
 import http from 'http';
+import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AMBIENT_WS_TYPES, until, useContract } from './harness.js';
@@ -34,7 +36,11 @@ const h = useContract(import.meta.url, {
     },
 });
 
-const NODE_ONLY_PATH = path.dirname(process.execPath);
+// Keep the external/off-server contract deterministic even on hosts that
+// happen to have Python installed beside Node. The old `dirname(node)` value
+// is `/usr/bin` on Linux, which also contains `python3` on many runners.
+const NODE_ONLY_PATH = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-node-only-'));
+fs.symlinkSync(process.execPath, path.join(NODE_ONLY_PATH, 'node'));
 const EXTERNAL_URL = 'http://faces.invalid:9';
 
 // ---- fake sidecar ---------------------------------------------------------

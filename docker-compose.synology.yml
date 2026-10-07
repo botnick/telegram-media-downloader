@@ -17,7 +17,9 @@ services:
       - NODE_ENV=production
       - TZ=${TZ:-UTC}
       - TGDL_DEBUG=${TGDL_DEBUG:-}
-      - TRUST_PROXY=${TRUST_PROXY:-1}
+      # Direct port publishing is the safe default. Set TRUST_PROXY=1 only
+      # when this service is behind one trusted reverse-proxy hop.
+      - TRUST_PROXY=${TRUST_PROXY:-loopback}
       - WATCHTOWER_URL=${WATCHTOWER_URL:-http://watchtower:8080}
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
       - FFMPEG_HWACCEL=${FFMPEG_HWACCEL:-vaapi}

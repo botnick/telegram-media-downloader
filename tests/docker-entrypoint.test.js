@@ -9,6 +9,13 @@ const script = fs
     .replace(/\r\n/g, '\n');
 
 describe('docker-entrypoint.sh', () => {
+    it('keeps mounted application data private and credentials owner-only', () => {
+        expect(script).toContain('chmod -R u+rwX,g+rwX,o-rwx /app/data');
+        expect(script).not.toContain('chmod -R u+rwX,g+rwX,o+rX /app/data');
+        expect(script).toContain('chmod 600 /app/data/secret.key');
+        expect(script).toContain("find /app/data/sessions -type f -name '*.enc' -exec chmod 600 {} +");
+    });
+
     it('makes the resolver files readable before dropping to node', () => {
         const chmod = script.indexOf(
             'chmod a+r /etc/hosts /etc/resolv.conf /etc/hostname 2>/dev/null || true',

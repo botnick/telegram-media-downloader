@@ -35,7 +35,13 @@ if [ "$(id -u)" = "0" ]; then
             /app/data/sessions \
             /app/data/backups
         chown -R node:node /app/data 2>/dev/null || true
-        chmod -R u+rwX,g+rwX,o+rX /app/data 2>/dev/null || true
+        # Keep the bind-mounted data private. The old blanket o+rX mode made
+        # secret.key and encrypted sessions readable by every container user.
+        chmod -R u+rwX,g+rwX,o-rwx /app/data 2>/dev/null || true
+        if [ -f /app/data/secret.key ]; then
+            chmod 600 /app/data/secret.key 2>/dev/null || true
+        fi
+        find /app/data/sessions -type f -name '*.enc' -exec chmod 600 {} + 2>/dev/null || true
         # When TGDL_DOWNLOADS_DIR points at a separate volume (e.g. HDD),
         # create it and fix ownership so the node user can write to it.
         if [ -n "${TGDL_DOWNLOADS_DIR:-}" ]; then

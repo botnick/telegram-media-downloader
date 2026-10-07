@@ -1898,6 +1898,33 @@
         }
       }
     },
+    "v2 bulk-delete unknown tier fails closed → 400": {
+      "route": "POST /api/maintenance/nsfw/v2/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/v2/bulk-delete",
+        "as": "admin",
+        "body": {
+          "confirm": true,
+          "tier": "bogus"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "INVALID_TIER",
+          "error": "Unknown NSFW tier"
+        }
+      }
+    },
     "v2 bulk-delete tier=def": {
       "route": "POST /api/maintenance/nsfw/v2/bulk-delete",
       "request": {

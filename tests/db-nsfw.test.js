@@ -166,10 +166,9 @@ describe('getNsfwIdsByTier', () => {
 
     it('returns empty array for an unknown tier id', () => {
         const ids = api.getNsfwIdsByTier({ tier: 'nope', fileTypes: ['photo'] });
-        // Unknown tier silently drops the bound clauses, so this returns
-        // every photo with a score (whitelisted excluded by default).
-        // The test isn't about the count — it's that the call doesn't throw.
-        expect(Array.isArray(ids)).toBe(true);
+        // An invalid tier must fail closed; it must never broaden a bulk
+        // action into every scored photo.
+        expect(ids).toEqual([]);
     });
 });
 

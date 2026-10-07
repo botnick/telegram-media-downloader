@@ -475,9 +475,14 @@ export function getScanState(cfg) {
         cfg.fileTypes || NSFW_DEFAULTS.fileTypes,
         cfg.threshold ?? NSFW_DEFAULTS.threshold,
     );
+    const running = _scanState.running;
     return {
         ..._scanState,
         ...stats,
+        // `stats.scanned` is the global DB count. During a run it includes
+        // rows classified before this run, so using it for the run counter
+        // can make the progress bar exceed 100%.
+        scanned: running ? _scanState.scanned : stats.scanned,
         model: cfg.model || NSFW_DEFAULTS.model,
         threshold: cfg.threshold ?? NSFW_DEFAULTS.threshold,
     };

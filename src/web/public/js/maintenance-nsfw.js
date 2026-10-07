@@ -58,6 +58,7 @@ const view = {
 // Default tier on a clean URL is `uncertain` (the actual review queue) so
 // new arrivals don't have to wade through 95% of def_not items first.
 const DEFAULT_TIER = 'uncertain';
+const VALID_TIERS = new Set(['def_not', 'maybe_not', 'uncertain', 'maybe', 'def']);
 
 function _readHashState() {
     const raw = window.location.hash || '';
@@ -65,7 +66,10 @@ function _readHashState() {
     if (qIdx < 0) return {};
     const qs = new URLSearchParams(raw.slice(qIdx + 1));
     const out = {};
-    if (qs.has('tier')) out.tier = qs.get('tier') || null;
+    if (qs.has('tier')) {
+        const tier = qs.get('tier') || null;
+        if (!tier || VALID_TIERS.has(tier)) out.tier = tier;
+    }
     if (qs.has('kind')) out.mediaKind = qs.get('kind') || null;
     if (qs.has('page')) {
         const p = Number(qs.get('page'));

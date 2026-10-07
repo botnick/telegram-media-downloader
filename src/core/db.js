@@ -2319,6 +2319,11 @@ function _tierBounds(tierId) {
     return { min: t.min, max: t.max };
 }
 
+/** Return true when `tierId` is one of the review tiers exposed to operators. */
+export function isNsfwTier(tierId) {
+    return typeof tierId === 'string' && NSFW_TIERS.some((t) => t.id === tierId);
+}
+
 /**
  * Per-tier counts. `whitelist` rows count toward `whitelistTotal` and are
  * NOT included in tier counts (they were admin-confirmed 18+ even when
@@ -2492,11 +2497,12 @@ export function getNsfwIdsByTier({
     const params = [...types];
     if (tier) {
         const bounds = _tierBounds(tier);
-        if (bounds) {
-            where.push('nsfw_score >= ?');
-            where.push('nsfw_score < ?');
-            params.push(bounds.min, bounds.max);
-        }
+        // Bulk actions are destructive/mutating. An unknown tier must never
+        // degrade into an unbounded query that selects every scored row.
+        if (!bounds) return [];
+        where.push('nsfw_score >= ?');
+        where.push('nsfw_score < ?');
+        params.push(bounds.min, bounds.max);
     }
     if (Number.isFinite(scoreMin)) {
         where.push('nsfw_score >= ?');

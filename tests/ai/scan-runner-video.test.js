@@ -73,6 +73,19 @@ function insertVideoRow(filePath) {
     return db.prepare('SELECT id FROM downloads ORDER BY id DESC LIMIT 1').get().id;
 }
 
+function insertPhotoRow(filePath) {
+    dbApi.insertDownload({
+        groupId: '-100999',
+        groupName: 'Photo Test',
+        messageId: Math.floor(Math.random() * 1e9),
+        fileName: path.basename(filePath),
+        fileSize: 1024,
+        fileType: 'photo',
+        filePath,
+    });
+    return db.prepare('SELECT id FROM downloads ORDER BY id DESC LIMIT 1').get().id;
+}
+
 describe('scanVideos gate', () => {
     it('scanVideos: false — detectFacesInVideo never called, video row stays unindexed', async () => {
         const relPath = 'test.mp4';
@@ -161,5 +174,41 @@ describe('scanVideos gate', () => {
         expect(face).not.toBeUndefined();
         expect(face.x).toBe(10);
         expect(face.w).toBe(80);
+    });
+});
+
+describe('scan progress', () => {
+    it('keeps scanned at or below total when rows arrive during a run', async () => {
+        const downloadsDir = path.join(DATA_DIR, 'downloads');
+        fs.mkdirSync(downloadsDir, { recursive: true });
+        fs.writeFileSync(path.join(downloadsDir, 'first.jpg'), 'fake-photo');
+        fs.writeFileSync(path.join(downloadsDir, 'second.jpg'), 'fake-photo');
+        insertPhotoRow('first.jpg');
+
+        let calls = 0;
+        clientMock.detectFacesBatch.mockImplementation(async (paths) => {
+            calls += 1;
+            if (calls === 1) {
+                // Simulate a Telegram download landing while the first batch
+                // is in flight. The live denominator must include it.
+                insertPhotoRow('second.jpg');
+                await new Promise((resolve) => setTimeout(resolve, 550));
+            }
+            return paths.map(() => []);
+        });
+        const progress = [];
+        scannerApi.startFacesScan(
+            { faces: { scanVideos: false, fileTypes: ['photo'] } },
+            (state) => progress.push({ ...state }),
+            null,
+            null,
+        );
+        await waitForScan();
+
+        expect(calls).toBe(2);
+        expect(progress.filter((s) => s.running).every((s) => s.scanned <= s.total)).toBe(true);
+        const final = scannerApi.getScanState('faces');
+        expect(final.scanned).toBe(2);
+        expect(final.total).toBe(2);
     });
 });

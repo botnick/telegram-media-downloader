@@ -54,6 +54,7 @@ import {
     getNsfwHistogram,
     getNsfwListByTier,
     getNsfwIdsByTier,
+    isNsfwTier,
     reclassifyNsfw,
     unwhitelistNsfw,
     NSFW_TIERS,
@@ -8455,14 +8456,24 @@ function _resolveBulkIds(body) {
     const cfg = _nsfwCfg();
     const fileTypes =
         Array.isArray(body?.fileTypes) && body.fileTypes.length ? body.fileTypes : cfg.fileTypes;
+    const tier = typeof body?.tier === 'string' ? body.tier.trim() : body?.tier;
     return getNsfwIdsByTier({
-        tier: body?.tier || null,
+        tier: tier || null,
         fileTypes,
         groupId: body?.groupId || null,
         includeWhitelisted: body?.includeWhitelisted === true,
         scoreMin: Number.isFinite(body?.scoreMin) ? Number(body.scoreMin) : null,
         scoreMax: Number.isFinite(body?.scoreMax) ? Number(body.scoreMax) : null,
     });
+}
+
+function _validateNsfwBulkTier(body, res) {
+    const tier = typeof body?.tier === 'string' ? body.tier.trim() : body?.tier;
+    if (tier && !isNsfwTier(tier)) {
+        res.status(400).json({ error: 'Unknown NSFW tier', code: 'INVALID_TIER' });
+        return false;
+    }
+    return true;
 }
 
 // All four NSFW v2 bulk endpoints share a single `nsfwBulk` tracker so
@@ -8479,6 +8490,7 @@ function _resolveBulkIds(body) {
 app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
     if (!_requireConfirm(req, res)) return;
     const body = req.body || {};
+    if (!_validateNsfwBulkTier(body, res)) return;
     const tracker = _jobTrackers.nsfwBulk;
     const r = tracker.tryStart(async ({ onProgress }) => {
         onProgress({ stage: 'resolving', op: 'delete' });
@@ -8550,6 +8562,7 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
 
 app.post('/api/maintenance/nsfw/v2/bulk-whitelist', async (req, res) => {
     const body = req.body || {};
+    if (!_validateNsfwBulkTier(body, res)) return;
     const tracker = _jobTrackers.nsfwBulk;
     const r = tracker.tryStart(async ({ onProgress }) => {
         onProgress({ stage: 'resolving', op: 'whitelist' });
@@ -8591,6 +8604,7 @@ app.post('/api/maintenance/nsfw/v2/bulk-whitelist', async (req, res) => {
 // op is to act on whitelisted rows (which the default resolver hides).
 app.post('/api/maintenance/nsfw/v2/unwhitelist', async (req, res) => {
     const body = req.body || {};
+    if (!_validateNsfwBulkTier(body, res)) return;
     const tracker = _jobTrackers.nsfwBulk;
     const r = tracker.tryStart(async ({ onProgress }) => {
         onProgress({ stage: 'resolving', op: 'unwhitelist' });
@@ -8632,6 +8646,7 @@ app.post('/api/maintenance/nsfw/v2/unwhitelist', async (req, res) => {
 
 app.post('/api/maintenance/nsfw/v2/reclassify', async (req, res) => {
     const body = req.body || {};
+    if (!_validateNsfwBulkTier(body, res)) return;
     const tracker = _jobTrackers.nsfwBulk;
     const r = tracker.tryStart(async ({ onProgress }) => {
         onProgress({ stage: 'resolving', op: 'reclassify' });
