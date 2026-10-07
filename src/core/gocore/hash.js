@@ -46,7 +46,7 @@ function _sha256Stream(absPath) {
  * @param {string} absPath
  * @returns {Promise<string>} lowercase 64-char hex SHA-256
  */
-export async function hashFileViaCore(absPath) {
+export async function hashFileViaCore(absPath, { signal } = {}) {
     // tgdl-core's working directory differs from ours: send absolute paths.
     const abs = path.resolve(absPath);
     let size = 0;
@@ -56,7 +56,7 @@ export async function hashFileViaCore(absPath) {
         // Only sizes the deadline; tgdl-core reports the real error.
     }
     try {
-        const r = await client.hashFile(abs, { timeoutMs: hashTimeoutMs(size) });
+        const r = await client.hashFile(abs, { timeoutMs: hashTimeoutMs(size), signal });
         return r.sha256;
     } catch (e) {
         if (e?.kind === 'outside') return _sha256Stream(abs);
@@ -67,6 +67,54 @@ export async function hashFileViaCore(absPath) {
                 : uvError(e.code || 'EIO', 'open', abs);
         }
         throw e;
+    }
+}
+
+function resultError(result, absPath) {
+    const err = new Error(result?.message || result?.code || 'hash failed');
+    err.code = result?.code || 'EIO';
+    err.path = absPath;
+    err.kind = err.code === 'EOUTSIDE' ? 'outside' : 'file';
+    return err;
+}
+
+/**
+ * Hash a bounded group through tgdl-core. Old binaries that do not advertise
+ * `hash-batch` fall back to the existing single-file path, keeping upgrades
+ * safe while new cores remove hundreds of thousands of HTTP round trips.
+ */
+export async function hashFilesViaCore(absPaths, { sizes = [], timeoutMs, signal } = {}) {
+    const paths = absPaths.map((p) => path.resolve(p));
+    if (!paths.length) return [];
+    let maxSize = 0;
+    for (const n of sizes) maxSize = Math.max(maxSize, Number(n) || 0);
+    const estimated = hashTimeoutMs(maxSize) * Math.max(1, Math.ceil(paths.length / 8));
+    const deadline = timeoutMs || Math.max(60_000, estimated);
+    try {
+        const results = await client.hashBatch(paths, { timeoutMs: deadline, signal });
+        return Promise.all(
+            results.map(async (result, i) => {
+                if (result.sha256) return result;
+                const err = resultError(result, paths[i]);
+                if (err.kind !== 'outside') return { error: err };
+                try {
+                    return { sha256: await _sha256Stream(paths[i]) };
+                } catch (e) {
+                    return { error: e };
+                }
+            }),
+        );
+    } catch (e) {
+        if (e?.kind !== 'unavailable') throw e;
+        return Promise.all(
+            paths.map(async (p) => {
+                try {
+                    return { sha256: await hashFileViaCore(p, { signal }) };
+                } catch (error) {
+                    return { error };
+                }
+            }),
+        );
     }
 }
 

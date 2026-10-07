@@ -17,7 +17,7 @@
  *                with plain fs itself — see hash.js / fs.js.
  *   timeout / transport / auth / server / protocol / busy / aborted
  *
- * Optional helpers (`db`, `thumb`, `seekbar` and `faststart`) keep a Node fallback for
+ * Optional helpers (`hash-batch`, `db`, `thumb`, `seekbar` and `faststart`) keep a Node fallback for
  * older binaries; the required filesystem and clustering calls do not.
  *
  * Every call has a deadline; on expiry (or an AbortSignal) the socket is
@@ -1053,14 +1053,14 @@ async function _call(feature, method, pathname, body, opts) {
  *
  * @returns {Promise<{ sha256: string, size: number, mtimeMs: number }>}
  */
-export async function hashFile(absPath, { timeoutMs = 30_000, readyWaitMs } = {}) {
+export async function hashFile(absPath, { timeoutMs = 30_000, readyWaitMs, signal } = {}) {
     const feature = 'hash';
     const { status, body } = await _call(
         feature,
         'POST',
         '/v1/hash',
         { path: absPath },
-        { timeoutMs, readyWaitMs },
+        { timeoutMs, readyWaitMs, signal },
     );
     if (status !== 200) throw _errorFor(feature, status, body);
     const sha = body?.sha256;
@@ -1070,6 +1070,50 @@ export async function hashFile(absPath, { timeoutMs = 30_000, readyWaitMs } = {}
     }
     _count(feature, 'ok');
     return { sha256: sha, size: body.size, mtimeMs: Number(body.mtimeMs) };
+}
+
+export const HASH_BATCH_MAX = 256;
+
+/**
+ * Hash up to HASH_BATCH_MAX files in one request. Each result is either a
+ * normal hash result or `{ code, message }` for that path, so one vanished
+ * file cannot discard the rest of a maintenance batch.
+ */
+export async function hashBatch(paths, { timeoutMs = 5 * 60_000, readyWaitMs, signal } = {}) {
+    const feature = 'hash-batch';
+    if (!Array.isArray(paths) || paths.length < 1 || paths.length > HASH_BATCH_MAX) {
+        throw new RangeError(`hashBatch: 1-${HASH_BATCH_MAX} paths per call`);
+    }
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/hash-batch',
+        { paths },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const results = body?.results;
+    const valid =
+        Array.isArray(results) &&
+        results.length === paths.length &&
+        results.every(
+            (r) =>
+                r &&
+                ((typeof r.sha256 === 'string' &&
+                    HEX64.test(r.sha256) &&
+                    Number.isFinite(r.size)) ||
+                    typeof r.code === 'string'),
+        );
+    if (!valid) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed hash-batch response', { status });
+    }
+    _count(feature, 'ok');
+    return results.map((r) => ({
+        ...(r.sha256
+            ? { sha256: r.sha256, size: Number(r.size), mtimeMs: Number(r.mtimeMs) }
+            : { code: r.code, message: String(r.message || r.code) }),
+    }));
 }
 
 export const STAT_BATCH_MAX = 1000;

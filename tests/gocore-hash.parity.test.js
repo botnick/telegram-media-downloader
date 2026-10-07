@@ -136,6 +136,18 @@ describe('tgdl-core SHA-256', () => {
         out.forEach((hex, i) => expect(hex, jobs[i].name).toBe(jobs[i].expected));
     });
 
+    it('hashes a real batch in input order', { timeout: 120_000 }, async () => {
+        const batch = await client.hashBatch(
+            files.map((f) => f.abs),
+            { timeoutMs: 120_000 },
+        );
+        expect(batch).toHaveLength(files.length);
+        batch.forEach((result, i) => {
+            expect(result.sha256, files[i].name).toBe(files[i].expected);
+            expect(result.size, files[i].name).toBe(files[i].size);
+        });
+    });
+
     it('a file outside the allowed roots is hashed in-process, same digest', async () => {
         expect(spawnMod.getGoCoreStatus().allowRoots).toContain(path.resolve(DOWNLOADS));
         fs.mkdirSync(OUTSIDE, { recursive: true });

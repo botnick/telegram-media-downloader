@@ -58,7 +58,7 @@ func TestHealthIsOpen(t *testing.T) {
 		t.Fatalf("unexpected body %v", body)
 	}
 	feats, _ := body["features"].([]any)
-	want := []string{"hash", "stat", "walk", "dbscan", "zip", "faststart", "thumb", "seekbar", "db"}
+	want := []string{"hash", "hash-batch", "stat", "walk", "dbscan", "zip", "faststart", "thumb", "seekbar", "db"}
 	if len(feats) != len(want) {
 		t.Fatalf("features = %v", body["features"])
 	}
@@ -74,6 +74,7 @@ func TestEverythingElseNeedsToken(t *testing.T) {
 	for _, c := range []struct{ method, path, tok string }{
 		{"POST", "/v1/hash", ""},
 		{"POST", "/v1/hash", "wrong"},
+		{"POST", "/v1/hash-batch", ""},
 		{"POST", "/v1/fs/stat-batch", ""},
 		{"POST", "/v1/fs/walk", ""},
 		{"POST", "/v1/dbscan", ""},
@@ -138,6 +139,41 @@ func TestHashRoute(t *testing.T) {
 	}
 	if roots, _ := h["roots"].([]any); len(roots) != 1 {
 		t.Fatalf("stats roots = %v", h["roots"])
+	}
+}
+
+func TestHashBatchRoute(t *testing.T) {
+	dir := t.TempDir()
+	ts := newTestServer(t, dir)
+	first := filepath.Join(dir, "first.bin")
+	second := filepath.Join(dir, "second.bin")
+	if err := os.WriteFile(first, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(second, []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, body := do(t, "POST", ts.URL+"/v1/hash-batch", token, map[string]any{
+		"paths": []string{first, filepath.Join(dir, "missing.bin"), second},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d body %v", resp.StatusCode, body)
+	}
+	results, ok := body["results"].([]any)
+	if !ok || len(results) != 3 {
+		t.Fatalf("results = %v", body["results"])
+	}
+	firstResult, _ := results[0].(map[string]any)
+	missingResult, _ := results[1].(map[string]any)
+	secondResult, _ := results[2].(map[string]any)
+	if firstResult["sha256"] == "" || secondResult["sha256"] == "" || missingResult["code"] != "ENOENT" {
+		t.Fatalf("batch results = %v", results)
+	}
+
+	resp, body = do(t, "POST", ts.URL+"/v1/hash-batch", token, map[string]any{"paths": []string{}})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty batch status %d body %v", resp.StatusCode, body)
 	}
 }
 

@@ -521,6 +521,49 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ limit: 2, offset: 4, sort: 'name', dir: 'asc' });
     });
 
+    it('hashes a bounded batch and preserves per-file errors', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/hash-batch': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        results: [
+                            { sha256: EXPECTED, size: PAYLOAD.length, mtimeMs: 12 },
+                            { code: 'ENOENT', message: 'missing' },
+                        ],
+                    });
+                },
+            },
+            { features: ['hash-batch'] },
+        );
+        await expect(
+            client.hashBatch([FILE, path.join(DOWNLOADS, 'missing.bin')]),
+        ).resolves.toEqual([
+            { sha256: EXPECTED, size: PAYLOAD.length, mtimeMs: 12 },
+            { code: 'ENOENT', message: 'missing' },
+        ]);
+        expect(request).toEqual({ paths: [FILE, path.join(DOWNLOADS, 'missing.bin')] });
+    });
+
+    it('falls back to single-file hashing when hash-batch is unavailable', async () => {
+        const requests = [];
+        await fakeCore(
+            {
+                '/v1/hash': (req, raw, res) => {
+                    requests.push(JSON.parse(raw).path);
+                    json(res, 200, { sha256: EXPECTED, size: PAYLOAD.length, mtimeMs: 1 });
+                },
+            },
+            { features: ['hash'] },
+        );
+        const { hashFilesViaCore } = await import('../src/core/gocore/hash.js');
+        await expect(
+            hashFilesViaCore([FILE, FILE], { sizes: [PAYLOAD.length, PAYLOAD.length] }),
+        ).resolves.toEqual([{ sha256: EXPECTED }, { sha256: EXPECTED }]);
+        expect(requests).toEqual([FILE, FILE]);
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

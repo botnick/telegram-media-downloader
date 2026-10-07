@@ -2,6 +2,7 @@
 //
 //	GET  /health             liveness + version + features (no token)
 //	POST /v1/hash            {"path": "/abs/file"} -> {"sha256","size","mtimeMs"};
+//	POST /v1/hash-batch      {"paths": ["/abs/file", ...]} -> per-file results
 //	                         only files inside the allowed roots (403 EOUTSIDE otherwise)
 //	POST /v1/fs/stat-batch   {"paths": [...]} -> fs.stat per path, Node's error codes
 //	POST /v1/fs/walk         recursive fs.readdir (+ fs.stat), NDJSON stream
@@ -88,6 +89,7 @@ func New(token string, hashConcurrency int, roots *hash.Roots, log *slog.Logger,
 func (s *Server) Handler() http.Handler {
 	private := http.NewServeMux()
 	private.Handle("POST /v1/hash", &hash.Handler{Limiter: s.limiter, Stats: s.stats, Roots: s.roots, Log: s.log})
+	private.Handle("POST /v1/hash-batch", &hash.BatchHandler{Limiter: s.limiter, Stats: s.stats, Roots: s.roots})
 	private.Handle("POST /v1/fs/stat-batch", &fsx.StatBatchHandler{Roots: s.roots, Stats: s.fsStats, Log: s.log})
 	private.Handle("POST /v1/fs/walk", &fsx.WalkHandler{Roots: s.roots, Stats: s.fsStats, Log: s.log})
 	private.Handle("POST /v1/dbscan", &dbscan.Handler{Log: s.log})

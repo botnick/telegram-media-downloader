@@ -165,8 +165,14 @@ describe.skipIf(SKIP)('maintenance jobs run through tgdl-core', () => {
         expect(st.result.duplicateSets[0].count).toBe(6);
 
         const text = await (await fetch(`${base}/metrics`)).text();
-        const ok = /tgdl_gocore_calls_total\{feature="hash",result="ok"\} (\d+)/.exec(text);
-        expect(Number(ok?.[1])).toBeGreaterThanOrEqual(expected.size);
+        const single = /tgdl_gocore_calls_total\{feature="hash",result="ok"\} (\d+)/.exec(text);
+        const batch = /tgdl_gocore_calls_total\{feature="hash-batch",result="ok"\} (\d+)/.exec(
+            text,
+        );
+        // New cores hash the maintenance page in one bounded request. Older
+        // cores remain valid through the single-file fallback.
+        expect(Number(batch?.[1] || 0) + Number(single?.[1] || 0)).toBeGreaterThan(0);
+        expect(Number(batch?.[1] || 0)).toBeGreaterThanOrEqual(1);
     });
 
     it('Verify files prunes exactly the missing row; Re-index walks the tree', {

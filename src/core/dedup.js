@@ -21,7 +21,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getDb } from './db.js';
-import { sha256OfFile } from './checksum.js';
+import { hashFilesViaCore } from './gocore/hash.js';
 import { getDownloadsDir } from './paths.js';
 import { deferDelete } from './deferred-delete.js';
 
@@ -58,14 +58,6 @@ function fileKey(stored) {
     return process.platform === 'win32' ? key.toLowerCase() : key;
 }
 
-// Wrap the canonical helper so existing call sites in this file keep
-// the same name. Hashing semantics are owned by `core/checksum.js`.
-// tgdl-core does the reading and hashing, so a 2-hour catch-up scan never
-// pins the event loop.
-function hashFile(absPath) {
-    return sha256OfFile(absPath);
-}
-
 /**
  * Catch-up hash pass + duplicate enumeration.
  *
@@ -90,7 +82,7 @@ export async function findDuplicates(opts = {}) {
     //
     // Use keyset-paginated `.all()` instead of `.iterate()`. A live
     // `.iterate()` cursor holds the better-sqlite3 connection open for
-    // its entire lifetime; `await hashFile()` yields control while the
+    // its entire lifetime; `await hashFilesViaCore()` yields control while the
     // cursor is open, which lets the download manager, kv flush timer, or
     // AI pregenerate hook collide on the connection and throw
     // "This database connection is busy executing a query".
@@ -106,6 +98,12 @@ export async function findDuplicates(opts = {}) {
         .get().n;
 
     const update = db.prepare('UPDATE downloads SET file_hash = ? WHERE id = ?');
+    // Hashing is async, but the resulting writes are kept in a short SQLite
+    // transaction. This avoids one fsync per row on a first scan of a large
+    // library while keeping the transaction completely off the await path.
+    const updateMany = db.transaction((items) => {
+        for (const item of items) update.run(item.sha256, item.id);
+    });
     let processed = 0,
         hashed = 0,
         errored = 0;
@@ -116,6 +114,9 @@ export async function findDuplicates(opts = {}) {
     // rows are updated (file_hash no longer NULL, so they fall out of the
     // WHERE clause naturally on the next page fetch).
     const PAGE_SIZE = 200;
+    // Stay well below the Go endpoint's hard limit while keeping request and
+    // result memory bounded for very large libraries.
+    const HASH_BATCH_SIZE = 64;
     let beforeId = Number.MAX_SAFE_INTEGER;
     const pageStmt = db.prepare(`
         SELECT id, file_path, file_size FROM downloads
@@ -131,25 +132,61 @@ export async function findDuplicates(opts = {}) {
         // `.all()` closes the statement before we hit any await below.
         const page = pageStmt.all(beforeId, PAGE_SIZE);
         if (!page.length) break;
+        const pending = [];
         for (const row of page) {
             if (signal?.aborted) break;
-            processed++;
             const abs = resolveStoredPath(row.file_path);
             if (!abs) {
+                processed++;
                 errored++;
+                if (onProgress && (processed % 10 === 0 || processed === total)) {
+                    onProgress({ stage: 'hashing', processed, total, hashed, errored });
+                }
                 continue;
             }
+            pending.push({ row, abs });
+        }
+
+        for (let offset = 0; offset < pending.length; offset += HASH_BATCH_SIZE) {
+            if (signal?.aborted) break;
+            const batch = pending.slice(offset, offset + HASH_BATCH_SIZE);
+            let results;
             try {
-                const digest = await hashFile(abs);
-                update.run(digest, row.id);
-                hashed++;
+                results = await hashFilesViaCore(
+                    batch.map((item) => item.abs),
+                    { sizes: batch.map((item) => item.row.file_size), signal },
+                );
             } catch {
-                errored++;
+                // Leave hashes NULL when transport/core fails so a later run
+                // can retry the affected rows without losing the page.
+                results = batch.map(() => ({ error: true }));
             }
-            if (onProgress && (processed % 10 === 0 || processed === total)) {
-                onProgress({ stage: 'hashing', processed, total, hashed, errored });
+            const successful = results
+                .map((result, i) =>
+                    result?.sha256 && batch[i]
+                        ? { sha256: result.sha256, id: batch[i].row.id }
+                        : null,
+                )
+                .filter(Boolean);
+            let committed = true;
+            try {
+                updateMany(successful);
+                hashed += successful.length;
+            } catch {
+                committed = false;
+            }
+            for (let i = 0; i < batch.length; i++) {
+                const result = results[i];
+                processed++;
+                if (!result?.sha256 || !committed) {
+                    errored++;
+                }
+                if (onProgress && (processed % 10 === 0 || processed === total)) {
+                    onProgress({ stage: 'hashing', processed, total, hashed, errored });
+                }
             }
         }
+        if (signal?.aborted) break;
         beforeId = Number(page[page.length - 1].id);
         await new Promise((r) => setImmediate(r));
         if (page.length < PAGE_SIZE) break;
