@@ -680,7 +680,7 @@ func TestAICounts(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("status=%d body=%v", status, body)
 	}
-	if body["totalEligible"] != float64(2) || body["indexed"] != float64(2) || body["unindexed"] != float64(0) || body["withEmbedding"] != float64(1) || body["withFaces"] != float64(2) || body["withTags"] != float64(2) || body["peopleCount"] != float64(2) || body["totalFaces"] != float64(3) || body["noiseFaces"] != float64(0) {
+	if body["totalEligible"] != float64(2) || body["indexed"] != float64(2) || body["unindexed"] != float64(0) || body["withEmbedding"] != float64(1) || body["withFaces"] != float64(2) || body["withTags"] != float64(2) || body["peopleCount"] != float64(2) || body["totalFaces"] != float64(3) || body["noiseFaces"] != float64(0) || body["qualityPending"] != float64(0) {
 		t.Fatalf("body=%v", body)
 	}
 }

@@ -13,15 +13,16 @@ type aiCountsRequest struct {
 }
 
 type aiCountsResponse struct {
-	TotalEligible int64 `json:"totalEligible"`
-	Indexed       int64 `json:"indexed"`
-	Unindexed     int64 `json:"unindexed"`
-	WithEmbedding int64 `json:"withEmbedding"`
-	WithFaces     int64 `json:"withFaces"`
-	WithTags      int64 `json:"withTags"`
-	PeopleCount   int64 `json:"peopleCount"`
-	TotalFaces    int64 `json:"totalFaces"`
-	NoiseFaces    int64 `json:"noiseFaces"`
+	TotalEligible  int64 `json:"totalEligible"`
+	Indexed        int64 `json:"indexed"`
+	Unindexed      int64 `json:"unindexed"`
+	WithEmbedding  int64 `json:"withEmbedding"`
+	WithFaces      int64 `json:"withFaces"`
+	WithTags       int64 `json:"withTags"`
+	PeopleCount    int64 `json:"peopleCount"`
+	TotalFaces     int64 `json:"totalFaces"`
+	NoiseFaces     int64 `json:"noiseFaces"`
+	QualityPending int64 `json:"qualityPending"`
 }
 
 // AICounts serves the aggregate counters polled by the AI maintenance page.
@@ -66,10 +67,11 @@ func (h *Handler) AICounts(w http.ResponseWriter, r *http.Request) {
 			(SELECT COUNT(DISTINCT download_id) FROM image_tags),
 			(SELECT COUNT(*) FROM people),
 			(SELECT COUNT(*) FROM faces),
-			(SELECT COUNT(*) FROM faces WHERE person_id IS NULL OR person_id = -1)`, placeholders)
+			(SELECT COUNT(*) FROM faces WHERE person_id IS NULL OR person_id = -1),
+			(SELECT COUNT(*) FROM faces WHERE quality_score IS NULL)`, placeholders)
 	if err := db.QueryRowContext(r.Context(), query, args...).Scan(
 		&out.TotalEligible, &out.Unindexed, &out.WithEmbedding, &out.WithFaces,
-		&out.WithTags, &out.PeopleCount, &out.TotalFaces, &out.NoiseFaces,
+		&out.WithTags, &out.PeopleCount, &out.TotalFaces, &out.NoiseFaces, &out.QualityPending,
 	); err != nil {
 		h.queryError(w, err, "database AI counts query failed")
 		return

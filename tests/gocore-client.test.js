@@ -958,6 +958,7 @@ describe('answers from a (fake) tgdl-core', () => {
                         peopleCount: 1,
                         totalFaces: 1,
                         noiseFaces: 0,
+                        qualityPending: 3,
                     });
                 },
             },
@@ -966,6 +967,7 @@ describe('answers from a (fake) tgdl-core', () => {
         await expect(client.aiCounts({ fileTypes: ['photo', 'video'] })).resolves.toMatchObject({
             totalEligible: 2,
             indexed: 1,
+            qualityPending: 3,
         });
         expect(request).toEqual({ fileTypes: ['photo', 'video'] });
     });

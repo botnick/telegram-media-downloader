@@ -9055,7 +9055,10 @@ app.get('/api/ai/status', async (_req, res) => {
                     return { realtime: 0, backfill: 0 };
                 }
             })(),
-            qualityBackfillPending: _qualityBackfillPending(),
+            qualityBackfillPending:
+                Number.isSafeInteger(counts?.qualityPending) && counts.qualityPending >= 0
+                    ? counts.qualityPending
+                    : _qualityBackfillPending(),
             trackers: {
                 aiPeople: _jobTrackers.aiPeople.getStatus(),
                 qualityBackfill: _jobTrackers.qualityBackfill.getStatus(),

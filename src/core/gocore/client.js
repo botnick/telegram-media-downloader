@@ -1576,6 +1576,13 @@ export async function aiCounts(
         _count(feature, 'error');
         throw new GoCoreError('protocol', 'malformed AI counts response', { status });
     }
+    if (
+        body.qualityPending != null &&
+        (!Number.isSafeInteger(body.qualityPending) || body.qualityPending < 0)
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed AI quality counter', { status });
+    }
     _count(feature, 'ok');
     return body;
 }
