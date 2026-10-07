@@ -113,11 +113,13 @@ describe('answers from a (fake) tgdl-core', () => {
         const previous = {
             dbscan: process.env.TGDL_DBSCAN_WORKERS,
             faststart: process.env.FASTSTART_CONCURRENCY,
+            thumbs: process.env.THUMBS_VID_CONCURRENCY,
             ffmpeg: process.env.FFMPEG_PATH,
             secret: process.env.TGDL_FACES_API_TOKEN,
         };
         process.env.TGDL_DBSCAN_WORKERS = '3';
         process.env.FASTSTART_CONCURRENCY = '1';
+        process.env.THUMBS_VID_CONCURRENCY = '2';
         process.env.FFMPEG_PATH = '/tmp/ffmpeg';
         process.env.TGDL_FACES_API_TOKEN = 'must-not-leak';
         try {
@@ -125,6 +127,7 @@ describe('answers from a (fake) tgdl-core', () => {
             expect(env).toMatchObject({
                 TGDL_DBSCAN_WORKERS: '3',
                 FASTSTART_CONCURRENCY: '1',
+                THUMBS_VID_CONCURRENCY: '2',
                 FFMPEG_PATH: '/tmp/ffmpeg',
             });
             expect(env.TGDL_FACES_API_TOKEN).toBeUndefined();
@@ -132,6 +135,7 @@ describe('answers from a (fake) tgdl-core', () => {
             for (const [key, value] of Object.entries({
                 TGDL_DBSCAN_WORKERS: previous.dbscan,
                 FASTSTART_CONCURRENCY: previous.faststart,
+                THUMBS_VID_CONCURRENCY: previous.thumbs,
                 FFMPEG_PATH: previous.ffmpeg,
             })) {
                 if (value === undefined) delete process.env[key];
@@ -182,6 +186,18 @@ describe('answers from a (fake) tgdl-core', () => {
 
         malformed = true;
         await expect(client.optimizeFaststart(FILE)).rejects.toMatchObject({ kind: 'protocol' });
+    });
+
+    it('writes a video thumbnail through the Go core client', async () => {
+        await fakeCore(
+            {
+                '/v1/thumb/video': (req, raw, res) => json(res, 200, { status: 'ok', size: 456 }),
+            },
+            { features: ['thumb'] },
+        );
+        await expect(
+            client.generateVideoThumb(FILE, path.join(DOWNLOADS, 'thumb.webp.tmp'), 320),
+        ).resolves.toEqual({ status: 'ok', size: 456 });
     });
 
     it('a file error (422) becomes the error fs would throw', async () => {

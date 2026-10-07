@@ -8,6 +8,7 @@
 //	POST /v1/dbscan          face-embedding DBSCAN, NDJSON progress + result
 //	POST /v1/zip             STORE-mode ZIP stream from allow-root files
 //	POST /v1/faststart       move an MP4 moov atom with bounded ffmpeg workers
+//	POST /v1/thumb/video     decode, scale and encode a video thumbnail
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -27,6 +28,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/faststart"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/fsx"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/hash"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/thumbs"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/zipstream"
 )
@@ -71,6 +73,7 @@ func (s *Server) Handler() http.Handler {
 	private.Handle("POST /v1/dbscan", &dbscan.Handler{Log: s.log})
 	private.Handle("POST /v1/zip", &zipstream.Handler{Roots: s.roots, Log: s.log})
 	private.Handle("POST /v1/faststart", &faststart.Handler{Roots: s.roots, Log: s.log})
+	private.Handle("POST /v1/thumb/video", &thumbs.Handler{Roots: s.roots, Log: s.log})
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		hash.WriteError(w, http.StatusNotFound, "ENOTFOUND", "no such route")

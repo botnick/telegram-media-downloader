@@ -51,6 +51,7 @@ serve reads its settings from the environment:
   TGDL_DBSCAN_WORKERS    DBSCAN workers (default capped at 8)
   FASTSTART_CONCURRENCY  MP4 faststart workers (default 2, capped at 8)
   FFMPEG_PATH            optional ffmpeg executable for faststart
+  THUMBS_VID_CONCURRENCY video thumbnail workers (default 6, capped at 16)
 `
 
 func main() {

@@ -13,6 +13,7 @@ it for:
 | `dbscan` | `POST /v1/dbscan` | face clustering (scan runner Phase B) |
 | `zip` | `POST /v1/zip` | STORE-mode bulk ZIP streaming (optional; old binaries fall back to Node) |
 | `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
+| `thumb` | `POST /v1/thumb/video` | Video decode/scale/WebP thumbnail generation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
@@ -25,8 +26,9 @@ The required answers remain identical to Node: same digests, the same
 app does when tgdl-core can't run.
 
 tgdl-core never writes `db.sqlite` (Node is the only writer; the front
-server reads `web_sessions` over a read-only connection), and it only
-reads files inside the directories the app allows (`TGDL_CORE_ALLOW_ROOTS`).
+server reads `web_sessions` over a read-only connection). It reads media
+inside the directories the app allows (`TGDL_CORE_ALLOW_ROOTS`) and writes
+video-thumbnail temporary output only beneath the configured thumbnail root.
 
 ## Commands
 
@@ -47,13 +49,14 @@ in `ps`), plus the few OS variables a Go binary needs (`PATH`,
 | Variable | Default | Meaning |
 |---|---|---|
 | `TGDL_CORE_TOKEN` | — (required) | Shared secret; every route except `/health` needs it as `X-API-Token`. The app mints a new one per spawn. |
-| `TGDL_CORE_ALLOW_ROOTS` | empty = refuse everything | Directories files may be read from, separated like `PATH` (`:` on Linux / macOS, `;` on Windows; quote an entry containing `;` on Windows). The app passes the downloads dir, `<data dir>/downloads` and a custom `download.path`, plus anything in its own `TGDL_CORE_ALLOW_ROOTS`. Anything else is refused with `EOUTSIDE` and the app reads that path itself. |
+| `TGDL_CORE_ALLOW_ROOTS` | empty = refuse everything | Directories files may be read from and thumbnail output may be written to, separated like `PATH` (`:` on Linux / macOS, `;` on Windows; quote an entry containing `;` on Windows). The app passes its download directories and `<data dir>/thumbs`, plus anything in its own `TGDL_CORE_ALLOW_ROOTS`. Anything else is refused with `EOUTSIDE` and the app handles that path itself. |
 | `TGDL_CORE_PORT` | `0` | Port on `127.0.0.1`; `0` picks a free one. The bound address is printed as one JSON line on stdout: `{"event":"listening","addr":"127.0.0.1:NNNNN","version":"0.4.0","pid":123}`. |
 | `TGDL_CORE_WATCH_STDIN` | off | `1`: exit when stdin reaches EOF. The app keeps the pipe open, so when the app dies (crash, `kill -9`, Task Manager) tgdl-core exits instead of lingering as an orphan — Windows doesn't reap children with their parent. |
 | `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once (`parseInt`, values ≥ 1 capped at 32). |
 | `TGDL_DBSCAN_WORKERS` | `min(8, NumCPU-1)` | DBSCAN workers; set a positive integer to tune CPU use for a large face scan. |
 | `FASTSTART_CONCURRENCY` | `2` (max `8`) | Concurrent MP4 faststart remuxes. Keep this low on HDD/NAS storage. |
 | `FFMPEG_PATH` | `ffmpeg` on `PATH` | Optional absolute ffmpeg executable path used by the faststart worker. |
+| `THUMBS_VID_CONCURRENCY` | `6` (max `16`) | Concurrent video thumbnail jobs in tgdl-core. Keep this below the number of cores available to the Telegram engine. |
 | `TGDL_CORE_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`, to stderr. |
 
 ## Front server (`front`)
@@ -89,13 +92,14 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 
 | Route | Auth | |
 |---|---|---|
-| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan","zip","faststart"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
+| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan","zip","faststart","thumb"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
 | `POST /v1/hash` | token | Body `{"path":"/abs/file"}` → `{"sha256","size","mtimeMs"}` |
 | `POST /v1/fs/stat-batch` | token | Body `{"paths":["/abs/a", …]}` (≤ 1000) → `{"results":[…]}`, see below |
 | `POST /v1/fs/walk` | token | Body `{"root","maxDepth","stat","entries"}` → NDJSON stream, see below |
 | `POST /v1/dbscan` | token | Query `n, dim, eps, minPts, weights=0|1`, binary body → NDJSON stream, see below |
 | `POST /v1/zip` | token | JSON `{entries:[{path,name}]}` → streamed STORE-mode ZIP; paths are rechecked against allow-roots |
 | `POST /v1/faststart` | token | JSON `{"path":"/abs/file.mp4"}` → `{status:"already"|"optimized",newSize?}`; writes atomically inside an allow-root |
+| `POST /v1/thumb/video` | token | JSON `{"path":"/abs/video","output":"/abs/thumb.tmp","width":320}` → `{status:"ok",size}`; output must be inside an allow-root |
 | `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
 ### `/v1/hash`

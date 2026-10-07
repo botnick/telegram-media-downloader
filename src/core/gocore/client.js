@@ -17,6 +17,9 @@
  *                with plain fs itself — see hash.js / fs.js.
  *   timeout / transport / auth / server / protocol / busy / aborted
  *
+ * Optional media helpers (`thumb` and `faststart`) keep a Node fallback for
+ * older binaries; the required filesystem and clustering calls do not.
+ *
  * Every call has a deadline; on expiry (or an AbortSignal) the socket is
  * destroyed, which cancels the work on the Go side too. Uses node:http
  * rather than fetch: undici's 300 s headers timeout would cut off a
@@ -521,6 +524,36 @@ export async function optimizeFaststart(
         status: body.status,
         newSize: body.status === 'optimized' ? body.newSize : undefined,
     };
+}
+
+/** Generate a video WebP thumbnail directly into the Node cache temp path. */
+export async function generateVideoThumb(
+    absPath,
+    outputPath,
+    width,
+    { timeoutMs = 120_000, signal, readyWaitMs, ffmpegPath, hwaccel } = {},
+) {
+    const feature = 'thumb';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/thumb/video',
+        {
+            path: absPath,
+            output: outputPath,
+            width,
+            ...(ffmpegPath ? { ffmpeg: ffmpegPath } : {}),
+            ...(hwaccel ? { hwaccel } : {}),
+        },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (body?.status !== 'ok' || !Number.isSafeInteger(body.size) || body.size <= 0) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed video thumbnail response', { status });
+    }
+    _count(feature, 'ok');
+    return { status: 'ok', size: body.size };
 }
 
 /** Map a non-200 JSON answer to a GoCoreError. */

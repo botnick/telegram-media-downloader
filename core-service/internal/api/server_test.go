@@ -58,7 +58,7 @@ func TestHealthIsOpen(t *testing.T) {
 		t.Fatalf("unexpected body %v", body)
 	}
 	feats, _ := body["features"].([]any)
-	want := []string{"hash", "stat", "walk", "dbscan", "zip", "faststart"}
+	want := []string{"hash", "stat", "walk", "dbscan", "zip", "faststart", "thumb"}
 	if len(feats) != len(want) {
 		t.Fatalf("features = %v", body["features"])
 	}
@@ -79,6 +79,7 @@ func TestEverythingElseNeedsToken(t *testing.T) {
 		{"POST", "/v1/dbscan", ""},
 		{"POST", "/v1/zip", ""},
 		{"POST", "/v1/faststart", ""},
+		{"POST", "/v1/thumb/video", ""},
 		{"GET", "/v1/stats", ""},
 		{"GET", "/nope", ""},
 		{"POST", "/health", ""},

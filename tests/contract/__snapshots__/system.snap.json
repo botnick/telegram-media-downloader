@@ -29,7 +29,8 @@
           "disk": null,
           "goCore": {
             "allowRoots": [
-              "<DATA>/downloads"
+              "<DATA>/downloads",
+              "<DATA>/thumbs"
             ],
             "binary": {
               "path": "<masked:string>",
@@ -130,7 +131,8 @@
           "disk": null,
           "goCore": {
             "allowRoots": [
-              "<DATA>/downloads"
+              "<DATA>/downloads",
+              "<DATA>/thumbs"
             ],
             "binary": {
               "path": "<masked:string>",

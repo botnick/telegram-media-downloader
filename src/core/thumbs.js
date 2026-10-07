@@ -48,6 +48,7 @@ import { spawn, spawnSync } from 'child_process';
 import { createRequire } from 'module';
 import sharp from 'sharp';
 import { getDb } from './db.js';
+import * as gocoreClient from './gocore/client.js';
 import { loadConfig } from '../config/manager.js';
 import { getDataDir, getDownloadsDir } from './paths.js';
 
@@ -719,6 +720,21 @@ export function ffmpegHasLibwebp() {
 }
 
 async function _generateVideoThumb(srcAbs, width, dstAbs) {
+    // When the running core advertises `thumb`, keep decode/scale/WebP work
+    // out of Node. The local implementation remains the compatibility path
+    // for an older binary, a custom root, or a stripped ffmpeg build.
+    if (gocoreClient.isAvailable('thumb')) {
+        try {
+            await gocoreClient.generateVideoThumb(srcAbs, dstAbs, width, {
+                ffmpegPath: _resolveFfmpegBin(),
+                hwaccel: _activeBackend(undefined),
+            });
+            return;
+        } catch {
+            // The Node path below preserves the existing fallback behavior.
+            await fs.unlink(dstAbs).catch(() => {});
+        }
+    }
     // Two paths, picked once at boot from `_ffmpegHasLibwebp()`:
     //   • Fast (libwebp present): single-pass — seek + scale + libwebp encode
     //     all inside ffmpeg. Reads only the first keyframe + headers. ~10×

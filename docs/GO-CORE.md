@@ -19,6 +19,7 @@ Node's single thread:
 | DBSCAN over face embeddings | face scan, Re-cluster | `POST /v1/dbscan` |
 | STORE-mode bulk ZIP streaming | bulk downloads | `POST /v1/zip` (optional feature) |
 | MP4 faststart remux | automatic video optimization and maintenance sweep | `POST /v1/faststart` (optional feature) |
+| Video thumbnail decode/scale/WebP encode | gallery and thumbnail maintenance jobs | `POST /v1/thumb/video` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 For the required features it is the **only** implementation. Optional
@@ -45,14 +46,15 @@ walks, the DBSCAN worker) is removed; Node keeps thin client calls.
    code path and error table, not Go's `os.Stat` (which, for example,
    reports an offline network share as "does not exist" where Node says
    `UNKNOWN`).
-4. **Only the app's media folders.** The app passes its download folders
-   as `TGDL_CORE_ALLOW_ROOTS`; a path outside them (as written or after
-   resolving links) gets `EOUTSIDE` and Node answers that one path with
-   plain `fs` — so the result is still exactly what `fs` says. That is a
-   link inside a download folder pointing elsewhere (a folder on another
-   disk, `/dev/null`, …); a dangling one is `ENOENT` either way, and the
-   integrity sweep never sees `EOUTSIDE` (it prunes only on `ENOENT` /
-   `ENOTDIR`). No roots = nothing is read.
+4. **Only the app's media folders.** The app passes its download folders and
+   thumbnail cache as `TGDL_CORE_ALLOW_ROOTS`; a path outside them (as written
+   or after resolving links) gets `EOUTSIDE` and Node answers that one path
+   with plain `fs` — so the result is still exactly what `fs` says. The Go
+   thumbnail route may write only its requested temporary output beneath the
+   thumbnail root. That is a link inside a media folder pointing elsewhere (a
+   folder on another disk, `/dev/null`, …); a dangling one is `ENOENT` either
+   way, and the integrity sweep never sees `EOUTSIDE` (it prunes only on
+   `ENOENT` / `ENOTDIR`). No roots = nothing is read or written.
 5. **Can't outlive the app.** It exits when its stdin pipe closes, binds
    `127.0.0.1` only (the front server also binds the app's `PORT`), and
    needs a per-spawn token for everything but `/health`.
@@ -120,7 +122,7 @@ the log if set).
 - `GET /api/monitor/status` → `core`: `{state, fix}` while someone needs to
   act (drives the banner; no local paths).
 - `/metrics`: `tgdl_gocore_calls_total{feature,result}` — `feature` is
-  `hash` / `stat` / `walk` / `dbscan` / `zip` / `faststart`, `result` is `ok`, `file_error`,
+  `hash` / `stat` / `walk` / `dbscan` / `zip` / `faststart` / `thumb`, `result` is `ok`, `file_error`,
   `outside`, `timeout` or `error`.
 
 ## Parity

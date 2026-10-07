@@ -536,6 +536,7 @@ const PASSTHROUGH_ENV = [
     'HASH_WORKER_POOL_SIZE',
     'TGDL_DBSCAN_WORKERS',
     'FASTSTART_CONCURRENCY',
+    'THUMBS_VID_CONCURRENCY',
     'FFMPEG_PATH',
     'TGDL_CORE_LOG_LEVEL',
 ];
@@ -549,11 +550,14 @@ function _safeConfig() {
 }
 
 /**
- * Directories tgdl-core may read (TGDL_CORE_ALLOW_ROOTS):
+ * Directories tgdl-core may read (and, for video-thumbnail temp files, write)
+ * (TGDL_CORE_ALLOW_ROOTS):
  *   - getDownloadsDir(): the downloader's default target, dedup's base,
  *     what integrity / re-index / the disk-usage scan walk;
  *   - <data dir>/downloads: nsfw.js resolves relative rows there, even
  *     when TGDL_DOWNLOADS_DIR points elsewhere;
+ *   - <data dir>/thumbs: the optional Go video-thumbnail encoder's temp
+ *     output;
  *   - config.download.path when it is custom (resolved like the
  *     downloader does, relative to the working directory);
  *   - extra roots from this process's own TGDL_CORE_ALLOW_ROOTS.
@@ -573,6 +577,7 @@ export function allowRoots(config = _safeConfig()) {
     };
     add(getDownloadsDir());
     add(path.join(getDataDir(), 'downloads'));
+    add(path.join(getDataDir(), 'thumbs'));
     const custom = config?.download?.path;
     if (typeof custom === 'string' && custom.trim()) add(resolveConfigDownloadPath(custom));
     for (const p of String(process.env.TGDL_CORE_ALLOW_ROOTS || '').split(path.delimiter)) add(p);
