@@ -19,6 +19,8 @@ import {
     kvSet,
 } from './db.js';
 import { sha256OfFile } from './checksum.js';
+import { diskUsage, statMany } from './gocore/fs.js';
+import * as gocoreClient from './gocore/client.js';
 import { accessOf, classifyChatError, isBlocked, recordResult } from './chat-access.js';
 import { pregenerateThumb } from './thumbs.js';
 import { optimizeDownloadInBackground as faststartInBackground } from './faststart.js';
@@ -705,37 +707,62 @@ export class DownloadManager extends EventEmitter {
         } catch {}
     }
 
-    _resolveReusableTelegramPath(row) {
+    _reusableTelegramCandidates(row) {
         const raw = String(row?.file_path || '').trim();
-        if (!raw || raw.startsWith('_clusterref/')) return null;
-        const check = (candidate) => {
-            if (!existsSync(candidate)) return null;
-            try {
-                const stat = statSync(candidate);
-                const expected = Number(row.file_size) || 0;
-                if (!stat.isFile() || stat.size <= 0 || (expected > 0 && stat.size !== expected))
-                    return null;
-                return candidate;
-            } catch {
-                return null;
-            }
-        };
-        if (path.isAbsolute(raw)) return check(raw);
+        if (!raw || raw.startsWith('_clusterref/')) return [];
+        if (path.isAbsolute(raw)) return [raw];
         const bases = [resolveConfigDownloadPath(this.config?.download?.path), DOWNLOADS_DIR];
-        for (const base of new Set(bases)) {
-            const resolved = path.resolve(base, raw);
-            const usable = check(resolved);
-            if (usable) return usable;
-        }
-        return null;
+        return [...new Set(bases)].map((base) => path.resolve(base, raw));
     }
 
-    _findReusableTelegramMedia(identity) {
+    async _findReusableTelegramMedia(identity) {
         if (!identity) return null;
         const rows = findDownloadCandidatesByTelegramMedia(identity);
+        const candidates = [];
         for (const row of rows) {
-            const filePath = this._resolveReusableTelegramPath(row);
-            if (filePath) return { row, filePath };
+            for (const filePath of this._reusableTelegramCandidates(row)) {
+                candidates.push({ row, filePath });
+            }
+        }
+        if (!candidates.length) return null;
+
+        let stats;
+        try {
+            if (gocoreClient.isAvailable('stat')) {
+                stats = await statMany(candidates.map(({ filePath }) => filePath));
+            } else {
+                stats = await Promise.all(
+                    candidates.map(async ({ filePath }) => {
+                        try {
+                            const st = await fs.stat(filePath);
+                            return { ok: true, size: st.size, isFile: st.isFile() };
+                        } catch {
+                            return { ok: false };
+                        }
+                    }),
+                );
+            }
+        } catch {
+            // A transient core failure must not disable live dedup. Check the
+            // same bounded candidate set asynchronously through Node instead.
+            stats = await Promise.all(
+                candidates.map(async ({ filePath }) => {
+                    try {
+                        const st = await fs.stat(filePath);
+                        return { ok: true, size: st.size, isFile: st.isFile() };
+                    } catch {
+                        return { ok: false };
+                    }
+                }),
+            );
+        }
+        for (let i = 0; i < candidates.length; i++) {
+            const { row, filePath } = candidates[i];
+            const st = stats[i];
+            const expected = Number(row.file_size) || 0;
+            if (st?.ok && st.isFile && st.size > 0 && (!expected || st.size === expected)) {
+                return { row, filePath };
+            }
         }
         return null;
     }
@@ -762,7 +789,7 @@ export class DownloadManager extends EventEmitter {
         const identity = getTelegramMediaIdentity(job?.message);
         if (!identity) return { identity: null, flight: null, reused: null };
 
-        const reused = this._findReusableTelegramMedia(identity);
+        const reused = await this._findReusableTelegramMedia(identity);
         if (reused) return { identity, flight: null, reused };
 
         // A retry invoked from inside _downloadAttempt belongs to the same
@@ -780,7 +807,7 @@ export class DownloadManager extends EventEmitter {
             }
 
             await claim.flight.promise;
-            const afterWait = this._findReusableTelegramMedia(identity);
+            const afterWait = await this._findReusableTelegramMedia(identity);
             if (afterWait) return { identity, flight: null, reused: afterWait };
             // The previous owner failed before registering a row. Try to own
             // the next flight; this avoids a permanent queue stall after a
@@ -1460,9 +1487,21 @@ export class DownloadManager extends EventEmitter {
     }
 
     async scanDiskDeep() {
+        const basePath = resolveConfigDownloadPath(this.config.download?.path);
+        if (gocoreClient.isAvailable('walk')) {
+            try {
+                // The Go walker stats non-directories in parallel and keeps
+                // the recursive walk off Node's event loop. It preserves the
+                // old behavior for links, unreadable directories and files
+                // that vanish during the scan; a failed core falls back to
+                // the portable Node walk below.
+                return await diskUsage(basePath);
+            } catch {
+                // Compatibility with an older core or a transient restart.
+            }
+        }
         let total = 0;
         let visited = 0;
-        const basePath = resolveConfigDownloadPath(this.config.download?.path);
         // Yield to the event loop every YIELD_EVERY entries so a tree with
         // hundreds of thousands of files doesn't starve WS broadcasts /
         // health probes / queue progress for the duration of the walk.

@@ -56,6 +56,7 @@ const FILES = {
 let dbApi;
 let integrity;
 let gofs;
+let DownloadManager;
 let db;
 const cleanups = [];
 
@@ -93,6 +94,7 @@ beforeAll(async () => {
     ).toBe(true);
     integrity = await import('../src/core/integrity.js');
     gofs = await import('../src/core/gocore/fs.js');
+    ({ DownloadManager } = await import('../src/core/downloader.js'));
 }, 60_000);
 
 afterAll(async () => {
@@ -153,6 +155,8 @@ describe('re-index from disk walks like the Node code', () => {
 
         const usage = await gofs.diskUsage(DL);
         expect(usage).toBe(await oracleDiskUsage(DL));
+        const dm = new DownloadManager(null, { download: { path: DL } }, null);
+        expect(await dm.scanDiskDeep()).toBe(usage);
 
         // Frozen expectations (order-independent: NTFS and strcmp order
         // differ for mixed-case names, the set and counters do not).
