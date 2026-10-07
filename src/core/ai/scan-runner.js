@@ -772,7 +772,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 'info',
                 `faces scan: clustered ${n} faces into ${clusters.length} groups in ${Math.round(
                     (Date.now() - _tc0) / 1000,
-                )} s (${preservedCount}/${labelSnapshot.length} labels preserved across re-cluster, eps=${matchEps.toFixed(3)})`,
+                )} s (${preservedCount}/${labelSnapshot.length} labels preserved across re-cluster, clusterEps=${epsForCluster}, labelMatchEps=${matchEps.toFixed(3)})`,
             );
         },
         onProgress,
