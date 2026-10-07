@@ -767,6 +767,38 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ fileTypes: ['photo', 'video'] });
     });
 
+    it('reads bounded unindexed AI candidates through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/ai-candidates': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [
+                            {
+                                id: 7,
+                                group_id: '-1',
+                                group_name: 'Cool Channel',
+                                file_name: 'a.jpg',
+                                file_path: 'G/images/a.jpg',
+                                file_type: 'photo',
+                                file_size: 20,
+                                created_at: '2026-01-01T00:00:00Z',
+                            },
+                        ],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.aiCandidates({ fileTypes: ['photo', 'video'], limit: 12 }),
+        ).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 7, file_path: 'G/images/a.jpg' })],
+        });
+        expect(request).toEqual({ fileTypes: ['photo', 'video'], limit: 12 });
+    });
+
     it('reads grouped recovery counters through the Go DB projection', async () => {
         let request;
         await fakeCore(

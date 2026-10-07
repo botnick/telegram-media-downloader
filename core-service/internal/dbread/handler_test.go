@@ -185,6 +185,34 @@ func TestStats(t *testing.T) {
 	}
 }
 
+func TestAICandidates(t *testing.T) {
+	path := makeDB(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE downloads SET ai_indexed_at = NULL WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(path, nil)
+	status, body := call(t, http.HandlerFunc(h.AICandidates), map[string]any{
+		"fileTypes": []string{"photo"},
+		"limit":     1,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(1) || row["file_path"] != "G/images/a.jpg" || row["file_type"] != "photo" {
+		t.Fatalf("row=%v", row)
+	}
+}
+
 func TestDedupStats(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.DedupStats), map[string]any{})

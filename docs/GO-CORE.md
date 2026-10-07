@@ -39,6 +39,7 @@ Node's single thread:
 | Read-only people grouping | `/api/ai/group-by-person` | `POST /v1/db/person-groups` (optional feature) |
 | Read-only person gallery | `/api/ai/people/:id/photos` | `POST /v1/db/person-photos` (optional feature) |
 | AI maintenance counters | `/api/ai/status` counts | `POST /v1/db/ai-counts` (optional feature) |
+| AI indexing queue | face scan and AI auto-scan unindexed rows | `POST /v1/db/ai-candidates` (optional feature) |
 | Recovery group counters | `/api/maintenance/recovery/list` grouped DB stats | `POST /v1/db/recovery-stats` (optional feature) |
 | Cluster catalog delta | `/api/cluster/downloads/since` local rows | `POST /v1/db/cluster-downloads-since` (optional feature) |
 | Cluster catalog page | `/api/cluster/downloads` local rows | `POST /v1/db/cluster-downloads` (optional feature) |

@@ -10094,8 +10094,11 @@ app.post('/api/ai/reindex', async (req, res) => {
 let _aiAutoScanTimer = null;
 let _aiAutoScanLastTickAt = 0;
 let _aiAutoScanLastEnqueued = 0;
+let _aiAutoScanInFlight = false;
 
-function _aiAutoScanTick() {
+async function _aiAutoScanTick() {
+    if (_aiAutoScanInFlight) return;
+    _aiAutoScanInFlight = true;
     try {
         const cfg = _aiCfg();
         if (cfg.enabled !== true) return;
@@ -10130,7 +10133,20 @@ function _aiAutoScanTick() {
             facesBlk.scanVideos === true && !baseFileTypes.includes('video')
                 ? [...baseFileTypes, 'video']
                 : baseFileTypes;
-        const batch = getUnindexedAiBatch({ fileTypes, limit: batchSize });
+        let batch;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                batch = (
+                    await gocoreClient.aiCandidates(
+                        { fileTypes, limit: batchSize },
+                        { timeoutMs: 5_000 },
+                    )
+                ).rows;
+            } catch {
+                // Keep auto-scan compatible with an older or restarting core.
+            }
+        }
+        batch ||= getUnindexedAiBatch({ fileTypes, limit: batchSize });
         if (!batch.length) {
             _aiAutoScanLastTickAt = Date.now();
             _aiAutoScanLastEnqueued = 0;
@@ -10154,6 +10170,8 @@ function _aiAutoScanTick() {
             level: 'warn',
             msg: `tick failed: ${e?.message || e}`,
         });
+    } finally {
+        _aiAutoScanInFlight = false;
     }
 }
 

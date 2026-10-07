@@ -38,6 +38,8 @@
 //	                         read-only people gallery page
 //	POST /v1/db/ai-counts
 //	                         read-only AI maintenance counters
+//	POST /v1/db/ai-candidates
+//	                         read-only bounded AI indexing queue
 //	POST /v1/db/recovery-stats
 //	                         read-only grouped recovery counters
 //	POST /v1/db/cluster-downloads-since
@@ -155,6 +157,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/person-groups", s.dbRead.PersonGroups)
 		private.HandleFunc("POST /v1/db/person-photos", s.dbRead.PersonPhotos)
 		private.HandleFunc("POST /v1/db/ai-counts", s.dbRead.AICounts)
+		private.HandleFunc("POST /v1/db/ai-candidates", s.dbRead.AICandidates)
 		private.HandleFunc("POST /v1/db/recovery-stats", s.dbRead.RecoveryStats)
 		private.HandleFunc("POST /v1/db/cluster-downloads", s.dbRead.ClusterDownloads)
 		private.HandleFunc("POST /v1/db/cluster-downloads-since", s.dbRead.ClusterDownloadsSince)

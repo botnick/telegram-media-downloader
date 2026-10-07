@@ -44,6 +44,7 @@ import {
 } from './faces-client.js';
 import { resolveFacesValue } from './faces-config.js';
 import { getDataDir, getDownloadsDir } from '../paths.js';
+import * as gocoreClient from '../gocore/client.js';
 
 const DATA_DIR = getDataDir();
 
@@ -306,9 +307,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             // Keep the denominator tied to the live queue. New downloads may
             // arrive while a scan is running; recomputing from the remaining
             // unindexed rows prevents scanned/total from ever exceeding 100%.
-            const progressTypes = [
-                ...new Set(scanVideos ? [...fileTypes, 'video'] : fileTypes),
-            ];
+            const progressTypes = [...new Set(scanVideos ? [...fileTypes, 'video'] : fileTypes)];
             const countPendingForProgress = () => {
                 const placeholders = progressTypes.map(() => '?').join(',');
                 return db
@@ -432,10 +431,27 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 return true;
             };
             // Oldest unscanned rows, minus the ones skipped this run.
-            const pickBatch = (types, limit) =>
-                getUnindexedAiBatch({ fileTypes: types, limit: limit + skipped.size })
-                    .filter((r) => !skipped.has(r.id))
-                    .slice(0, limit);
+            const pickBatch = async (types, limit) => {
+                if (signal.aborted) return [];
+                let rows;
+                if (gocoreClient.isAvailable('db')) {
+                    try {
+                        rows = (
+                            await gocoreClient.aiCandidates(
+                                { fileTypes: types, limit: limit + skipped.size },
+                                { timeoutMs: 5_000, signal },
+                            )
+                        ).rows;
+                    } catch {
+                        // Older cores and transient restarts use the local
+                        // query; the scan must remain resumable in either mode.
+                    }
+                }
+                if (!rows) {
+                    rows = getUnindexedAiBatch({ fileTypes: types, limit: limit + skipped.size });
+                }
+                return rows.filter((r) => !skipped.has(r.id)).slice(0, limit);
+            };
 
             if (state.total > 0 && !signal.aborted) await ensureSidecar('scan start');
 
@@ -446,7 +462,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             let _statPhotos = 0; // photos with ≥1 face
             let _nextStatLog = 200; // log a summary every N photos
             while (!signal.aborted) {
-                const batch = pickBatch(fileTypes, batchSize);
+                const batch = await pickBatch(fileTypes, batchSize);
                 if (!batch.length) break;
                 const items = batch.map((row) => ({ row, abs: _resolveAbs(row.file_path) }));
                 const nullItems = items.filter((i) => !i.abs);
@@ -573,7 +589,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                     _vFaces = 0,
                     _vVids = 0;
                 while (!signal.aborted) {
-                    const [row] = pickBatch(['video'], 1);
+                    const [row] = await pickBatch(['video'], 1);
                     if (!row) break;
                     const abs = _resolveAbs(row.file_path);
                     if (!abs) {
