@@ -1107,6 +1107,55 @@ export async function thumbsList(
     return body;
 }
 
+/** Read the paginated seekbar sprite catalog through tgdl-core. */
+export async function seekbarList(
+    { limit = 50, offset = 0 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/seekbar-list',
+        { limit, offset },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const validRows =
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.bytes == null || Number.isSafeInteger(row.bytes)) &&
+                (row.frames == null || Number.isSafeInteger(row.frames)) &&
+                (row.cols == null || Number.isSafeInteger(row.cols)) &&
+                (row.rows == null || Number.isSafeInteger(row.rows)) &&
+                (row.duration_sec == null || typeof row.duration_sec === 'number') &&
+                (row.format == null || typeof row.format === 'string') &&
+                (row.generated_at == null || Number.isSafeInteger(row.generated_at)) &&
+                (row.file_name == null || typeof row.file_name === 'string'),
+        );
+    if (
+        !validRows ||
+        !Number.isSafeInteger(body.total) ||
+        body.total < 0 ||
+        !Number.isSafeInteger(body.limit) ||
+        body.limit < 1 ||
+        body.limit > 200 ||
+        !Number.isSafeInteger(body.offset) ||
+        body.offset < 0 ||
+        typeof body.hasMore !== 'boolean'
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed seekbar list response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

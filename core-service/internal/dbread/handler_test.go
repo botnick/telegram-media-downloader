@@ -34,7 +34,12 @@ func makeDB(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(`CREATE TABLE seekbar_sprites (download_id INTEGER, duration_sec REAL)`); err != nil {
+	if _, err = db.Exec(`CREATE TABLE seekbar_sprites (
+		download_id INTEGER PRIMARY KEY, sprite_path TEXT, meta_path TEXT,
+		duration_sec REAL, frames INTEGER, cols INTEGER, rows INTEGER,
+		tile_w INTEGER, tile_h INTEGER, interval_sec REAL, format TEXT,
+		bytes INTEGER, source_size INTEGER, source_mtime INTEGER, generated_at INTEGER
+	)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`CREATE TABLE share_links (
@@ -262,6 +267,24 @@ func TestThumbsList(t *testing.T) {
 	})
 	if status != http.StatusOK || body["hasMore"] != true {
 		t.Fatalf("cached-only status=%d body=%v", status, body)
+	}
+}
+
+func TestSeekbarList(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.SeekbarList), map[string]any{
+		"limit": 1, "offset": 0,
+	})
+	if status != http.StatusOK || body["total"] != float64(1) || body["limit"] != float64(1) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(2) || row["duration_sec"] != 12.5 || row["file_name"] != "b.mp4" {
+		t.Fatalf("row=%v", row)
 	}
 }
 

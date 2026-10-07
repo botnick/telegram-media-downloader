@@ -7811,9 +7811,16 @@ app.get('/api/maintenance/seekbar/queue/stats', (req, res) => {
 
 app.get('/api/maintenance/seekbar/list', async (req, res) => {
     try {
-        const db = (await import('../core/db.js')).getDb();
         const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
         const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                const result = await gocoreClient.seekbarList({ limit, offset });
+                res.set('Cache-Control', 'no-store, max-age=0');
+                return res.json(result);
+            } catch {}
+        }
+        const db = (await import('../core/db.js')).getDb();
         const rows = db
             .prepare(
                 `SELECT s.download_id AS id, s.bytes, s.frames, s.cols, s.rows, s.duration_sec,

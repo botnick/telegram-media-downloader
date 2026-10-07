@@ -167,6 +167,18 @@ describe('snapshot backups through tgdl-core', () => {
         const id = Number(result.lastInsertRowid);
         const digest = crypto.createHash('sha256').update(`${id}:320`).digest('hex').slice(0, 32);
         fs.writeFileSync(path.join(cache, `${digest}.webp`), 'thumb');
+        dbMod.upsertSeekbarSprite({
+            downloadId: id,
+            spritePath: path.join(DATA, 'seekbar', `${id}.webp`),
+            metaPath: path.join(DATA, 'seekbar', `${id}.json`),
+            durationSec: 12.5,
+            frames: 8,
+            cols: 4,
+            rows: 2,
+            format: 'webp',
+            bytes: 789,
+            generatedAt: 1_717_286_400_000,
+        });
         await expect(
             gocoreClient.thumbsList({
                 limit: 1,
@@ -177,6 +189,11 @@ describe('snapshot backups through tgdl-core', () => {
             total: 4,
             rows: [expect.objectContaining({ id, cached: true })],
             hasMore: true,
+        });
+        await expect(gocoreClient.seekbarList({ limit: 1 })).resolves.toMatchObject({
+            total: 1,
+            rows: [expect.objectContaining({ id, duration_sec: 12.5, file_name: 'cached.jpg' })],
+            hasMore: false,
         });
     }, 60_000);
 });

@@ -598,6 +598,30 @@ describe('answers from a (fake) tgdl-core', () => {
         });
     });
 
+    it('reads the seekbar catalog through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/seekbar-list': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 2, duration_sec: 12.5, file_name: 'b.mp4' }],
+                        total: 1,
+                        limit: 1,
+                        offset: 3,
+                        hasMore: false,
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.seekbarList({ limit: 1, offset: 3 })).resolves.toMatchObject({
+            total: 1,
+            offset: 3,
+        });
+        expect(request).toEqual({ limit: 1, offset: 3 });
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(

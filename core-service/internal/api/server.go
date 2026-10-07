@@ -28,6 +28,8 @@
 //	                         read-only local FTS/LIKE search
 //	POST /v1/db/thumbs-list
 //	                         read-only thumbnail maintenance catalog
+//	POST /v1/db/seekbar-list
+//	                         read-only seekbar sprite catalog
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -122,6 +124,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/nsfw-list", s.dbRead.NsfwList)
 		private.HandleFunc("POST /v1/db/people", s.dbRead.People)
 		private.HandleFunc("POST /v1/db/thumbs-list", s.dbRead.ThumbsList)
+		private.HandleFunc("POST /v1/db/seekbar-list", s.dbRead.SeekbarList)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
