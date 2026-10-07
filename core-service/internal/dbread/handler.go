@@ -36,6 +36,11 @@ type Row struct {
 	Size     *int64  `json:"size"`
 }
 
+type statsResponse struct {
+	TotalFiles int64 `json:"totalFiles"`
+	TotalSize  int64 `json:"totalSize"`
+}
+
 // Handler serves POST /v1/db/group-aggregates.
 type Handler struct {
 	Path string
@@ -113,22 +118,12 @@ func readOnlyDSN(path string) string {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
-	var ignored map[string]any
-	if err := dec.Decode(&ignored); err != nil {
-		msg := "body must be JSON {}"
-		if errors.Is(err, io.EOF) {
-			msg = "empty body; expected JSON {}"
-		}
-		hash.WriteError(w, http.StatusBadRequest, "EINVAL", msg)
+	if err := decodeEmptyBody(w, r); err != nil {
 		return
 	}
 	db, err := h.open()
 	if err != nil {
-		if h.Log != nil {
-			h.Log.Debug("database aggregate unavailable", "path", h.Path, "err", err)
-		}
-		hash.WriteError(w, http.StatusServiceUnavailable, "EDBUNAVAILABLE", "database is not available")
+		h.unavailable(w, err)
 		return
 	}
 
@@ -149,11 +144,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		 GROUP BY group_id
 	`)
 	if err != nil {
-		h.reset(err)
-		if h.Log != nil {
-			h.Log.Debug("database aggregate query failed", "err", err)
-		}
-		hash.WriteError(w, http.StatusInternalServerError, "EDB", "database aggregate query failed")
+		h.queryError(w, err, "database aggregate query failed")
 		return
 	}
 	defer rows.Close()
@@ -163,8 +154,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var best, any sql.NullString
 		var size sql.NullInt64
 		if err := rows.Scan(&row.GroupID, &best, &any, &row.Count, &size); err != nil {
-			h.reset(err)
-			hash.WriteError(w, http.StatusInternalServerError, "EDB", "database aggregate scan failed")
+			h.queryError(w, err, "database aggregate scan failed")
 			return
 		}
 		if best.Valid {
@@ -182,11 +172,61 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		out = append(out, row)
 	}
 	if err := rows.Err(); err != nil {
-		h.reset(err)
-		hash.WriteError(w, http.StatusInternalServerError, "EDB", "database aggregate read failed")
+		h.queryError(w, err, "database aggregate read failed")
 		return
 	}
 	hash.WriteJSON(w, http.StatusOK, map[string]any{"rows": out})
+}
+
+// Stats serves POST /v1/db/stats using the same read-only connection pool.
+func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
+	if err := decodeEmptyBody(w, r); err != nil {
+		return
+	}
+	db, err := h.open()
+	if err != nil {
+		h.unavailable(w, err)
+		return
+	}
+	var out statsResponse
+	err = db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*), COALESCE(SUM(file_size), 0)
+		  FROM downloads
+	`).Scan(&out.TotalFiles, &out.TotalSize)
+	if err != nil {
+		h.queryError(w, err, "database stats query failed")
+		return
+	}
+	hash.WriteJSON(w, http.StatusOK, out)
+}
+
+func decodeEmptyBody(w http.ResponseWriter, r *http.Request) error {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	var ignored map[string]any
+	if err := dec.Decode(&ignored); err != nil {
+		msg := "body must be JSON {}"
+		if errors.Is(err, io.EOF) {
+			msg = "empty body; expected JSON {}"
+		}
+		hash.WriteError(w, http.StatusBadRequest, "EINVAL", msg)
+		return err
+	}
+	return nil
+}
+
+func (h *Handler) unavailable(w http.ResponseWriter, err error) {
+	if h.Log != nil {
+		h.Log.Debug("database aggregate unavailable", "path", h.Path, "err", err)
+	}
+	hash.WriteError(w, http.StatusServiceUnavailable, "EDBUNAVAILABLE", "database is not available")
+}
+
+func (h *Handler) queryError(w http.ResponseWriter, err error, message string) {
+	h.reset(err)
+	if h.Log != nil {
+		h.Log.Debug("database aggregate query failed", "err", err)
+	}
+	hash.WriteError(w, http.StatusInternalServerError, "EDB", message)
 }
 
 func (h *Handler) reset(err error) {

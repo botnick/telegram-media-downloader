@@ -65,3 +65,11 @@ func TestUnavailableDatabase(t *testing.T) {
 		t.Fatalf("status=%d body=%v", status, body)
 	}
 }
+
+func TestStats(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.Stats), map[string]any{})
+	if status != http.StatusOK || body["totalFiles"] != float64(5) || body["totalSize"] != float64(35) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+}

@@ -271,6 +271,17 @@ describe('answers from a (fake) tgdl-core', () => {
         ]);
     });
 
+    it('reads database totals through the Go DB projection', async () => {
+        await fakeCore(
+            {
+                '/v1/db/stats': (req, raw, res) =>
+                    json(res, 200, { totalFiles: 12, totalSize: 3456 }),
+            },
+            { features: ['db'] },
+        );
+        await expect(client.databaseStats()).resolves.toEqual({ totalFiles: 12, totalSize: 3456 });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

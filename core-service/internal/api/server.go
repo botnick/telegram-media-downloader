@@ -13,6 +13,7 @@
 //	POST /v1/seekbar         decode, sample, tile and encode a video sprite
 //	POST /v1/db/group-aggregates
 //	                         read-only SQLite group counts/names
+//	POST /v1/db/stats       read-only SQLite total file/byte counts
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -28,8 +29,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/botnick/telegram-media-downloader/core-service/internal/dbscan"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/dbread"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/dbscan"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/faststart"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/fsx"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/hash"
@@ -90,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	private.Handle("POST /v1/seekbar", &seekbar.Handler{Roots: s.roots, Log: s.log})
 	if s.dbRead != nil {
 		private.Handle("POST /v1/db/group-aggregates", s.dbRead)
+		private.HandleFunc("POST /v1/db/stats", s.dbRead.Stats)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

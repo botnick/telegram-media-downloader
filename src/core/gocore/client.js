@@ -636,6 +636,30 @@ export async function groupAggregates({ timeoutMs = 10_000, readyWaitMs, signal 
     return rows;
 }
 
+/** Read total download rows and bytes through tgdl-core's DB projection. */
+export async function databaseStats({ timeoutMs = 10_000, readyWaitMs, signal } = {}) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/stats',
+        {},
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (
+        !Number.isSafeInteger(body?.totalFiles) ||
+        body.totalFiles < 0 ||
+        !Number.isSafeInteger(body?.totalSize) ||
+        body.totalSize < 0
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed database stats response', { status });
+    }
+    _count(feature, 'ok');
+    return { totalFiles: body.totalFiles, totalSize: body.totalSize };
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

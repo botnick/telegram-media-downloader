@@ -3882,7 +3882,12 @@ const STATS_CACHE_TTL_MS = 2000;
 let _statsCache = { role: null, at: 0, body: null };
 
 async function _computeStatsPayload(role) {
-    const dbStats = getDbStats();
+    let dbStats = getDbStats();
+    if (gocoreClient.isAvailable('db')) {
+        try {
+            dbStats = await gocoreClient.databaseStats();
+        } catch {}
+    }
     const config = loadConfig();
     let diskUsage = Number(dbStats.totalSize) || 0;
     if (diskUsage <= 0) {
