@@ -6830,12 +6830,22 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
         } catch {}
         const config = loadConfig();
         const ids = new Set((config.groups || []).map((g) => String(g.id)));
-        try {
-            const rows = getDb()
-                .prepare('SELECT DISTINCT group_id FROM downloads LIMIT 10000')
-                .all();
-            for (const rr of rows) ids.add(String(rr.group_id));
-        } catch {}
+        let groupIdsRead = false;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                const rows = await gocoreClient.groupAggregates();
+                for (const rr of rows) ids.add(String(rr.group_id));
+                groupIdsRead = true;
+            } catch {}
+        }
+        if (!groupIdsRead) {
+            try {
+                const rows = getDb()
+                    .prepare('SELECT DISTINCT group_id FROM downloads LIMIT 10000')
+                    .all();
+                for (const rr of rows) ids.add(String(rr.group_id));
+            } catch {}
+        }
 
         let updated = 0;
         let mutated = false;
