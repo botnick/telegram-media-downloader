@@ -62,6 +62,8 @@
 //	                         read-only seekbar cache counters
 //	POST /v1/db/seekbar-candidates
 //	                         read-only keyset-paged video backlog
+//	POST /v1/db/faststart-candidates
+//	                         read-only keyset-paged video catalog
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -173,6 +175,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/dedup-stats", s.dbRead.DedupStats)
 		private.HandleFunc("POST /v1/db/seekbar-stats", s.dbRead.SeekbarStats)
 		private.HandleFunc("POST /v1/db/seekbar-candidates", s.dbRead.SeekbarCandidates)
+		private.HandleFunc("POST /v1/db/faststart-candidates", s.dbRead.FaststartCandidates)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

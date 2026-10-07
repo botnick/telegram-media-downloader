@@ -575,7 +575,21 @@ export async function optimizeAll(opts = {}) {
 
     while (true) {
         if (signal?.aborted) break;
-        const page = pageStmt.all(beforeId, PAGE_SIZE);
+        let page = null;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                page = (
+                    await gocoreClient.faststartCandidates(
+                        { beforeId, limit: PAGE_SIZE },
+                        { timeoutMs: 5000, signal },
+                    )
+                ).rows;
+            } catch {
+                // Older cores and transient restarts use the local query.
+                if (signal?.aborted) break;
+            }
+        }
+        page ||= pageStmt.all(beforeId, PAGE_SIZE);
         if (!page.length) break;
         for (const r of page) {
             if (signal?.aborted) break;

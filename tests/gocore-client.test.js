@@ -700,6 +700,27 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ beforeId: 99, limit: 10 });
     });
 
+    it('reads the faststart maintenance catalog through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/faststart-candidates': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 2, file_path: 'G/videos/b.mp4' }],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.faststartCandidates({ beforeId: 99, limit: 10 }),
+        ).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 2, file_path: 'G/videos/b.mp4' })],
+        });
+        expect(request).toEqual({ beforeId: 99, limit: 10 });
+    });
+
     it('reads face boxes through the Go DB projection', async () => {
         let request;
         await fakeCore(

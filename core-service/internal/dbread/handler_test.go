@@ -232,6 +232,25 @@ func TestNsfwCandidates(t *testing.T) {
 	}
 }
 
+func TestFaststartCandidates(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.FaststartCandidates), map[string]any{
+		"beforeId": 3,
+		"limit":    1,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(2) || row["file_path"] != "G/videos/b.mp4" {
+		t.Fatalf("row=%v", row)
+	}
+}
+
 func TestDedupStats(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.DedupStats), map[string]any{})
