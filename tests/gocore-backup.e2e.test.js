@@ -200,5 +200,27 @@ describe('snapshot backups through tgdl-core', () => {
             downloadId: id,
             faces: [],
         });
+        const person = dbMod
+            .getDb()
+            .prepare(
+                'INSERT INTO people(label, embedding_centroid, face_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+            )
+            .run('Go Person', Buffer.from([1]), 1, 100, 100);
+        const personId = Number(person.lastInsertRowid);
+        dbMod
+            .getDb()
+            .prepare(
+                'INSERT INTO faces(download_id, x, y, w, h, embedding, person_id, quality_score) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            )
+            .run(id, 0.1, 0.2, 0.3, 0.4, Buffer.from([2]), personId, 0.9);
+        await expect(gocoreClient.facesByDownload(id)).resolves.toMatchObject({
+            faces: [expect.objectContaining({ person_id: personId, person_label: 'Go Person' })],
+        });
+        await expect(gocoreClient.personGroups({ limit: 1 })).resolves.toMatchObject({
+            success: true,
+            groups: [
+                expect.objectContaining({ id: personId, face_count: 1, cover_download_id: id }),
+            ],
+        });
     }, 60_000);
 });

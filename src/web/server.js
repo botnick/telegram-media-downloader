@@ -9638,6 +9638,13 @@ app.get('/api/ai/faces/by-download/:id', async (req, res) => {
 app.get('/api/ai/group-by-person', async (req, res) => {
     try {
         const limit = Math.max(1, Math.min(200, Number(req.query?.limit) || 50));
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                const result = await gocoreClient.personGroups({ limit });
+                res.set('Cache-Control', 'no-store, max-age=0');
+                return res.json(result);
+            } catch {}
+        }
         const rows = aiGetDb()
             .prepare(`
                 SELECT p.id, p.label, p.face_count,

@@ -1199,6 +1199,41 @@ export async function facesByDownload(
     return body;
 }
 
+/** Read the compact local people grouping through tgdl-core. */
+export async function personGroups(
+    { limit = 50 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/person-groups',
+        { limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const validRows =
+        body &&
+        Array.isArray(body.groups) &&
+        body.groups.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.label == null || typeof row.label === 'string') &&
+                Number.isSafeInteger(row.face_count) &&
+                row.face_count >= 0 &&
+                (row.cover_download_id == null || Number.isSafeInteger(row.cover_download_id)),
+        );
+    if (!validRows || body.success !== true) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed person groups response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

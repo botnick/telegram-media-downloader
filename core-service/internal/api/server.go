@@ -32,6 +32,8 @@
 //	                         read-only seekbar sprite catalog
 //	POST /v1/db/faces-by-download
 //	                         read-only face boxes for one download
+//	POST /v1/db/person-groups
+//	                         read-only compact people grouping
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -128,6 +130,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/thumbs-list", s.dbRead.ThumbsList)
 		private.HandleFunc("POST /v1/db/seekbar-list", s.dbRead.SeekbarList)
 		private.HandleFunc("POST /v1/db/faces-by-download", s.dbRead.FacesByDownload)
+		private.HandleFunc("POST /v1/db/person-groups", s.dbRead.PersonGroups)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

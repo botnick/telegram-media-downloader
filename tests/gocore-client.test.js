@@ -656,6 +656,27 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ downloadId: 2 });
     });
 
+    it('reads compact person groups through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/person-groups': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        success: true,
+                        groups: [{ id: 1, label: 'Alice', face_count: 2, cover_download_id: 2 }],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.personGroups({ limit: 1 })).resolves.toMatchObject({
+            success: true,
+            groups: [expect.objectContaining({ id: 1, face_count: 2 })],
+        });
+        expect(request).toEqual({ limit: 1 });
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(

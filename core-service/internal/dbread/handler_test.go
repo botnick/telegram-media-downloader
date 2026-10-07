@@ -304,6 +304,22 @@ func TestFacesByDownload(t *testing.T) {
 	}
 }
 
+func TestPersonGroups(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.PersonGroups), map[string]any{"limit": 1})
+	if status != http.StatusOK || body["success"] != true {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["groups"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("groups=%v", body["groups"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(1) || row["label"] != "Alice" || row["face_count"] != float64(2) || row["cover_download_id"] != float64(1) {
+		t.Fatalf("row=%v", row)
+	}
+}
+
 func TestShareLinks(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.ShareLinks), map[string]any{
