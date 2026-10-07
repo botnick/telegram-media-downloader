@@ -424,6 +424,30 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ limit: 3 });
     });
 
+    it('reads NSFW tier counters through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/nsfw-tiers': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        tiers: { def_not: 1, maybe_not: 2 },
+                        scanned: 3,
+                        unscanned: 4,
+                        whitelisted: 1,
+                        totalEligible: 7,
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.nsfwTiers({ fileTypes: ['photo', 'video'] })).resolves.toMatchObject({
+            scanned: 3,
+            totalEligible: 7,
+        });
+        expect(request).toEqual({ fileTypes: ['photo', 'video'] });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

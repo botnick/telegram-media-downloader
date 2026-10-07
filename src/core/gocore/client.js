@@ -880,6 +880,42 @@ export async function updateHistory(
     return body;
 }
 
+/** Read NSFW tier counters through tgdl-core's DB pool. */
+export async function nsfwTiers(
+    { fileTypes = ['photo'] } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/nsfw-tiers',
+        { fileTypes: Array.isArray(fileTypes) ? fileTypes : ['photo'] },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    const tiers = body?.tiers;
+    const validTierCounts =
+        tiers && typeof tiers === 'object' && !Array.isArray(tiers) &&
+        Object.values(tiers).every((n) => Number.isSafeInteger(n) && n >= 0);
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (
+        !validTierCounts ||
+        !Number.isSafeInteger(body.scanned) ||
+        body.scanned < 0 ||
+        !Number.isSafeInteger(body.unscanned) ||
+        body.unscanned < 0 ||
+        !Number.isSafeInteger(body.whitelisted) ||
+        body.whitelisted < 0 ||
+        !Number.isSafeInteger(body.totalEligible) ||
+        body.totalEligible < 0
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed nsfw tiers response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

@@ -15,7 +15,7 @@ it for:
 | `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `thumb` | `POST /v1/thumb/{video,image,audio}` | Media decode/scale/WebP thumbnail generation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `seekbar` | `POST /v1/seekbar` | Video sampling, tiling and sprite encode with bounded ffmpeg workers (optional; old binaries fall back to Node) |
-| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats`, `/v1/db/group-stats`, `/v1/db/group-files`, `/v1/db/downloads/all`, `/v1/db/downloads/group`, `/v1/db/downloads/search`, `/v1/db/share-links`, `/v1/db/update-history` | Read-only SQLite dashboard projections (optional; Node falls back to its local queries) |
+| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats`, `/v1/db/group-stats`, `/v1/db/group-files`, `/v1/db/downloads/all`, `/v1/db/downloads/group`, `/v1/db/downloads/search`, `/v1/db/share-links`, `/v1/db/update-history`, `/v1/db/nsfw-tiers` | Read-only SQLite dashboard projections (optional; Node falls back to its local queries) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
@@ -115,6 +115,7 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 | `POST /v1/db/downloads/search` | token | JSON `{"query":"IMG","limit":50,"offset":0,"groupId":"…","type":"images","pinnedOnly":false,"pinnedFirst":false,"order":"relevance"}` → local FTS/LIKE page |
 | `POST /v1/db/share-links` | token | JSON `{"downloadId":1,"includeRevoked":true,"limit":500,"offset":0,"search":"IMG"}` → joined local share-link page |
 | `POST /v1/db/update-history` | token | JSON `{"limit":25}` → newest update audit rows |
+| `POST /v1/db/nsfw-tiers` | token | JSON `{"fileTypes":["photo"]}` → tier/scanned/whitelist counters |
 | `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
 ### `/v1/hash`

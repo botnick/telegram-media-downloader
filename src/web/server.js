@@ -8494,7 +8494,13 @@ app.get('/api/maintenance/nsfw/v2/tiers-meta', async (req, res) => {
 app.get('/api/maintenance/nsfw/v2/tiers', async (req, res) => {
     try {
         const cfg = _nsfwCfg();
-        const counts = getNsfwTierCounts(cfg.fileTypes);
+        let counts;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                counts = await gocoreClient.nsfwTiers({ fileTypes: cfg.fileTypes });
+            } catch {}
+        }
+        counts ||= getNsfwTierCounts(cfg.fileTypes);
         log({
             source: 'nsfw',
             level: 'info',

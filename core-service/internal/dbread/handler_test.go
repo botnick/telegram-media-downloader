@@ -24,7 +24,8 @@ func makeDB(t *testing.T) string {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		group_id TEXT, group_name TEXT, file_size INTEGER,
 		message_id INTEGER, file_type TEXT, file_name TEXT, file_path TEXT,
-		created_at TEXT, nsfw_score REAL, pending_until INTEGER,
+		created_at TEXT, nsfw_score REAL, nsfw_checked_at INTEGER,
+		nsfw_whitelist INTEGER DEFAULT 0, pending_until INTEGER,
 		rescued_at INTEGER, pinned INTEGER DEFAULT 0
 	)`)
 	if err != nil {
@@ -61,6 +62,15 @@ func makeDB(t *testing.T) string {
 		('-2','unknown',NULL,21,NULL,NULL,NULL,NULL,NULL),
 		('-3','',5,30,'audio','d.ogg','G/audio/d.ogg','2026-01-04T00:00:00Z',NULL)`)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE downloads SET nsfw_score=0.2, nsfw_checked_at=100 WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE downloads SET nsfw_score=0.95, nsfw_checked_at=100 WHERE id=2`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE downloads SET nsfw_score=0.8, nsfw_checked_at=100, nsfw_whitelist=1 WHERE id=3`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO seekbar_sprites(download_id,duration_sec) VALUES (2, 12.5)`); err != nil {
@@ -235,5 +245,17 @@ func TestUpdateHistory(t *testing.T) {
 	rows, _ = body["history"].([]any)
 	if len(rows) != 2 || rows[1].(map[string]any)["backup_bytes"] != float64(42) {
 		t.Fatalf("full history=%v", body["history"])
+	}
+}
+
+func TestNsfwTiers(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.NsfwTiers), map[string]any{"fileTypes": []string{"photo", "video"}})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	tiers, _ := body["tiers"].(map[string]any)
+	if tiers["def_not"] != float64(1) || tiers["def"] != float64(1) || body["scanned"] != float64(2) || body["whitelisted"] != float64(1) || body["totalEligible"] != float64(2) {
+		t.Fatalf("body=%v", body)
 	}
 }
