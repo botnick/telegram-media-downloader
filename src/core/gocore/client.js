@@ -1285,6 +1285,33 @@ export async function personPhotos(
     return body;
 }
 
+/** Read seekbar cache counters through tgdl-core's DB pool. */
+export async function seekbarStats({ timeoutMs = 10_000, readyWaitMs, signal } = {}) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/seekbar-stats',
+        {},
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (
+        !body ||
+        !Number.isSafeInteger(body.count) ||
+        body.count < 0 ||
+        !Number.isSafeInteger(body.bytes) ||
+        body.bytes < 0 ||
+        !Number.isSafeInteger(body.totalVideos) ||
+        body.totalVideos < 0
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed seekbar stats response', { status });
+    }
+    _count(feature, 'ok');
+    return { count: body.count, bytes: body.bytes, totalVideos: body.totalVideos };
+}
+
 /** Read the AI maintenance counters through tgdl-core. */
 export async function aiCounts(
     { fileTypes = ['photo'] } = {},

@@ -622,6 +622,25 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ limit: 1, offset: 3 });
     });
 
+    it('reads seekbar cache counters through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/seekbar-stats': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { count: 4, bytes: 4096, totalVideos: 12 });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.seekbarStats()).resolves.toEqual({
+            count: 4,
+            bytes: 4096,
+            totalVideos: 12,
+        });
+        expect(request).toEqual({});
+    });
+
     it('reads face boxes through the Go DB projection', async () => {
         let request;
         await fakeCore(

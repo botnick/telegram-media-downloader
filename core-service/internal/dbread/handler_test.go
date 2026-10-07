@@ -196,6 +196,26 @@ func TestDedupStats(t *testing.T) {
 	}
 }
 
+func TestSeekbarStats(t *testing.T) {
+	path := makeDB(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE seekbar_sprites SET bytes = 42 WHERE download_id = 2"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(path, nil)
+	status, body := call(t, http.HandlerFunc(h.SeekbarStats), map[string]any{})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	if body["count"] != float64(1) || body["bytes"] != float64(42) || body["totalVideos"] != float64(1) {
+		t.Fatalf("body=%v", body)
+	}
+}
+
 func TestGroupStats(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.GroupStats), map[string]any{"groupId": "-1"})

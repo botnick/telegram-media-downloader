@@ -7786,16 +7786,29 @@ app.post('/api/maintenance/seekbar/regen/:id', async (req, res) => {
 
 app.get('/api/maintenance/seekbar/stats', async (req, res) => {
     try {
-        const stats = getSeekbarCacheStats();
+        let stats;
+        let totalVideos;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                const result = await gocoreClient.seekbarStats();
+                stats = { count: result.count, bytes: result.bytes };
+                totalVideos = result.totalVideos;
+            } catch {
+                /* old core or transient read error — use the local query */
+            }
+        }
+        if (!stats) {
+            stats = getSeekbarCacheStats();
+            totalVideos = countVideoDownloads();
+        }
         const sidecar = getSeekbarSidecarStatus();
-        const totalVideos = countVideoDownloads();
         res.json({ success: true, sidecar, ffmpegAvailable: hasFfmpeg(), totalVideos, ...stats });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
 });
 
-app.get('/api/maintenance/seekbar/queue/stats', (req, res) => {
+app.get('/api/maintenance/seekbar/queue/stats', async (req, res) => {
     try {
         const tracker = _jobTrackers.seekbarBuild;
         const status = tracker.getStatus();
@@ -7805,7 +7818,18 @@ app.get('/api/maintenance/seekbar/queue/stats', (req, res) => {
         // When a scan is active: show live session counts.
         // When idle: completed = total sprites in DB so the card is meaningful
         // even when no scan has run in the current process lifetime.
-        const completed = running ? p.generated || 0 : countSeekbarSprites();
+        let completed = p.generated || 0;
+        if (!running) {
+            if (gocoreClient.isAvailable('db')) {
+                try {
+                    completed = (await gocoreClient.seekbarStats()).count;
+                } catch {
+                    completed = countSeekbarSprites();
+                }
+            } else {
+                completed = countSeekbarSprites();
+            }
+        }
         const scanRemaining = running ? Math.max(0, (p.total || 0) - (p.processed || 0)) : 0;
         res.json({
             success: true,
