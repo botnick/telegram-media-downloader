@@ -801,6 +801,28 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ limit: 9 });
     });
 
+    it('reads face embedding pages through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/face-embeddings': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 4, embedding: 'AQIDBA==', quality_score: null }],
+                        total: 1,
+                        nextId: null,
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.faceEmbeddings({ afterId: 0, limit: 2 })).resolves.toMatchObject({
+            total: 1,
+            rows: [{ id: 4, embedding: 'AQIDBA==' }],
+        });
+        expect(request).toEqual({ afterId: 0, limit: 2 });
+    });
+
     it('reads integrity candidates through the Go DB projection', async () => {
         let request;
         await fakeCore(

@@ -42,6 +42,8 @@
 //	                         read-only compact people grouping
 //	POST /v1/db/person-photos
 //	                         read-only people gallery page
+//	POST /v1/db/face-embeddings
+//	                         read-only keyset-paged face embeddings
 //	POST /v1/db/ai-counts
 //	                         read-only AI maintenance counters
 //	POST /v1/db/ai-candidates
@@ -181,6 +183,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/faces-by-download", s.dbRead.FacesByDownload)
 		private.HandleFunc("POST /v1/db/person-groups", s.dbRead.PersonGroups)
 		private.HandleFunc("POST /v1/db/person-photos", s.dbRead.PersonPhotos)
+		private.HandleFunc("POST /v1/db/face-embeddings", s.dbRead.FaceEmbeddings)
 		private.HandleFunc("POST /v1/db/ai-counts", s.dbRead.AICounts)
 		private.HandleFunc("POST /v1/db/ai-candidates", s.dbRead.AICandidates)
 		private.HandleFunc("POST /v1/db/recovery-stats", s.dbRead.RecoveryStats)

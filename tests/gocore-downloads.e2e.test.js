@@ -21,6 +21,14 @@ beforeAll(async () => {
         }
         insert.run('-2', 1, null, null, null, null);
     })();
+    const insertFace = db.prepare(`INSERT INTO faces
+        (download_id, x, y, w, h, embedding, quality_score)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    insertFace.run(1, 0.1, 0.2, 0.3, 0.4, Buffer.from([1, 2, 3, 4]), null);
+    insertFace.run(2, 0.2, 0.3, 0.4, 0.5, Buffer.from([5, 6, 7, 8]), 0.75);
+    for (let i = 0; i < 501; i++) {
+        insertFace.run(3 + (i % 1103), 0.3, 0.4, 0.5, 0.6, Buffer.from([9, 10, 11, 12]), i / 100);
+    }
     expected = db.prepare(`SELECT id, group_id, group_name, file_name, file_size, file_type, file_path
         FROM downloads ORDER BY id`).all();
     groupIds = expected.filter((row) => row.group_id === '-1').map((row) => row.id);
@@ -119,4 +127,23 @@ it('reads the bounded disk-rotator projection from the real Go core', async () =
         { id: expected[0].id, file_size: 1, file_path: 'G/images/ภาพ 1.jpg' },
         { id: expected[1].id, file_size: 2, file_path: 'G/images/ภาพ 2.jpg' },
     ]);
+});
+
+it('reads keyset face embeddings from the real Go core without a Node query', async () => {
+    vi.spyOn(db, 'prepare').mockImplementation(() => { throw new Error('unexpected Node query'); });
+    const first = await core.post('/v1/db/face-embeddings', { afterId: 0, limit: 1 });
+    expect(first.status).toBe(200);
+    expect(first.json.total).toBe(503);
+    expect(first.json.rows).toEqual([{ id: 1, embedding: 'AQIDBA==', quality_score: null }]);
+    expect(first.json.nextId).toBe(1);
+    const second = await core.post('/v1/db/face-embeddings', { afterId: 1, limit: 1 });
+    expect(second.status).toBe(200);
+    expect(second.json.total).toBeNull();
+    expect(second.json.rows).toEqual([{ id: 2, embedding: 'BQYHCA==', quality_score: 0.75 }]);
+    expect(second.json.nextId).toBe(2);
+    const tail = await core.post('/v1/db/face-embeddings', { afterId: 500, limit: 10 });
+    expect(tail.status).toBe(200);
+    expect(tail.json.rows).toHaveLength(3);
+    expect(tail.json.rows[0].id).toBe(501);
+    expect(tail.json.rows[2].id).toBe(503);
 });

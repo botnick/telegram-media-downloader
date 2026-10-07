@@ -1364,6 +1364,43 @@ export async function personPhotos(
     return body;
 }
 
+/** Read one bounded keyset page of face embeddings through tgdl-core. */
+export async function faceEmbeddings(
+    { afterId = 0, limit = 500 } = {},
+    { timeoutMs = 30_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/face-embeddings',
+        { afterId, limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const validRows =
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                typeof row.embedding === 'string' &&
+                (row.quality_score == null || typeof row.quality_score === 'number'),
+        );
+    if (
+        !validRows ||
+        (body.total != null && (!Number.isSafeInteger(body.total) || body.total < 0)) ||
+        (body.nextId != null && (!Number.isSafeInteger(body.nextId) || body.nextId <= 0))
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed face embeddings response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read seekbar cache counters through tgdl-core's DB pool. */
 export async function seekbarStats({ timeoutMs = 10_000, readyWaitMs, signal } = {}) {
     const feature = 'db';

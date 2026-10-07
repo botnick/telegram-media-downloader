@@ -60,6 +60,7 @@ const REQUEST_TIMEOUT_MS_DEFAULT = 60_000;
 // Phase B: faces loaded per SELECT and person_id updates per transaction.
 // Both bounded so no single synchronous stretch holds the event loop.
 const CLUSTER_LOAD_CHUNK = 2000;
+const FACE_EMBEDDING_PAGE_SIZE = 500;
 const CLUSTER_WRITE_CHUNK = 5000;
 
 // Float32Array <-> Buffer helpers. Previously came from vector-store.js
@@ -808,7 +809,79 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
  * @returns {Promise<{data: Float32Array, n: number, dim: number, ids: Float64Array, weights: Float64Array}|null>}
  *          null when aborted
  */
+async function _loadEmbeddingsFromRows(rows, total, signal, log, nextPage) {
+    const ids = new Float64Array(total);
+    const weights = new Float64Array(total);
+    let data = new Float32Array(0);
+    let dim = 0;
+    let n = 0;
+    let skipped = 0;
+    let page = rows;
+    let afterId = 0;
+    while (page.length) {
+        if (signal.aborted) return null;
+        for (const r of page) {
+            if (n >= total) break;
+            let blob;
+            try {
+                blob = Buffer.from(String(r.embedding || ''), 'base64');
+            } catch {
+                blob = null;
+            }
+            if (!blob?.byteLength || blob.byteLength % 4 !== 0) {
+                skipped++;
+                afterId = Number(r.id) || afterId;
+                continue;
+            }
+            if (!dim) {
+                dim = blob.byteLength / 4;
+                data = new Float32Array(total * dim);
+            }
+            if (blob.byteLength !== dim * 4) {
+                skipped++;
+                afterId = Number(r.id) || afterId;
+                continue;
+            }
+            new Uint8Array(data.buffer, n * dim * 4, dim * 4).set(blob);
+            ids[n] = r.id;
+            weights[n] = Number.isFinite(r.quality_score) ? r.quality_score : Number.NaN;
+            n++;
+            afterId = Number(r.id) || afterId;
+        }
+        if (n >= total || page.length < FACE_EMBEDDING_PAGE_SIZE || !nextPage) break;
+        page = (await nextPage(afterId)).rows;
+        await _yield();
+    }
+    if (skipped) {
+        log('warn', `faces scan: ${skipped} face rows skipped (missing / mismatched embedding)`);
+    }
+    return { data, n, dim, ids, weights };
+}
+
 async function _loadEmbeddings(db, signal, log) {
+    if (gocoreClient.isAvailable('db')) {
+        try {
+            const first = await gocoreClient.faceEmbeddings(
+                { afterId: 0, limit: FACE_EMBEDDING_PAGE_SIZE },
+                { timeoutMs: 30_000, signal },
+            );
+            const total = Number(first.total || 0);
+            return await _loadEmbeddingsFromRows(
+                first.rows,
+                total,
+                signal,
+                log,
+                (afterId) =>
+                    gocoreClient.faceEmbeddings(
+                        { afterId, limit: FACE_EMBEDDING_PAGE_SIZE },
+                        { timeoutMs: 30_000, signal },
+                    ),
+            );
+        } catch (e) {
+            if (signal.aborted || e?.name === 'AbortError') return null;
+            // Old cores and transient restarts use one complete local read.
+        }
+    }
     const total = db.prepare('SELECT COUNT(*) AS n FROM faces').get().n;
     const ids = new Float64Array(total);
     const weights = new Float64Array(total);
@@ -828,7 +901,7 @@ async function _loadEmbeddings(db, signal, log) {
         for (const r of rows) {
             if (n >= total) break;
             const blob = r.embedding;
-            if (!blob || !blob.byteLength) {
+            if (!blob || !blob.byteLength || blob.byteLength % 4 !== 0) {
                 skipped++;
                 continue;
             }

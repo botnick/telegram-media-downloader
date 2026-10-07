@@ -282,6 +282,25 @@ func TestDiskRotatorCandidates(t *testing.T) {
 	}
 }
 
+func TestFaceEmbeddings(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.FaceEmbeddings), map[string]any{"afterId": 0, "limit": 2})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	if body["total"] != float64(3) {
+		t.Fatalf("total=%v", body["total"])
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 2 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	first := rows[0].(map[string]any)
+	if first["id"] != float64(1) || first["embedding"] != "EQ==" {
+		t.Fatalf("first row=%v", first)
+	}
+}
+
 func TestNsfwCandidates(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.NsfwCandidates), map[string]any{
