@@ -22,6 +22,7 @@ import fs from 'fs';
 import path from 'path';
 import { getDb } from './db.js';
 import { hashFilesViaCore } from './gocore/hash.js';
+import * as gocoreClient from './gocore/client.js';
 import { getDownloadsDir } from './paths.js';
 import { deferDelete } from './deferred-delete.js';
 
@@ -479,6 +480,23 @@ export async function removeGroupFolder(groupId, folderAbs) {
             .all(String(groupId), `${esc(rel)}/%`, `${esc(path.resolve(folderAbs))}/%`)
             .map((r) => fileKey(r.file_path)),
     );
+
+    // The Go walker removes the large tree without making Node recurse through
+    // every directory. Keep only absolute paths that actually belong below
+    // this root; unresolved legacy paths cannot name an existing file here.
+    if (gocoreClient.isAvailable('remove-tree')) {
+        const keep = [...used].filter((p) => {
+            if (!path.isAbsolute(p)) return false;
+            const rel = path.relative(folderAbs, p);
+            return rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+        });
+        try {
+            return (await gocoreClient.removeTree(folderAbs, keep)).kept;
+        } catch {
+            // Old cores, custom paths outside the allow-list, and transient
+            // core failures use the proven Node fallback below.
+        }
+    }
     if (!used.size) {
         await fs.promises.rm(folderAbs, { recursive: true, force: true });
         return 0;

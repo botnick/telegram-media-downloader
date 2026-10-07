@@ -17,7 +17,7 @@
  *                with plain fs itself — see hash.js / fs.js.
  *   timeout / transport / auth / server / protocol / busy / aborted
  *
- * Optional helpers (`hash-batch`, `tar-gz`, `db`, `thumb`, `seekbar` and `faststart`) keep a Node fallback for
+ * Optional helpers (`hash-batch`, `tar-gz`, `remove-tree`, `db`, `thumb`, `seekbar` and `faststart`) keep a Node fallback for
  * older binaries; the required filesystem and clustering calls do not.
  *
  * Every call has a deadline; on expiry (or an AbortSignal) the socket is
@@ -1203,6 +1203,26 @@ export async function walk(req, { onEvent, timeoutMs = 30 * 60_000, signal, read
     }
     _count(feature, 'ok');
     return summary;
+}
+
+/** Remove a directory tree while preserving absolute paths in `keep`. */
+export async function removeTree(root, keep = [], { timeoutMs = 30 * 60_000, readyWaitMs, signal } = {}) {
+    const feature = 'remove-tree';
+    if (!Array.isArray(keep)) throw new TypeError('removeTree: keep must be an array');
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/fs/remove-tree',
+        { root, keep },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!Number.isSafeInteger(body?.kept) || body.kept < 0) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed remove-tree response', { status });
+    }
+    _count(feature, 'ok');
+    return { kept: body.kept };
 }
 
 function _b64(s, Type) {

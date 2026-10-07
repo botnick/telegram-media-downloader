@@ -193,6 +193,26 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ root: DOWNLOADS });
     });
 
+    it('removes a tree while preserving the Go keep allowlist', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/fs/remove-tree': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { kept: 2 });
+                },
+            },
+            { features: ['remove-tree'] },
+        );
+        await expect(client.removeTree(DOWNLOADS, [FILE, path.join(DOWNLOADS, 'shared.jpg')])).resolves.toEqual({
+            kept: 2,
+        });
+        expect(request).toEqual({
+            root: DOWNLOADS,
+            keep: [FILE, path.join(DOWNLOADS, 'shared.jpg')],
+        });
+    });
+
     it('accepts the Go faststart result and rejects malformed status', async () => {
         let malformed = false;
         await fakeCore(

@@ -16,4 +16,4 @@ var Version = "0.4.0"
 
 // Features lists what this build can do; the Node side only routes a
 // feature to Go when /health advertises it.
-var Features = []string{"hash", "hash-batch", "tar-gz", "stat", "walk", "dbscan", "zip", "faststart", "thumb", "seekbar", "db"}
+var Features = []string{"hash", "hash-batch", "tar-gz", "stat", "walk", "remove-tree", "dbscan", "zip", "faststart", "thumb", "seekbar", "db"}

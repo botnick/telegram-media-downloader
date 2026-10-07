@@ -160,7 +160,7 @@ metrics.declare('tgdl_workers', 'gauge', 'Active downloader worker count.');
 metrics.declare('tgdl_accounts_loaded', 'gauge', 'Telegram accounts currently loaded.');
 metrics.declare('tgdl_monitor_state', 'gauge', '1 if the realtime monitor is running, else 0.');
 metrics.declare('tgdl_download_duration_seconds', 'histogram', 'Per-file download duration.');
-// tgdl-core, the Go engine. `feature` is hash | hash-batch | tar-gz | stat | walk | dbscan;
+// tgdl-core, the Go engine. `feature` is hash | hash-batch | tar-gz | remove-tree | stat | walk | dbscan;
 // `result` is ok | file_error | outside (path not under
 // TGDL_CORE_ALLOW_ROOTS, answered in-process) | timeout | error.
 metrics.declare(

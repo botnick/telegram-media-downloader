@@ -5,6 +5,8 @@
 //	POST /v1/hash-batch      {"paths": ["/abs/file", ...]} -> per-file results
 //	                         only files inside the allowed roots (403 EOUTSIDE otherwise)
 //	POST /v1/tar-gz         {"root": "/abs/staging"} -> streamed tar.gz snapshot
+//	POST /v1/fs/remove-tree {"root": "/abs/dir", "keep": ["/abs/file"]}
+//	                         -> remove files below root except keep paths
 //	POST /v1/fs/stat-batch   {"paths": [...]} -> fs.stat per path, Node's error codes
 //	POST /v1/fs/walk         recursive fs.readdir (+ fs.stat), NDJSON stream
 //	POST /v1/dbscan          face-embedding DBSCAN, NDJSON progress + result
@@ -95,6 +97,7 @@ func (s *Server) Handler() http.Handler {
 	private.Handle("POST /v1/tar-gz", &tarstream.Handler{Roots: s.roots, Log: s.log})
 	private.Handle("POST /v1/fs/stat-batch", &fsx.StatBatchHandler{Roots: s.roots, Stats: s.fsStats, Log: s.log})
 	private.Handle("POST /v1/fs/walk", &fsx.WalkHandler{Roots: s.roots, Stats: s.fsStats, Log: s.log})
+	private.Handle("POST /v1/fs/remove-tree", &fsx.RemoveTreeHandler{Roots: s.roots})
 	private.Handle("POST /v1/dbscan", &dbscan.Handler{Log: s.log})
 	private.Handle("POST /v1/zip", &zipstream.Handler{Roots: s.roots, Log: s.log})
 	private.Handle("POST /v1/faststart", &faststart.Handler{Roots: s.roots, Log: s.log})

@@ -16,6 +16,7 @@ const previousDataDir = process.env.TGDL_DATA_DIR;
 
 let spawnMod;
 let dbMod;
+let dedup;
 let manager;
 let destinationId;
 
@@ -58,6 +59,7 @@ beforeAll(async () => {
     fs.writeFileSync(path.join(DATA, 'sessions', 'one.session'), 'session-data');
     spawnMod = await import('../src/core/gocore/spawn.js');
     dbMod = await import('../src/core/db.js');
+    dedup = await import('../src/core/dedup.js');
     manager = await import('../src/core/backup/manager.js');
     if (!(await spawnMod.startGoCore())) {
         throw new Error(`tgdl-core did not start: ${JSON.stringify(spawnMod.getGoCoreStatus())}`);
@@ -103,5 +105,45 @@ describe('snapshot backups through tgdl-core', () => {
         expect(names).toEqual(
             expect.arrayContaining(['db.sqlite', 'sessions/', 'sessions/one.session']),
         );
+    }, 60_000);
+
+    it('removes a group tree in Go while preserving shared physical files', async () => {
+        const groupDir = path.join(DATA, 'downloads', 'G1', 'images');
+        fs.mkdirSync(groupDir, { recursive: true });
+        const shared = path.join(groupDir, 'shared.jpg');
+        const drop = path.join(groupDir, 'drop.jpg');
+        fs.writeFileSync(shared, 'shared');
+        fs.writeFileSync(drop, 'drop');
+        dbMod.insertDownload({
+            groupId: '1',
+            groupName: 'G1',
+            messageId: 1001,
+            fileName: 'shared.jpg',
+            fileSize: 6,
+            fileType: 'photo',
+            filePath: 'G1/images/shared.jpg',
+        });
+        dbMod.insertDownload({
+            groupId: '1',
+            groupName: 'G1',
+            messageId: 1002,
+            fileName: 'drop.jpg',
+            fileSize: 4,
+            fileType: 'photo',
+            filePath: 'G1/images/drop.jpg',
+        });
+        dbMod.insertDownload({
+            groupId: '2',
+            groupName: 'G2',
+            messageId: 1003,
+            fileName: 'shared.jpg',
+            fileSize: 6,
+            fileType: 'photo',
+            filePath: 'G1/images/shared.jpg',
+        });
+
+        await expect(dedup.removeGroupFolder('1', path.join(DATA, 'downloads', 'G1'))).resolves.toBe(1);
+        expect(fs.existsSync(shared)).toBe(true);
+        expect(fs.existsSync(drop)).toBe(false);
     }, 60_000);
 });

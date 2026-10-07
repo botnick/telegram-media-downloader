@@ -10,6 +10,7 @@ it for:
 | `hash` | `POST /v1/hash` | download-time dedup, the duplicate scan, the NSFW hash blocklist |
 | `stat` | `POST /v1/fs/stat-batch` | the integrity sweep (Verify files, boot + hourly) |
 | `walk` | `POST /v1/fs/walk` | Re-index from disk, the disk-usage fallback of `/api/stats` |
+| `remove-tree` | `POST /v1/fs/remove-tree` | Group-folder cleanup while preserving shared physical files (optional; Node fallback) |
 | `dbscan` | `POST /v1/dbscan` | face clustering (scan runner Phase B) |
 | `zip` | `POST /v1/zip` | STORE-mode bulk ZIP streaming (optional; old binaries fall back to Node) |
 | `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
@@ -97,10 +98,11 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 
 | Route | Auth | |
 |---|---|---|
-| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","hash-batch","tar-gz","stat","walk","dbscan","zip","faststart","thumb","seekbar","db"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
+| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","hash-batch","tar-gz","stat","walk","remove-tree","dbscan","zip","faststart","thumb","seekbar","db"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
 | `POST /v1/hash` | token | Body `{"path":"/abs/file"}` → `{"sha256","size","mtimeMs"}` |
 | `POST /v1/fs/stat-batch` | token | Body `{"paths":["/abs/a", …]}` (≤ 1000) → `{"results":[…]}`, see below |
 | `POST /v1/fs/walk` | token | Body `{"root","maxDepth","stat","entries"}` → NDJSON stream, see below |
+| `POST /v1/fs/remove-tree` | token | Body `{"root":"/abs/dir","keep":["/abs/file", …]}` → `{kept}`; removes unkept files and leaves non-empty directories |
 | `POST /v1/dbscan` | token | Query `n, dim, eps, minPts, weights=0|1`, binary body → NDJSON stream, see below |
 | `POST /v1/zip` | token | JSON `{entries:[{path,name}]}` → streamed STORE-mode ZIP; paths are rechecked against allow-roots |
 | `POST /v1/faststart` | token | JSON `{"path":"/abs/file.mp4"}` → `{status:"already"|"optimized",newSize?}`; writes atomically inside an allow-root |
