@@ -48,6 +48,9 @@ serve reads its settings from the environment:
   TGDL_CORE_WATCH_STDIN  1 = exit when stdin closes (set by the Node app)
   TGDL_CORE_LOG_LEVEL    debug | info | warn | error
   HASH_WORKER_POOL_SIZE  files hashed at once (same rules as the Node pool)
+  TGDL_DBSCAN_WORKERS    DBSCAN workers (default capped at 8)
+  FASTSTART_CONCURRENCY  MP4 faststart workers (default 2, capped at 8)
+  FFMPEG_PATH            optional ffmpeg executable for faststart
 `
 
 func main() {

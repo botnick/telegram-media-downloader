@@ -12,12 +12,14 @@ it for:
 | `walk` | `POST /v1/fs/walk` | Re-index from disk, the disk-usage fallback of `/api/stats` |
 | `dbscan` | `POST /v1/dbscan` | face clustering (scan runner Phase B) |
 | `zip` | `POST /v1/zip` | STORE-mode bulk ZIP streaming (optional; old binaries fall back to Node) |
+| `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
 
-It is the only implementation of these — the Node code it replaced is gone
-— so every answer must be the one Node gave: same digests, the same
+For the required file and clustering features it is the only implementation;
+optional features are used when advertised and retain a Node compatibility path.
+The required answers remain identical to Node: same digests, the same
 `fs.stat` / `fs.readdir` results and error codes, the same clusters. See
 [docs/GO-CORE.md](../docs/GO-CORE.md) for how that is proven and what the
 app does when tgdl-core can't run.
@@ -50,6 +52,8 @@ in `ps`), plus the few OS variables a Go binary needs (`PATH`,
 | `TGDL_CORE_WATCH_STDIN` | off | `1`: exit when stdin reaches EOF. The app keeps the pipe open, so when the app dies (crash, `kill -9`, Task Manager) tgdl-core exits instead of lingering as an orphan — Windows doesn't reap children with their parent. |
 | `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once (`parseInt`, values ≥ 1 capped at 32). |
 | `TGDL_DBSCAN_WORKERS` | `min(8, NumCPU-1)` | DBSCAN workers; set a positive integer to tune CPU use for a large face scan. |
+| `FASTSTART_CONCURRENCY` | `2` (max `8`) | Concurrent MP4 faststart remuxes. Keep this low on HDD/NAS storage. |
+| `FFMPEG_PATH` | `ffmpeg` on `PATH` | Optional absolute ffmpeg executable path used by the faststart worker. |
 | `TGDL_CORE_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`, to stderr. |
 
 ## Front server (`front`)
@@ -85,12 +89,13 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 
 | Route | Auth | |
 |---|---|---|
-| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan","zip"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
+| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan","zip","faststart"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
 | `POST /v1/hash` | token | Body `{"path":"/abs/file"}` → `{"sha256","size","mtimeMs"}` |
 | `POST /v1/fs/stat-batch` | token | Body `{"paths":["/abs/a", …]}` (≤ 1000) → `{"results":[…]}`, see below |
 | `POST /v1/fs/walk` | token | Body `{"root","maxDepth","stat","entries"}` → NDJSON stream, see below |
 | `POST /v1/dbscan` | token | Query `n, dim, eps, minPts, weights=0|1`, binary body → NDJSON stream, see below |
 | `POST /v1/zip` | token | JSON `{entries:[{path,name}]}` → streamed STORE-mode ZIP; paths are rechecked against allow-roots |
+| `POST /v1/faststart` | token | JSON `{"path":"/abs/file.mp4"}` → `{status:"already"|"optimized",newSize?}`; writes atomically inside an allow-root |
 | `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
 ### `/v1/hash`

@@ -370,7 +370,8 @@ function _pipeOnce(out, pathname, body, { timeoutMs, signal }) {
         let upstream = null;
         let closeHandler = null;
         const timer = setTimeout(
-            () => fail(new GoCoreError('timeout', `tgdl-core did not answer within ${timeoutMs} ms`)),
+            () =>
+                fail(new GoCoreError('timeout', `tgdl-core did not answer within ${timeoutMs} ms`)),
             timeoutMs,
         );
         timer.unref?.();
@@ -433,9 +434,13 @@ function _pipeOnce(out, pathname, body, { timeoutMs, signal }) {
                             bodyObj = chunks.length ? JSON.parse(chunks.join('')) : null;
                         } catch {
                             fail(
-                                new GoCoreError('protocol', `non-JSON response (${incoming.statusCode})`, {
-                                    status: incoming.statusCode,
-                                }),
+                                new GoCoreError(
+                                    'protocol',
+                                    `non-JSON response (${incoming.statusCode})`,
+                                    {
+                                        status: incoming.statusCode,
+                                    },
+                                ),
                             );
                             return;
                         }
@@ -448,10 +453,13 @@ function _pipeOnce(out, pathname, body, { timeoutMs, signal }) {
                     if (value !== undefined && !out.headersSent) out.setHeader(name, value);
                 }
                 closeHandler = () => {
-                    if (!out.writableFinished) fail(new GoCoreError('transport', 'response closed'));
+                    if (!out.writableFinished)
+                        fail(new GoCoreError('transport', 'response closed'));
                 };
                 out.once('close', closeHandler);
-                incoming.on('error', (e) => fail(new GoCoreError('transport', e.message, { cause: e })));
+                incoming.on('error', (e) =>
+                    fail(new GoCoreError('transport', e.message, { cause: e })),
+                );
                 out.once('finish', () => finish(resolve));
                 incoming.pipe(out);
             },
@@ -484,6 +492,35 @@ export async function pipeZip(out, entries, { timeoutMs = 30 * 60_000, signal, r
         }
         throw e;
     }
+}
+
+/** Move an MP4's moov atom to the front with the Go core's ffmpeg worker. */
+export async function optimizeFaststart(
+    absPath,
+    { timeoutMs = 10 * 60_000, signal, readyWaitMs, ffmpegPath } = {},
+) {
+    const feature = 'faststart';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/faststart',
+        { path: absPath, ...(ffmpegPath ? { ffmpeg: ffmpegPath } : {}) },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!['already', 'optimized'].includes(body?.status)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed faststart response', { status });
+    }
+    if (body.status === 'optimized' && (!Number.isSafeInteger(body.newSize) || body.newSize < 0)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed faststart size', { status });
+    }
+    _count(feature, 'ok');
+    return {
+        status: body.status,
+        newSize: body.status === 'optimized' ? body.newSize : undefined,
+    };
 }
 
 /** Map a non-200 JSON answer to a GoCoreError. */

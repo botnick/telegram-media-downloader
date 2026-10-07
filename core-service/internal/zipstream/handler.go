@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -29,6 +30,8 @@ const (
 	MaxEntries = 0xfffe
 	maxBody    = 32 << 20
 )
+
+var copyBufPool = sync.Pool{New: func() any { return make([]byte, 256<<10) }}
 
 type entry struct {
 	Path string `json:"path"`
@@ -140,7 +143,9 @@ func streamEntry(ctx context.Context, zw *zip.Writer, e resolvedEntry) error {
 	// it is being archived must fail rather than silently producing an archive
 	// whose central-directory size disagrees with the selected cap.
 	reader := io.LimitReader(contextReader{ctx: ctx, r: f}, e.size+1)
-	n, err := io.Copy(dst, reader)
+	buf := copyBufPool.Get().([]byte)
+	defer copyBufPool.Put(buf)
+	n, err := io.CopyBuffer(dst, reader, buf)
 	if err != nil {
 		return err
 	}

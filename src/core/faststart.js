@@ -39,6 +39,7 @@ import path from 'path';
 import { existsSync, promises as fs } from 'fs';
 import { spawn } from 'child_process';
 import { getDb, kvGet, kvSet } from './db.js';
+import * as gocoreClient from './gocore/client.js';
 import { resolveFfmpegBin, hasFfmpeg, purgeThumbsForDownload } from './thumbs.js';
 import { getDownloadsDir } from './paths.js';
 
@@ -385,6 +386,7 @@ async function _remuxInPlace(absPath) {
 export async function optimizeDownload(id) {
     const dlId = parseInt(id, 10);
     if (!Number.isInteger(dlId) || dlId <= 0) return { status: 'skipped', reason: 'bad id' };
+    const goAvailable = gocoreClient.isAvailable('faststart');
     if (!hasFfmpeg()) return { status: 'skipped', reason: 'no ffmpeg' };
     const row = getDb()
         .prepare('SELECT id, file_path, file_type FROM downloads WHERE id = ?')
@@ -402,13 +404,35 @@ export async function optimizeDownload(id) {
     if (!abs) return { status: 'skipped', reason: 'file missing' };
     const ext = path.extname(abs).toLowerCase();
     if (!FASTSTART_EXTS.has(ext)) return { status: 'skipped', reason: 'container not mp4' };
-    if (await _isOptimized(abs)) return { status: 'already' };
+    if (!goAvailable && (await _isOptimized(abs))) return { status: 'already' };
     const sig = await _fileSig(abs);
     if (_gaveUp(dlId, sig)) return { status: 'skipped', reason: 'failed before' };
 
     await _sem.acquire();
     try {
-        const newSize = await _remuxInPlace(abs);
+        let newSize;
+        if (goAvailable) {
+            try {
+                const st = await fs.stat(abs);
+                const timeoutMs = 30_000 + Math.ceil(st.size / (8 * 1024 * 1024)) * 1000;
+                const result = await gocoreClient.optimizeFaststart(abs, {
+                    timeoutMs,
+                    ffmpegPath: resolveFfmpegBin(),
+                });
+                if (result.status === 'already') return { status: 'already' };
+                newSize = result.newSize;
+            } catch (e) {
+                // A custom download root or a core restart can make one
+                // path unavailable to Go. Keep the established Node path
+                // as the compatibility bridge while the core recovers.
+                if (!['outside', 'unavailable', 'transport', 'timeout'].includes(e?.kind)) {
+                    throw e;
+                }
+                newSize = await _remuxInPlace(abs);
+            }
+        } else {
+            newSize = await _remuxInPlace(abs);
+        }
         if (_failures()[dlId]) {
             delete _failures()[dlId];
             _saveFailures();

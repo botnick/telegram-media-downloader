@@ -18,9 +18,12 @@ Node's single thread:
 | recursive `fs.readdir` + `fs.stat` | Re-index from disk, the disk-usage figure while the library is empty | `POST /v1/fs/walk` |
 | DBSCAN over face embeddings | face scan, Re-cluster | `POST /v1/dbscan` |
 | STORE-mode bulk ZIP streaming | bulk downloads | `POST /v1/zip` (optional feature) |
+| MP4 faststart remux | automatic video optimization and maintenance sweep | `POST /v1/faststart` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
-It is the **only** implementation of these. The Node code it replaced (the
+For the required features it is the **only** implementation. Optional
+features are used when advertised and retain a compatibility path during
+upgrades. The Node code it replaced (the
 hash worker pool, the `Promise.all(fs.stat)` sweep, the recursive folder
 walks, the DBSCAN worker) is removed; Node keeps thin client calls.
 
@@ -112,11 +115,12 @@ the log if set).
   `downloading`, `binary_missing`, `unsupported`, `exited`, `unhealthy`,
   `stopped`), `problem` (`{message, fix}` or null), `version` /
   `expectedVersion`, `platform`, `binary` (path + source), `allowRoots`,
-  `restarts`, `features.<hash|stat|walk|dbscan>.available`.
+  `restarts`, `features.<hash|stat|walk|dbscan>.available`; optional
+  features are negotiated directly by their callers.
 - `GET /api/monitor/status` → `core`: `{state, fix}` while someone needs to
   act (drives the banner; no local paths).
 - `/metrics`: `tgdl_gocore_calls_total{feature,result}` — `feature` is
-  `hash` / `stat` / `walk` / `dbscan`, `result` is `ok`, `file_error`,
+  `hash` / `stat` / `walk` / `dbscan` / `zip` / `faststart`, `result` is `ok`, `file_error`,
   `outside`, `timeout` or `error`.
 
 ## Parity

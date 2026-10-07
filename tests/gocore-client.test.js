@@ -109,6 +109,39 @@ afterAll(async () => {
 });
 
 describe('answers from a (fake) tgdl-core', () => {
+    it('passes only the Go worker tuning variables to the child', () => {
+        const previous = {
+            dbscan: process.env.TGDL_DBSCAN_WORKERS,
+            faststart: process.env.FASTSTART_CONCURRENCY,
+            ffmpeg: process.env.FFMPEG_PATH,
+            secret: process.env.TGDL_FACES_API_TOKEN,
+        };
+        process.env.TGDL_DBSCAN_WORKERS = '3';
+        process.env.FASTSTART_CONCURRENCY = '1';
+        process.env.FFMPEG_PATH = '/tmp/ffmpeg';
+        process.env.TGDL_FACES_API_TOKEN = 'must-not-leak';
+        try {
+            const env = spawnMod.childEnv('token', [DOWNLOADS]);
+            expect(env).toMatchObject({
+                TGDL_DBSCAN_WORKERS: '3',
+                FASTSTART_CONCURRENCY: '1',
+                FFMPEG_PATH: '/tmp/ffmpeg',
+            });
+            expect(env.TGDL_FACES_API_TOKEN).toBeUndefined();
+        } finally {
+            for (const [key, value] of Object.entries({
+                TGDL_DBSCAN_WORKERS: previous.dbscan,
+                FASTSTART_CONCURRENCY: previous.faststart,
+                FFMPEG_PATH: previous.ffmpeg,
+            })) {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            }
+            if (previous.secret === undefined) delete process.env.TGDL_FACES_API_TOKEN;
+            else process.env.TGDL_FACES_API_TOKEN = previous.secret;
+        }
+    });
+
     it('pipes a ZIP response without buffering it in the client', async () => {
         const wire = Buffer.from('fake-zip-wire');
         await fakeCore(
@@ -127,6 +160,28 @@ describe('answers from a (fake) tgdl-core', () => {
         out.on('data', (chunk) => chunks.push(chunk));
         await client.pipeZip(out, [{ path: FILE, name: 'sample.bin' }]);
         expect(Buffer.concat(chunks)).toEqual(wire);
+    });
+
+    it('accepts the Go faststart result and rejects malformed status', async () => {
+        let malformed = false;
+        await fakeCore(
+            {
+                '/v1/faststart': (req, raw, res) =>
+                    json(
+                        res,
+                        200,
+                        malformed ? { status: 'wat' } : { status: 'optimized', newSize: 1234 },
+                    ),
+            },
+            { features: ['faststart'] },
+        );
+        await expect(client.optimizeFaststart(FILE)).resolves.toEqual({
+            status: 'optimized',
+            newSize: 1234,
+        });
+
+        malformed = true;
+        await expect(client.optimizeFaststart(FILE)).rejects.toMatchObject({ kind: 'protocol' });
     });
 
     it('a file error (422) becomes the error fs would throw', async () => {
