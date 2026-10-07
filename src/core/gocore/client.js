@@ -526,8 +526,9 @@ export async function optimizeFaststart(
     };
 }
 
-/** Generate a video WebP thumbnail directly into the Node cache temp path. */
-export async function generateVideoThumb(
+/** Generate a WebP thumbnail directly into the Node cache temp path. */
+async function _generateThumb(
+    kind,
     absPath,
     outputPath,
     width,
@@ -537,7 +538,7 @@ export async function generateVideoThumb(
     const { status, body } = await _call(
         feature,
         'POST',
-        '/v1/thumb/video',
+        `/v1/thumb/${kind}`,
         {
             path: absPath,
             output: outputPath,
@@ -554,6 +555,18 @@ export async function generateVideoThumb(
     }
     _count(feature, 'ok');
     return { status: 'ok', size: body.size };
+}
+
+export function generateVideoThumb(absPath, outputPath, width, opts) {
+    return _generateThumb('video', absPath, outputPath, width, opts);
+}
+
+export function generateImageThumb(absPath, outputPath, width, opts) {
+    return _generateThumb('image', absPath, outputPath, width, opts);
+}
+
+export function generateAudioThumb(absPath, outputPath, width, opts) {
+    return _generateThumb('audio', absPath, outputPath, width, opts);
 }
 
 /** Map a non-200 JSON answer to a GoCoreError. */

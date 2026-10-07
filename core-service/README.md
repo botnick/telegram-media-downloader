@@ -13,7 +13,7 @@ it for:
 | `dbscan` | `POST /v1/dbscan` | face clustering (scan runner Phase B) |
 | `zip` | `POST /v1/zip` | STORE-mode bulk ZIP streaming (optional; old binaries fall back to Node) |
 | `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
-| `thumb` | `POST /v1/thumb/video` | Video decode/scale/WebP thumbnail generation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
+| `thumb` | `POST /v1/thumb/{video,image,audio}` | Media decode/scale/WebP thumbnail generation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
@@ -55,7 +55,8 @@ in `ps`), plus the few OS variables a Go binary needs (`PATH`,
 | `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once (`parseInt`, values ≥ 1 capped at 32). |
 | `TGDL_DBSCAN_WORKERS` | `min(8, NumCPU-1)` | DBSCAN workers; set a positive integer to tune CPU use for a large face scan. |
 | `FASTSTART_CONCURRENCY` | `2` (max `8`) | Concurrent MP4 faststart remuxes. Keep this low on HDD/NAS storage. |
-| `FFMPEG_PATH` | `ffmpeg` on `PATH` | Optional absolute ffmpeg executable path used by the faststart worker. |
+| `FFMPEG_PATH` | `ffmpeg` on `PATH` | Optional absolute ffmpeg executable path used by faststart and thumbnail workers. |
+| `THUMBS_IMG_CONCURRENCY` | `4` (max `32`) | Concurrent image and audio thumbnail jobs in tgdl-core. Keep this below the number of cores available to the Telegram engine. |
 | `THUMBS_VID_CONCURRENCY` | `6` (max `16`) | Concurrent video thumbnail jobs in tgdl-core. Keep this below the number of cores available to the Telegram engine. |
 | `TGDL_CORE_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`, to stderr. |
 
@@ -99,7 +100,7 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 | `POST /v1/dbscan` | token | Query `n, dim, eps, minPts, weights=0|1`, binary body → NDJSON stream, see below |
 | `POST /v1/zip` | token | JSON `{entries:[{path,name}]}` → streamed STORE-mode ZIP; paths are rechecked against allow-roots |
 | `POST /v1/faststart` | token | JSON `{"path":"/abs/file.mp4"}` → `{status:"already"|"optimized",newSize?}`; writes atomically inside an allow-root |
-| `POST /v1/thumb/video` | token | JSON `{"path":"/abs/video","output":"/abs/thumb.tmp","width":320}` → `{status:"ok",size}`; output must be inside an allow-root |
+| `POST /v1/thumb/{video,image,audio}` | token | JSON `{"path":"/abs/media","output":"/abs/thumb.tmp","width":320}` → `{status:"ok",size}`; output must be inside an allow-root |
 | `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
 ### `/v1/hash`

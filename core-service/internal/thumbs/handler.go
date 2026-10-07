@@ -23,11 +23,13 @@ import (
 )
 
 const (
-	maxBody        = 64 << 10
-	defaultWorkers = 6
-	maxWorkers     = 16
-	maxWaiting     = 32
-	maxWidth       = 4096
+	maxBody           = 64 << 10
+	defaultImgWorkers = 4
+	defaultWorkers    = 6
+	maxImgWorkers     = 32
+	maxWorkers        = 16
+	maxWaiting        = 32
+	maxWidth          = 4096
 )
 
 var hwaccelAllow = map[string]bool{
@@ -48,10 +50,11 @@ type response struct {
 	Size   int64  `json:"size,omitempty"`
 }
 
-// Handler serves POST /v1/thumb/video.
+// Handler serves one of the POST /v1/thumb/{video,image,audio} routes.
 type Handler struct {
 	Roots *hash.Roots
 	Log   *slog.Logger
+	Kind  string
 
 	Workers int
 	once    sync.Once
@@ -64,14 +67,23 @@ func (h *Handler) init() {
 		workers := h.Workers
 		if workers < 1 {
 			workers = defaultWorkers
-			if raw := strings.TrimSpace(os.Getenv("THUMBS_VID_CONCURRENCY")); raw != "" {
+			envName := "THUMBS_VID_CONCURRENCY"
+			if h.Kind == "image" || h.Kind == "audio" {
+				workers = defaultImgWorkers
+				envName = "THUMBS_IMG_CONCURRENCY"
+			}
+			if raw := strings.TrimSpace(os.Getenv(envName)); raw != "" {
 				if n, err := strconv.Atoi(raw); err == nil && n > 0 {
 					workers = n
 				}
 			}
 		}
-		if workers > maxWorkers {
-			workers = maxWorkers
+		max := maxWorkers
+		if h.Kind == "image" || h.Kind == "audio" {
+			max = maxImgWorkers
+		}
+		if workers > max {
+			workers = max
 		}
 		h.slots = make(chan struct{}, workers)
 		h.waiting = make(chan struct{}, maxWaiting)
@@ -143,7 +155,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.release()
 
-	if err := render(r.Context(), input, output, req.Width, req.FFmpeg, req.HW); err != nil {
+	if err := render(r.Context(), input, output, req.Width, req.FFmpeg, req.HW, h.Kind); err != nil {
 		if h.Log != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			h.Log.Debug("video thumbnail failed", "path", input, "err", err)
 		}
@@ -185,7 +197,10 @@ func (h *Handler) resolveOutput(p string) (string, error) {
 	return output, nil
 }
 
-func render(ctx context.Context, input, output string, width int, requested, hw string) error {
+func render(ctx context.Context, input, output string, width int, requested, hw, kind string) error {
+	if kind == "image" || kind == "audio" {
+		return renderStill(ctx, input, output, width, requested, kind)
+	}
 	_ = os.Remove(output)
 	args := func(sec int) []string {
 		filter := fmt.Sprintf("scale='min(%d,iw)':-2:flags=fast_bilinear", width)
@@ -205,6 +220,32 @@ func render(ctx context.Context, input, output string, width int, requested, hw 
 	if err := runFFmpeg(ctx, args(0), requested); err != nil {
 		_ = os.Remove(output)
 		return err
+	}
+	return nil
+}
+
+func renderStill(ctx context.Context, input, output string, width int, requested, kind string) error {
+	_ = os.Remove(output)
+	// Sharp keeps the exact aspect-ratio rounding for stills (odd heights
+	// included); -1 avoids ffmpeg's even-dimension -2 adjustment.
+	filter := fmt.Sprintf("scale='min(%d,iw)':-1:flags=fast_bilinear", width)
+	args := []string{
+		"-hide_banner", "-loglevel", "error", "-i", input,
+	}
+	if kind == "audio" {
+		args = append(args, "-map", "0:v:0")
+	}
+	args = append(args,
+		"-frames:v", "1", "-an", "-vf", filter, "-pix_fmt", "yuv420p",
+		"-c:v", "libwebp", "-quality", "62", "-compression_level", "6",
+		"-f", "webp", "-y", output,
+	)
+	if err := runFFmpeg(ctx, args, requested); err != nil {
+		_ = os.Remove(output)
+		return err
+	}
+	if !nonEmpty(output) {
+		return errors.New("ffmpeg: produced an empty thumbnail")
 	}
 	return nil
 }

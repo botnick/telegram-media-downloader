@@ -50,6 +50,38 @@ func TestVideoThumbWorker(t *testing.T) {
 	}
 }
 
+func TestImageAndAudioThumbWorkers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell worker fixture is POSIX-only")
+	}
+	dir := t.TempDir()
+	input := filepath.Join(dir, "media.bin")
+	if err := os.WriteFile(input, []byte("media"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	script := "#!/bin/sh\nout=\"\"\nfor arg; do out=\"$arg\"; done\nprintf webp > \"$out\"\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FFMPEG_PATH", ffmpeg)
+	roots, _ := hash.NewRoots([]string{dir})
+	for _, kind := range []string{"image", "audio"} {
+		h := &Handler{Roots: roots, Workers: 1, Kind: kind}
+		output := filepath.Join(dir, kind+".webp.tmp")
+		body, _ := json.Marshal(request{Path: input, Output: output, Width: 320})
+		req := httptest.NewRequest(http.MethodPost, "/v1/thumb/"+kind, bytes.NewReader(body))
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", kind, res.Code, res.Body.String())
+		}
+		if string(mustRead(t, output)) != "webp" {
+			t.Fatalf("%s output=%q", kind, mustRead(t, output))
+		}
+	}
+}
+
 func TestVideoThumbOutputMustStayInsideRoots(t *testing.T) {
 	dir := t.TempDir()
 	input := filepath.Join(dir, "clip.mp4")

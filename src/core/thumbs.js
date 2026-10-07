@@ -458,6 +458,16 @@ function _kindFromPath(absPath, declaredType) {
 // ---- Generators ------------------------------------------------------------
 
 async function _generateImageThumb(srcAbs, width, dstAbs) {
+    if (gocoreClient.isAvailable('thumb')) {
+        try {
+            await gocoreClient.generateImageThumb(srcAbs, dstAbs, width, {
+                ffmpegPath: _resolveFfmpegBin(),
+            });
+            return;
+        } catch {
+            await fs.unlink(dstAbs).catch(() => {});
+        }
+    }
     // failOn: 'none'  → tolerate slightly malformed inputs (truncated
     //                  GIFs, weird ICC profiles).
     // rotate()        → honor EXIF orientation BEFORE resize so a portrait
@@ -833,6 +843,16 @@ async function _generateVideoThumb(srcAbs, width, dstAbs) {
 }
 
 async function _generateAudioThumb(srcAbs, width, dstAbs) {
+    if (gocoreClient.isAvailable('thumb')) {
+        try {
+            await gocoreClient.generateAudioThumb(srcAbs, dstAbs, width, {
+                ffmpegPath: _resolveFfmpegBin(),
+            });
+            return;
+        } catch {
+            await fs.unlink(dstAbs).catch(() => {});
+        }
+    }
     // Pull the embedded cover-art (attached_pic stream) into a temp jpg,
     // then let sharp size + encode it. ID3v2 / Vorbis / FLAC pictures are
     // all surfaced this way by ffmpeg. If there's no cover, the ffmpeg

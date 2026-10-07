@@ -19,7 +19,7 @@ Node's single thread:
 | DBSCAN over face embeddings | face scan, Re-cluster | `POST /v1/dbscan` |
 | STORE-mode bulk ZIP streaming | bulk downloads | `POST /v1/zip` (optional feature) |
 | MP4 faststart remux | automatic video optimization and maintenance sweep | `POST /v1/faststart` (optional feature) |
-| Video thumbnail decode/scale/WebP encode | gallery and thumbnail maintenance jobs | `POST /v1/thumb/video` (optional feature) |
+| Media thumbnail decode/scale/WebP encode | gallery and thumbnail maintenance jobs | `POST /v1/thumb/{video,image,audio}` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 For the required features it is the **only** implementation. Optional

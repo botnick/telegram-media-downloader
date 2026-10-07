@@ -200,6 +200,22 @@ describe('answers from a (fake) tgdl-core', () => {
         ).resolves.toEqual({ status: 'ok', size: 456 });
     });
 
+    it('writes image and audio thumbnails through the Go core client', async () => {
+        await fakeCore(
+            {
+                '/v1/thumb/image': (req, raw, res) => json(res, 200, { status: 'ok', size: 123 }),
+                '/v1/thumb/audio': (req, raw, res) => json(res, 200, { status: 'ok', size: 234 }),
+            },
+            { features: ['thumb'] },
+        );
+        await expect(
+            client.generateImageThumb(FILE, path.join(DOWNLOADS, 'image.webp.tmp'), 320),
+        ).resolves.toEqual({ status: 'ok', size: 123 });
+        await expect(
+            client.generateAudioThumb(FILE, path.join(DOWNLOADS, 'audio.webp.tmp'), 320),
+        ).resolves.toEqual({ status: 'ok', size: 234 });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({
