@@ -29,6 +29,7 @@ import { purgeThumbsForDownload } from './thumbs.js';
 import { purgeSeekbarForDownload, collectSeekbarPaths } from './seekbar/index.js';
 import { getDownloadsDir } from './paths.js';
 import { idsWithFileInUse } from './dedup.js';
+import * as gocoreClient from './gocore/client.js';
 
 const DOWNLOADS_DIR = getDownloadsDir();
 
@@ -186,7 +187,16 @@ export class DiskRotator {
             const capBytes = parseSize(dm.maxTotalSize);
             if (capBytes <= 0) return null; // no cap → never rotate
 
-            const before = getTotalSizeBytes();
+            let useGo = gocoreClient.isAvailable('db');
+            let before;
+            if (useGo) {
+                try {
+                    before = (await gocoreClient.databaseStats({ timeoutMs: 5000 })).totalSize;
+                } catch {
+                    useGo = false;
+                }
+            }
+            before ??= getTotalSizeBytes();
             if (before <= capBytes) {
                 // Quiet success path — log only when something changes to keep
                 // logs scannable. Uncomment for verbose tracing.
@@ -220,7 +230,20 @@ export class DiskRotator {
             };
 
             outer: while (total > capBytes && safety > 0) {
-                const candidates = getOldestDownloads(batch);
+                let candidates;
+                if (useGo) {
+                    try {
+                        candidates = (
+                            await gocoreClient.diskRotatorCandidates(
+                                { limit: batch },
+                                { timeoutMs: 5000 },
+                            )
+                        ).rows;
+                    } catch {
+                        useGo = false;
+                    }
+                }
+                candidates ||= getOldestDownloads(batch);
                 if (!candidates.length) break;
                 for (const row of candidates) {
                     if (total <= capBytes || safety <= 0) break outer;
@@ -256,7 +279,15 @@ export class DiskRotator {
                 } catch {}
                 import('./deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
             }
-            const after = getTotalSizeBytes();
+            let after;
+            if (useGo) {
+                try {
+                    after = (await gocoreClient.databaseStats({ timeoutMs: 5000 })).totalSize;
+                } catch {
+                    useGo = false;
+                }
+            }
+            after ??= getTotalSizeBytes();
             console.log(
                 `[disk-rotator] sweep ${JSON.stringify({ before, deleted, after, capBytes })}`,
             );

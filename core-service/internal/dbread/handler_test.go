@@ -262,6 +262,26 @@ func TestFaststartStats(t *testing.T) {
 	}
 }
 
+func TestDiskRotatorCandidates(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.DiskRotatorCandidates), map[string]any{"limit": 2})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 2 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	first := rows[0].(map[string]any)
+	second := rows[1].(map[string]any)
+	if first["id"] != float64(4) || first["file_size"] != nil || first["file_path"] != nil {
+		t.Fatalf("first row=%v", first)
+	}
+	if second["id"] != float64(1) || second["file_size"] != float64(10) || second["file_path"] != "G/images/a.jpg" {
+		t.Fatalf("second row=%v", second)
+	}
+}
+
 func TestNsfwCandidates(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.NsfwCandidates), map[string]any{

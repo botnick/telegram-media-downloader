@@ -782,6 +782,25 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({});
     });
 
+    it('reads disk rotator candidates through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/disk-rotator-candidates': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 7, file_size: 123, file_path: 'G/old.bin' }],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.diskRotatorCandidates({ limit: 9 })).resolves.toEqual({
+            rows: [{ id: 7, file_size: 123, file_path: 'G/old.bin' }],
+        });
+        expect(request).toEqual({ limit: 9 });
+    });
+
     it('reads integrity candidates through the Go DB projection', async () => {
         let request;
         await fakeCore(

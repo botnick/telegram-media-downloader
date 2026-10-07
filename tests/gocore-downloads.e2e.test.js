@@ -110,3 +110,13 @@ it('rejects an oversized raw batch instead of returning a silently truncated sel
     expect(result.status).toBe(400);
     expect(result.json.error.code).toBe('EINVAL');
 });
+
+it('reads the bounded disk-rotator projection from the real Go core', async () => {
+    vi.spyOn(db, 'prepare').mockImplementation(() => { throw new Error('unexpected Node query'); });
+    const result = await core.post('/v1/db/disk-rotator-candidates', { limit: 2 });
+    expect(result.status).toBe(200);
+    expect(result.json.rows).toEqual([
+        { id: expected[0].id, file_size: 1, file_path: 'G/images/ภาพ 1.jpg' },
+        { id: expected[1].id, file_size: 2, file_path: 'G/images/ภาพ 2.jpg' },
+    ]);
+});

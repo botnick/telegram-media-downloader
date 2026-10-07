@@ -70,6 +70,8 @@
 //	                         read-only keyset-paged video catalog
 //	POST /v1/db/faststart-stats
 //	                         read-only video catalog count
+//	POST /v1/db/disk-rotator-candidates
+//	                         read-only oldest unpinned catalog rows
 //	POST /v1/db/integrity-candidates
 //	                         read-only keyset-paged local file catalog
 //	POST /v1/db/dedup-candidates
@@ -193,6 +195,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/seekbar-candidates", s.dbRead.SeekbarCandidates)
 		private.HandleFunc("POST /v1/db/faststart-candidates", s.dbRead.FaststartCandidates)
 		private.HandleFunc("POST /v1/db/faststart-stats", s.dbRead.FaststartStats)
+		private.HandleFunc("POST /v1/db/disk-rotator-candidates", s.dbRead.DiskRotatorCandidates)
 		private.HandleFunc("POST /v1/db/integrity-candidates", s.dbRead.IntegrityCandidates)
 		private.HandleFunc("POST /v1/db/dedup-candidates", s.dbRead.DedupCandidates)
 		private.HandleFunc("POST /v1/db/dedup-groups", s.dbRead.DedupGroups)

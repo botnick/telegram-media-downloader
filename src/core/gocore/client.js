@@ -1454,6 +1454,40 @@ export async function faststartStats({ timeoutMs = 10_000, readyWaitMs, signal }
     return body;
 }
 
+/** Read the bounded oldest-unpinned quota candidates through tgdl-core. */
+export async function diskRotatorCandidates(
+    { limit = 50 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/disk-rotator-candidates',
+        { limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const validRows =
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.file_size == null ||
+                    (Number.isSafeInteger(row.file_size) && row.file_size >= 0)) &&
+                (row.file_path == null || typeof row.file_path === 'string'),
+        );
+    if (!validRows) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed disk rotator response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read a keyset page of local files for the integrity sweep. */
 export async function integrityCandidates(
     { beforeId = Number.MAX_SAFE_INTEGER, limit = 64 } = {},
