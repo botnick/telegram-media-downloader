@@ -68,6 +68,10 @@
 //	                         read-only keyset-paged local file catalog
 //	POST /v1/db/dedup-candidates
 //	                         read-only keyset-paged unhashed file catalog
+//	POST /v1/db/dedup-groups
+//	                         read-only keyset-paged hash groups
+//	POST /v1/db/dedup-files
+//	                         read-only batched duplicate file details
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -182,6 +186,8 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/faststart-candidates", s.dbRead.FaststartCandidates)
 		private.HandleFunc("POST /v1/db/integrity-candidates", s.dbRead.IntegrityCandidates)
 		private.HandleFunc("POST /v1/db/dedup-candidates", s.dbRead.DedupCandidates)
+		private.HandleFunc("POST /v1/db/dedup-groups", s.dbRead.DedupGroups)
+		private.HandleFunc("POST /v1/db/dedup-files", s.dbRead.DedupFiles)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

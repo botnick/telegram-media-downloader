@@ -298,6 +298,61 @@ func TestDedupCandidates(t *testing.T) {
 	}
 }
 
+func TestDedupGroups(t *testing.T) {
+	path := makeDB(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE downloads SET file_hash = CASE WHEN id IN (1, 2) THEN 'h1' ELSE 'h2' END WHERE id IN (1, 2, 5)"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(path, nil)
+	status, body := call(t, http.HandlerFunc(h.DedupGroups), map[string]any{
+		"afterHash": "",
+		"limit":     10,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 2 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	first := rows[0].(map[string]any)
+	if first["hash"] != "h1" || first["count"] != float64(2) || first["max_size"] != float64(20) {
+		t.Fatalf("row=%v", first)
+	}
+}
+
+func TestDedupFiles(t *testing.T) {
+	path := makeDB(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE downloads SET file_hash = 'h1' WHERE id IN (1, 2)"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(path, nil)
+	status, body := call(t, http.HandlerFunc(h.DedupFiles), map[string]any{
+		"hashes": []string{"h1", "missing"},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 2 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	row := rows[0].(map[string]any)
+	if row["hash"] != "h1" || row["id"] != float64(1) || row["file_name"] != "a.jpg" {
+		t.Fatalf("row=%v", row)
+	}
+}
+
 func TestDedupStats(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.DedupStats), map[string]any{})

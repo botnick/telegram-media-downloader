@@ -45,6 +45,7 @@ Node's single thread:
 | Faststart build queue | video optimization maintenance sweep's catalog page | `POST /v1/db/faststart-candidates` (optional feature) |
 | Integrity sweep queue | boot/hourly file verification catalog page | `POST /v1/db/integrity-candidates` (optional feature) |
 | Dedup hash queue | maintenance hash catch-up page | `POST /v1/db/dedup-candidates` (optional feature) |
+| Dedup hash groups | maintenance duplicate grouping page | `POST /v1/db/dedup-groups`, `/v1/db/dedup-files` (optional feature) |
 | Recovery group counters | `/api/maintenance/recovery/list` grouped DB stats | `POST /v1/db/recovery-stats` (optional feature) |
 | Cluster catalog delta | `/api/cluster/downloads/since` local rows | `POST /v1/db/cluster-downloads-since` (optional feature) |
 | Cluster catalog page | `/api/cluster/downloads` local rows | `POST /v1/db/cluster-downloads` (optional feature) |

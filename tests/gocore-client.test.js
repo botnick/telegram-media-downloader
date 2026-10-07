@@ -1070,6 +1070,44 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ beforeId: 99, limit: 10 });
     });
 
+    it('reads grouped dedup hashes through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/dedup-groups': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ hash: 'h1', count: 2, max_size: 20 }],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.dedupGroups({ afterHash: 'h0', limit: 10 })).resolves.toMatchObject({
+            rows: [expect.objectContaining({ hash: 'h1', count: 2 })],
+        });
+        expect(request).toEqual({ afterHash: 'h0', limit: 10 });
+    });
+
+    it('reads batched dedup file details through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/dedup-files': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ hash: 'h1', id: 1, file_name: 'a.jpg', file_path: 'G/a.jpg' }],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.dedupFiles({ hashes: ['h1'] })).resolves.toMatchObject({
+            rows: [expect.objectContaining({ hash: 'h1', id: 1 })],
+        });
+        expect(request).toEqual({ hashes: ['h1'] });
+    });
+
     it('reads dedup coverage counters through the Go DB projection', async () => {
         let request;
         await fakeCore(

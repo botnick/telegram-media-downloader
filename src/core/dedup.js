@@ -262,10 +262,32 @@ export async function buildDuplicateSets({ onProgress, signal, hashed = 0, error
 
     while (true) {
         if (signal?.aborted) break;
-        const page = groupStmt.all(afterHash, HASH_PAGE);
+        let page = null;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                page = (
+                    await gocoreClient.dedupGroups(
+                        { afterHash, limit: HASH_PAGE },
+                        { timeoutMs: 5000, signal },
+                    )
+                ).rows;
+                // A core started against an empty/stale database can answer
+                // successfully with an empty first page. Keep the local
+                // query as the source of truth in that case; an empty page
+                // after a real page is the normal end-of-stream response.
+                if (!page.length && afterHash === '' && totalHashes > 0) page = null;
+            } catch {
+                // Older cores and transient restarts use the local query.
+                if (signal?.aborted) break;
+            }
+        }
+        page ||= groupStmt.all(afterHash, HASH_PAGE);
         if (!page.length) break;
         for (const row of page) {
-            if (row.cnt > 1) allDupes.push(row);
+            // Local SQLite names the aggregate `cnt`; the Go projection uses
+            // the public `count` field. Normalize both before ranking.
+            const cnt = row.cnt ?? row.count;
+            if (cnt > 1) allDupes.push({ ...row, cnt });
         }
         scannedGroups += page.length;
         afterHash = page[page.length - 1].hash;
@@ -299,13 +321,44 @@ export async function buildDuplicateSets({ onProgress, signal, hashed = 0, error
          WHERE file_hash = ?
          ORDER BY created_at ASC, id ASC
     `);
+    let goRowsByHash = null;
+    if (gocoreClient.isAvailable('db') && duplicates.length) {
+        const byHash = new Map();
+        let goComplete = true;
+        for (let i = 0; i < duplicates.length; i += 500) {
+            if (signal?.aborted) {
+                goComplete = false;
+                break;
+            }
+            try {
+                const rows = (
+                    await gocoreClient.dedupFiles(
+                        { hashes: duplicates.slice(i, i + 500).map((row) => row.hash) },
+                        { timeoutMs: 10_000, signal },
+                    )
+                ).rows;
+                for (const row of rows) {
+                    const list = byHash.get(row.hash);
+                    if (list) list.push(row);
+                    else byHash.set(row.hash, [row]);
+                }
+            } catch {
+                goComplete = false;
+                break;
+            }
+        }
+        if (goComplete) goRowsByHash = byHash;
+    }
     const SETS_BATCH = 25;
     for (let i = 0; i < duplicates.length; i++) {
         if (signal?.aborted) break;
         const d = duplicates[i];
         const seen = new Set();
         const files = [];
-        for (const r of filesQ.all(d.hash)) {
+        const sourceRows = goRowsByHash?.has(d.hash)
+            ? goRowsByHash.get(d.hash)
+            : filesQ.all(d.hash);
+        for (const r of sourceRows) {
             const key = fileKey(r.file_path);
             if (seen.has(key)) continue;
             seen.add(key);

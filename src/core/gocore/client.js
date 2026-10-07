@@ -1670,6 +1670,50 @@ export async function dedupCandidates(
     return body;
 }
 
+/** Read a keyset page of grouped file hashes through tgdl-core. */
+export async function dedupGroups(
+    { afterHash = '', limit = 5000 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/dedup-groups',
+        { afterHash: String(afterHash || ''), limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validDedupGroupRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed dedup groups response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
+/** Read duplicate file details for a bounded batch of hashes. */
+export async function dedupFiles(
+    { hashes = [] } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/dedup-files',
+        { hashes: Array.isArray(hashes) ? hashes : [] },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validDedupFileRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed dedup files response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read dedup hash coverage counters through tgdl-core's DB pool. */
 export async function dedupStats({ timeoutMs = 10_000, readyWaitMs, signal } = {}) {
     const feature = 'db';
@@ -1838,6 +1882,44 @@ function validDedupCandidateRows(body) {
                 typeof row.file_path === 'string' &&
                 Number.isSafeInteger(row.file_size) &&
                 row.file_size > 0,
+        )
+    );
+}
+
+function validDedupGroupRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                typeof row.hash === 'string' &&
+                row.hash.length > 0 &&
+                Number.isSafeInteger(row.count) &&
+                row.count >= 0 &&
+                (row.max_size == null || (Number.isSafeInteger(row.max_size) && row.max_size >= 0)),
+        )
+    );
+}
+
+function validDedupFileRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                typeof row.hash === 'string' &&
+                row.hash.length > 0 &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.group_id == null || typeof row.group_id === 'string') &&
+                (row.group_name == null || typeof row.group_name === 'string') &&
+                (row.file_name == null || typeof row.file_name === 'string') &&
+                (row.file_path == null || typeof row.file_path === 'string') &&
+                (row.file_size == null || Number.isSafeInteger(row.file_size)) &&
+                (row.file_type == null || typeof row.file_type === 'string') &&
+                (row.created_at == null || typeof row.created_at === 'string'),
         )
     );
 }
