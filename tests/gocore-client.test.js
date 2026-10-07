@@ -878,6 +878,27 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ hash: 'a'.repeat(64), size: 20 });
     });
 
+    it('reads filename/size dedup candidates through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/file-name-candidates': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 8, file_path: 'G/images/same.jpg', file_size: 12 }],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.fileNameCandidates({ groupId: '-3', fileName: 'same.jpg', size: 12 }),
+        ).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 8, file_path: 'G/images/same.jpg' })],
+        });
+        expect(request).toEqual({ groupId: '-3', fileName: 'same.jpg', size: 12 });
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(

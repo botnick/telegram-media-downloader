@@ -1253,18 +1253,34 @@ export class DownloadManager extends EventEmitter {
         if (bytesAddedToDisk > 0) {
             try {
                 const fname = path.basename(storedPath);
-                if (
-                    fname &&
-                    storedSize > 0 &&
-                    fileAlreadyStored(String(groupId), fname, storedSize)
-                ) {
-                    const existing = getDb()
-                        .prepare(
-                            `SELECT id, file_path FROM downloads
-                              WHERE group_id = ? AND file_name = ? AND file_size = ?
-                              ORDER BY id ASC LIMIT 1`,
-                        )
-                        .get(String(groupId), fname, storedSize);
+                if (fname && storedSize > 0) {
+                    let existing;
+                    if (gocoreClient.isAvailable('db')) {
+                        try {
+                            existing =
+                                (
+                                    await gocoreClient.fileNameCandidates({
+                                        groupId,
+                                        fileName: fname,
+                                        size: storedSize,
+                                    })
+                                ).rows[0] || null;
+                        } catch {
+                            /* old core or a transient read error — use the local query */
+                        }
+                    }
+                    if (
+                        existing === undefined &&
+                        fileAlreadyStored(String(groupId), fname, storedSize)
+                    ) {
+                        existing = getDb()
+                            .prepare(
+                                `SELECT id, file_path FROM downloads
+                                  WHERE group_id = ? AND file_name = ? AND file_size = ?
+                                  ORDER BY id ASC LIMIT 1`,
+                            )
+                            .get(String(groupId), fname, storedSize);
+                    }
                     if (existing?.file_path) {
                         const dupAbs = path.isAbsolute(existing.file_path)
                             ? existing.file_path

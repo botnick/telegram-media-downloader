@@ -1481,9 +1481,31 @@ export async function fileHashCandidates(
         { timeoutMs, readyWaitMs, signal },
     );
     if (status !== 200) throw _errorFor(feature, status, body);
-    if (!validFileHashRows(body)) {
+    if (!validFileCandidates(body)) {
         _count(feature, 'error');
         throw new GoCoreError('protocol', 'malformed file hash candidates response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
+/** Read the first filename/size dedup candidate through tgdl-core. */
+export async function fileNameCandidates(
+    { groupId, fileName, size } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/file-name-candidates',
+        { groupId: String(groupId || ''), fileName: String(fileName || ''), size },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validFileCandidates(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed file name candidates response', { status });
     }
     _count(feature, 'ok');
     return body;
@@ -1513,7 +1535,7 @@ function validTelegramMediaRows(body) {
     );
 }
 
-function validFileHashRows(body) {
+function validFileCandidates(body) {
     return (
         body &&
         Array.isArray(body.rows) &&

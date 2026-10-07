@@ -50,6 +50,8 @@
 //	                         read-only Telegram media identity candidates
 //	POST /v1/db/file-hash-candidates
 //	                         read-only content-dedup candidates
+//	POST /v1/db/file-name-candidates
+//	                         read-only filename/size dedup candidates
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -155,6 +157,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/cluster-search", s.dbRead.ClusterSearch)
 		private.HandleFunc("POST /v1/db/telegram-media-candidates", s.dbRead.TelegramMediaCandidates)
 		private.HandleFunc("POST /v1/db/file-hash-candidates", s.dbRead.FileHashCandidates)
+		private.HandleFunc("POST /v1/db/file-name-candidates", s.dbRead.FileNameCandidates)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

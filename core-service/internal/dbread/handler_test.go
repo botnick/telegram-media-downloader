@@ -482,6 +482,26 @@ func TestFileHashCandidates(t *testing.T) {
 	}
 }
 
+func TestFileNameCandidates(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.FileNameCandidates), map[string]any{
+		"groupId": "-1", "fileName": "b.mp4", "size": 20,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["file_path"] != "G/videos/b.mp4" {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	status, body = call(t, http.HandlerFunc(h.FileNameCandidates), map[string]any{
+		"groupId": "-1", "fileName": "b.mp4", "size": 99,
+	})
+	if status != http.StatusOK || len(body["rows"].([]any)) != 0 {
+		t.Fatalf("mismatch status=%d body=%v", status, body)
+	}
+}
+
 func TestShareLinks(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.ShareLinks), map[string]any{
