@@ -87,14 +87,29 @@ func (h *BatchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := make([]BatchResult, len(req.Paths))
-	var wg sync.WaitGroup
-	for i, raw := range req.Paths {
-		wg.Add(1)
-		go func(i int, raw string) {
-			defer wg.Done()
-			results[i] = h.hashOne(r.Context(), raw)
-		}(i, raw)
+	workers := len(req.Paths)
+	if capacity := h.Limiter.Capacity(); capacity > 0 && capacity < workers {
+		workers = capacity
 	}
+	// Keep one goroutine per hashing slot instead of one per input path. A
+	// batch may contain 256 paths, while the limiter normally allows far
+	// fewer files to hash at once; the old shape needlessly left the rest
+	// parked in Acquire and amplified cancellation/queue pressure.
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				results[i] = h.hashOne(r.Context(), req.Paths[i])
+			}
+		}()
+	}
+	for i := range req.Paths {
+		jobs <- i
+	}
+	close(jobs)
 	wg.Wait()
 	WriteJSON(w, http.StatusOK, map[string]any{"results": results})
 }
