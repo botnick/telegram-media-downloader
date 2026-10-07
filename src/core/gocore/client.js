@@ -1312,6 +1312,28 @@ export async function seekbarStats({ timeoutMs = 10_000, readyWaitMs, signal } =
     return { count: body.count, bytes: body.bytes, totalVideos: body.totalVideos };
 }
 
+/** Read a keyset page of videos that do not have a seekbar sprite. */
+export async function seekbarCandidates(
+    { beforeId = Number.MAX_SAFE_INTEGER, limit = 200 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/seekbar-candidates',
+        { beforeId, limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validSeekbarCandidateRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed seekbar candidates response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read the AI maintenance counters through tgdl-core. */
 export async function aiCounts(
     { fileTypes = ['photo'] } = {},
@@ -1646,6 +1668,23 @@ function validAiCandidateRows(body) {
                 (row.file_type == null || typeof row.file_type === 'string') &&
                 (row.file_size == null || Number.isSafeInteger(row.file_size)) &&
                 (row.created_at == null || typeof row.created_at === 'string'),
+        )
+    );
+}
+
+function validSeekbarCandidateRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.file_path == null || typeof row.file_path === 'string') &&
+                (row.file_type == null || typeof row.file_type === 'string') &&
+                (row.file_size == null || Number.isSafeInteger(row.file_size)) &&
+                (row.file_name == null || typeof row.file_name === 'string'),
         )
     );
 }

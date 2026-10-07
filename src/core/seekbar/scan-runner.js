@@ -24,6 +24,7 @@ import {
     upsertSeekbarSprite,
 } from '../db.js';
 import { generateForDownload, getSeekbarConfig, isPermanentSeekbarError } from './generator.js';
+import * as gocoreClient from '../gocore/client.js';
 
 const PAGE_SIZE = 100;
 const CONCURRENCY = 6;
@@ -32,7 +33,15 @@ const PROGRESS_EVERY_MS = 1000;
 export async function buildAllSeekbar({ onProgress, signal } = {}) {
     const cfg = getSeekbarConfig();
     const concurrency = Math.max(1, Math.min(16, Number(cfg.concurrency) || CONCURRENCY));
-    const total = countVideoDownloads();
+    let total;
+    if (gocoreClient.isAvailable('db')) {
+        try {
+            total = (await gocoreClient.seekbarStats()).totalVideos;
+        } catch {
+            /* old core or a transient read error — use the local query */
+        }
+    }
+    total ??= countVideoDownloads();
     let processed = 0;
     let generated = 0;
     let skipped = 0;
@@ -124,7 +133,17 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
     let cursor = Number.MAX_SAFE_INTEGER;
     while (true) {
         if (signal?.aborted) break;
-        const rows = pageMissingSeekbarVideos({ beforeId: cursor, limit: PAGE_SIZE });
+        let rows;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                rows = (
+                    await gocoreClient.seekbarCandidates({ beforeId: cursor, limit: PAGE_SIZE })
+                ).rows;
+            } catch {
+                /* old core or a transient read error — use the local query */
+            }
+        }
+        rows ||= pageMissingSeekbarVideos({ beforeId: cursor, limit: PAGE_SIZE });
         if (!rows.length) break;
 
         // Process page in concurrent batches

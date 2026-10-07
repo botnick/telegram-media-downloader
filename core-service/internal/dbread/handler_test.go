@@ -244,6 +244,34 @@ func TestSeekbarStats(t *testing.T) {
 	}
 }
 
+func TestSeekbarCandidates(t *testing.T) {
+	path := makeDB(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("DELETE FROM seekbar_sprites WHERE download_id = 2"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(path, nil)
+	status, body := call(t, http.HandlerFunc(h.SeekbarCandidates), map[string]any{
+		"beforeId": 99,
+		"limit":    1,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(2) || row["file_path"] != "G/videos/b.mp4" || row["file_type"] != "video" {
+		t.Fatalf("row=%v", row)
+	}
+}
+
 func TestGroupStats(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.GroupStats), map[string]any{"groupId": "-1"})
