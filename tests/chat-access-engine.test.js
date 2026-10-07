@@ -449,6 +449,43 @@ describe('downloader', () => {
         expect(client.downloadMedia).not.toHaveBeenCalled();
     });
 
+    it('reuses a Telegram media row before calling downloadMedia', async () => {
+        const mediaDir = path.join(DATA_DIR, 'downloads', 'telegram-dedup');
+        fs.mkdirSync(mediaDir, { recursive: true });
+        fs.writeFileSync(path.join(mediaDir, 'original.jpg'), Buffer.from('same'));
+        dbApi.insertDownload({
+            groupId: '-100910',
+            groupName: 'source',
+            messageId: 10,
+            fileName: 'original.jpg',
+            fileSize: 4,
+            fileType: 'photo',
+            filePath: 'telegram-dedup/original.jpg',
+            fileHash: 'hash-from-source',
+            telegramMediaKind: 'photo',
+            telegramMediaId: '777',
+            telegramMediaSize: 4,
+        });
+
+        const client = { downloadMedia: vi.fn(async () => {}) };
+        const dm = new DownloadManager(client, { download: { retries: 1 } }, null);
+        const message = { id: 11, photo: { id: 777, sizes: [{ size: 4 }] } };
+        const job = jobFactoryForDedup('-100911', client, { message });
+        const stored = await dm.download(job);
+
+        expect(client.downloadMedia).not.toHaveBeenCalled();
+        expect(stored).toBe(path.join(DATA_DIR, 'downloads', 'telegram-dedup', 'original.jpg'));
+        expect(job.deduped).toBe(true);
+        expect(job.dedupReason).toBe('telegram_media');
+        expect(
+            db
+                .prepare(
+                    'SELECT telegram_media_kind, telegram_media_id FROM downloads WHERE group_id = ? AND message_id = ?',
+                )
+                .get('-100911', 11),
+        ).toMatchObject({ telegram_media_kind: 'photo', telegram_media_id: '777' });
+    });
+
     it('dropGroup removes only that chat’s queued jobs', async () => {
         const dm = new DownloadManager(null, {}, null);
         await dm.enqueue(job(-1, null, { key: undefined, message: { id: 1 } }));
@@ -458,6 +495,19 @@ describe('downloader', () => {
         expect(dm.pendingCount).toBe(1);
     });
 });
+
+function jobFactoryForDedup(groupId, client, extra = {}) {
+    return {
+        key: `${groupId}_11`,
+        groupId: String(groupId),
+        groupName: 'g',
+        mediaType: 'photos',
+        client,
+        accountId: 'A',
+        message: { id: 11, date: 1_700_000_000, photo: { id: 777 } },
+        ...extra,
+    };
+}
 
 describe('backfill', () => {
     it('refuses an unreachable chat before any call, with CHAT_UNREACHABLE', async () => {

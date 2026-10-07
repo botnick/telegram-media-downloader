@@ -4,13 +4,14 @@
 
 import { EventEmitter } from 'events';
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import path from 'path';
 import { Api } from 'telegram';
 import { DebugLogger } from './logger.js';
 import {
     getDb,
     insertDownload,
+    findDownloadCandidatesByTelegramMedia,
     isDownloaded as dbIsDownloaded,
     fileAlreadyStored,
     getTotalSizeBytes,
@@ -25,6 +26,7 @@ import { pregenerateNsfw } from './nsfw.js';
 import { pregenerateAi } from './ai/index.js';
 import { pregenerateSeekbar } from './seekbar/index.js';
 import { getDataDir, getDownloadsDir, resolveConfigDownloadPath } from './paths.js';
+import { getTelegramMediaIdentity } from './telegram-media.js';
 
 const DATA_DIR = getDataDir();
 const DOWNLOADS_DIR = getDownloadsDir();
@@ -208,6 +210,10 @@ export class DownloadManager extends EventEmitter {
         this._high = [];
         this.queue = [];
         this.active = new Map(); // Key -> Promise/Status
+        // Telegram media ids are stronger than filenames and remain stable
+        // across forwards. Keep one in-process flight per identity so two
+        // realtime workers never download the same bytes concurrently.
+        this._mediaFlights = new Map();
         // Absolute paths of files currently being written (.part + final
         // candidates). The disk-rotator consults this Set before unlinking
         // anything to avoid yanking a file out from under an active write.
@@ -699,7 +705,125 @@ export class DownloadManager extends EventEmitter {
         } catch {}
     }
 
+    _resolveReusableTelegramPath(row) {
+        const raw = String(row?.file_path || '').trim();
+        if (!raw || raw.startsWith('_clusterref/')) return null;
+        const check = (candidate) => {
+            if (!existsSync(candidate)) return null;
+            try {
+                const stat = statSync(candidate);
+                const expected = Number(row.file_size) || 0;
+                if (!stat.isFile() || stat.size <= 0 || (expected > 0 && stat.size !== expected))
+                    return null;
+                return candidate;
+            } catch {
+                return null;
+            }
+        };
+        if (path.isAbsolute(raw)) return check(raw);
+        const bases = [resolveConfigDownloadPath(this.config?.download?.path), DOWNLOADS_DIR];
+        for (const base of new Set(bases)) {
+            const resolved = path.resolve(base, raw);
+            const usable = check(resolved);
+            if (usable) return usable;
+        }
+        return null;
+    }
+
+    _findReusableTelegramMedia(identity) {
+        if (!identity) return null;
+        const rows = findDownloadCandidatesByTelegramMedia(identity);
+        for (const row of rows) {
+            const filePath = this._resolveReusableTelegramPath(row);
+            if (filePath) return { row, filePath };
+        }
+        return null;
+    }
+
+    _claimTelegramMediaFlight(key) {
+        const current = this._mediaFlights.get(key);
+        if (current) return { role: 'waiter', flight: current };
+
+        let resolve;
+        const promise = new Promise((done) => {
+            resolve = done;
+        });
+        const flight = { promise, resolve };
+        this._mediaFlights.set(key, flight);
+        return { role: 'owner', flight };
+    }
+
+    /**
+     * Check Telegram's media identity before touching the network. If another
+     * worker is already fetching the same media, wait for it and reuse the
+     * row it creates instead of starting a second download.
+     */
+    async _prepareTelegramMedia(job) {
+        const identity = getTelegramMediaIdentity(job?.message);
+        if (!identity) return { identity: null, flight: null, reused: null };
+
+        const reused = this._findReusableTelegramMedia(identity);
+        if (reused) return { identity, flight: null, reused };
+
+        // A retry invoked from inside _downloadAttempt belongs to the same
+        // owner flight. Let the outer invocation release it after the retry
+        // succeeds or exhausts its error budget.
+        if (job._telegramMediaFlightKey === identity.key) {
+            return { identity, flight: null, reused: null };
+        }
+
+        for (;;) {
+            const claim = this._claimTelegramMediaFlight(identity.key);
+            if (claim.role === 'owner') {
+                job._telegramMediaFlightKey = identity.key;
+                return { identity, flight: claim.flight, reused: null };
+            }
+
+            await claim.flight.promise;
+            const afterWait = this._findReusableTelegramMedia(identity);
+            if (afterWait) return { identity, flight: null, reused: afterWait };
+            // The previous owner failed before registering a row. Try to own
+            // the next flight; this avoids a permanent queue stall after a
+            // transient Telegram or filesystem error.
+        }
+    }
+
     async download(job, attempt = 1) {
+        let mediaPrep = null;
+        let mediaError = null;
+        mediaPrep = await this._prepareTelegramMedia(job);
+        if (mediaPrep.reused) {
+            return this.registerDownload(
+                job,
+                mediaPrep.reused.filePath,
+                Number(mediaPrep.reused.row.file_size) || mediaPrep.identity?.size || 0,
+                {
+                    reused: true,
+                    telegramMedia: mediaPrep.identity,
+                    existingRow: mediaPrep.reused.row,
+                },
+            );
+        }
+
+        try {
+            return await this._downloadAttempt(job, attempt);
+        } catch (error) {
+            mediaError = error;
+            throw error;
+        } finally {
+            if (mediaPrep?.flight) {
+                this._mediaFlights.delete(mediaPrep.identity.key);
+                // Resolve both success and failure to keep a flight with no
+                // waiters harmless; waiters re-check SQLite before proceeding.
+                mediaPrep.flight.resolve(!mediaError);
+                try {
+                    delete job._telegramMediaFlightKey;
+                } catch {}
+            }
+        }
+    }
+
+    async _downloadAttempt(job, attempt = 1) {
         const maxRetries = this.config.download?.retries || 5;
 
         try {
@@ -963,9 +1087,10 @@ export class DownloadManager extends EventEmitter {
         }
     }
 
-    async registerDownload(job, filePath, size) {
+    async registerDownload(job, filePath, size, options = {}) {
         const groupId = job.groupId || 'unknown';
         const msgId = job.message.id;
+        const telegramMedia = options.telegramMedia || getTelegramMediaIdentity(job.message);
 
         // ---- Download-time dedup (SHA-256) -------------------------------
         //
@@ -981,8 +1106,12 @@ export class DownloadManager extends EventEmitter {
         let fileHash = null;
         let storedPath = filePath;
         let storedSize = size;
-        let bytesAddedToDisk = size;
-        try {
+        let bytesAddedToDisk = options.reused ? 0 : size;
+        let dedupReason = options.reused ? 'telegram_media' : null;
+        let storedName = path.basename(storedPath);
+        if (options.reused) {
+            fileHash = options.existingRow?.file_hash || null;
+        } else try {
             // tgdl-core hashes it, so the main event loop stays free
             // during multi-GB post-write hashing.
             fileHash = await sha256OfFile(filePath);
@@ -991,11 +1120,11 @@ export class DownloadManager extends EventEmitter {
             // with a NULL/zero size from older downloader versions.
             const dup = getDb()
                 .prepare(`
-                SELECT id, file_path, file_size FROM downloads
-                 WHERE file_hash = ? AND file_size = ?
-                 ORDER BY id ASC
-                 LIMIT 1
-            `)
+            SELECT id, file_path, file_size FROM downloads
+             WHERE file_hash = ? AND file_size = ?
+             ORDER BY id ASC
+             LIMIT 1
+        `)
                 .get(fileHash, size);
             if (dup && dup.file_path) {
                 // Confirm the existing pointer still resolves before we
@@ -1013,6 +1142,7 @@ export class DownloadManager extends EventEmitter {
                     storedPath = dupAbs; // share the existing on-disk file
                     bytesAddedToDisk = 0; // no new bytes written
                     storedSize = dup.file_size; // exactly equal to `size` here
+                    dedupReason = 'content_hash';
                 }
             } else {
                 // No local match — try the cluster catalog. If a paired peer
@@ -1041,6 +1171,7 @@ export class DownloadManager extends EventEmitter {
                             );
                             bytesAddedToDisk = 0;
                             storedSize = winner.fileSize || size;
+                            dedupReason = 'cluster_hash';
                             recordDedupHit({
                                 peerId: winner.peerId,
                                 fileHash,
@@ -1091,6 +1222,7 @@ export class DownloadManager extends EventEmitter {
                             } catch {}
                             storedPath = dupAbs;
                             bytesAddedToDisk = 0;
+                            dedupReason = 'filename_size';
                         }
                     }
                 }
@@ -1098,6 +1230,7 @@ export class DownloadManager extends EventEmitter {
         }
 
         // DB Insert
+        if (!options.reused) storedName = path.basename(storedPath);
         try {
             // Determine type based on extension or message. HEIC / HEIF
             // count as photo so the gallery renders them via <img> + the
@@ -1111,17 +1244,26 @@ export class DownloadManager extends EventEmitter {
             else if (['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext)) type = 'video';
             else if (['.mp3', '.ogg', '.wav', '.m4a', '.opus', '.flac'].includes(ext))
                 type = 'audio';
+            if (options.reused && options.existingRow?.file_type)
+                type = options.existingRow.file_type;
+            storedName =
+                (options.reused && options.existingRow?.file_name) || path.basename(storedPath);
 
             const insertResult = insertDownload({
                 groupId: String(groupId),
                 groupName: job.groupName || null,
                 messageId: msgId,
-                fileName: path.basename(storedPath),
+                fileName: storedName,
                 fileSize: storedSize,
                 fileType: type,
-                filePath: path.relative(DOWNLOADS_DIR, storedPath),
+                filePath: options.reused
+                    ? options.existingRow?.file_path
+                    : path.relative(DOWNLOADS_DIR, storedPath),
                 ttlSeconds: job.ttlSeconds || null,
                 fileHash,
+                telegramMediaKind: telegramMedia?.kind || null,
+                telegramMediaId: telegramMedia?.id || null,
+                telegramMediaSize: telegramMedia?.size || null,
                 // Rescue Mode: when the monitor stamps `pendingUntil` on the
                 // job, the row gets inserted with that expiry so the rescue
                 // sweeper can prune it later (unless a delete event rescues
@@ -1194,13 +1336,14 @@ export class DownloadManager extends EventEmitter {
         // tag on the row.
         try {
             job.deduped = wasDeduped;
+            job.dedupReason = dedupReason;
         } catch {
             /* job object frozen — old path */
         }
 
         this.emit('download_complete', {
             filePath: storedPath,
-            fileName: path.basename(storedPath),
+            fileName: storedName || path.basename(storedPath),
             size: storedSize,
             groupId,
             groupName: job.groupName,
@@ -1208,28 +1351,50 @@ export class DownloadManager extends EventEmitter {
             mediaType: job.mediaType,
             // Surfaces the dedup result for monitor logs / future UI.
             deduped: wasDeduped,
+            dedupReason,
         });
 
         return storedPath;
     }
 
     getFileSize(message) {
-        if (message.document) return Number(message.document.size);
-        if (message.photo) {
-            const sizes = message.photo.sizes;
+        const document =
+            message?.document ||
+            message?.video ||
+            message?.audio ||
+            message?.voice ||
+            message?.sticker ||
+            message?.media?.document ||
+            message?.media?.webpage?.document;
+        if (document) return Number(document.size) || 0;
+        const photo = message?.photo || message?.media?.photo || message?.media?.webpage?.photo;
+        if (photo) {
+            const sizes = photo.sizes;
             if (sizes && sizes.length > 0) {
-                const last = sizes[sizes.length - 1];
-                return last.size || 0;
+                return sizes.reduce(
+                    (largest, item) => Math.max(largest, Number(item?.size) || 0),
+                    0,
+                );
             }
         }
         return 0;
     }
 
     getFileTypeCategory(message) {
-        if (message.photo) return 'image';
-        if (message.video) return 'video';
-        if (message.voice || message.audio) return 'audio';
-        if (message.document) return 'document';
+        if (message?.photo || message?.media?.photo || message?.media?.webpage?.photo)
+            return 'image';
+        if (message?.video) return 'video';
+        if (message?.voice || message?.audio) return 'audio';
+        if (
+            message?.document ||
+            message?.video ||
+            message?.audio ||
+            message?.voice ||
+            message?.sticker ||
+            message?.media?.document ||
+            message?.media?.webpage?.document
+        )
+            return 'document';
         return null;
     }
 

@@ -126,7 +126,7 @@ function _readPackageVersion() {
 }
 
 // Indexes added after v2.24.5. CREATE INDEX on an existing library is one
-// synchronous statement (~0.4 s for all four at 150k rows on SSD, roughly
+// synchronous statement (~0.4 s for all indexes at 150k rows on SSD, roughly
 // linear, several seconds per index on a 1M+ row library on a NAS disk), so
 // on a big DB they are NOT built inside initSchema — that would delay the
 // first healthcheck after an upgrade. initSchema builds them inline only
@@ -135,6 +135,12 @@ function _readPackageVersion() {
 // (buildDeferredIndex). Every query is correct without them, just slower,
 // and IF NOT EXISTS makes an interrupted build simply resume next boot.
 export const DEFERRED_INDEXES = [
+    // Live-ingest dedup probes this identity on every media job. Defer the
+    // build on large libraries so an upgrade never blocks the healthcheck.
+    {
+        name: 'idx_telegram_media',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_telegram_media ON downloads(telegram_media_kind, telegram_media_id, telegram_media_size, id)',
+    },
     // Bulk delete / 404 auto-prune / single-file delete / backup resolve a
     // row by its exact stored path; without this each lookup is a full
     // table scan (~15 ms at 150k rows — seconds for a 1000-tile delete).
@@ -276,6 +282,12 @@ function initSchema() {
         'ALTER TABLE downloads ADD COLUMN nsfw_score REAL',
         'ALTER TABLE downloads ADD COLUMN nsfw_checked_at INTEGER',
         'ALTER TABLE downloads ADD COLUMN nsfw_whitelist INTEGER DEFAULT 0',
+        // Telegram's immutable media identity lets the downloader reuse a
+        // file before calling downloadMedia, including forwarded/requeued
+        // messages with different filenames.
+        'ALTER TABLE downloads ADD COLUMN telegram_media_kind TEXT',
+        'ALTER TABLE downloads ADD COLUMN telegram_media_id TEXT',
+        'ALTER TABLE downloads ADD COLUMN telegram_media_size INTEGER',
     ];
     for (const sql of migrations) {
         try {
@@ -1177,18 +1189,69 @@ export function insertDownload(data) {
         filePath: data.filePath ?? null,
         ttlSeconds: data.ttlSeconds ?? null,
         fileHash: data.fileHash ?? null,
+        telegramMediaKind: data.telegramMediaKind ?? null,
+        telegramMediaId: data.telegramMediaId ?? null,
+        telegramMediaSize: data.telegramMediaSize ?? null,
         // Rescue Mode: when set, the rescue sweeper auto-deletes this row
         // after the timestamp unless the source is deleted first.
         pendingUntil: data.pendingUntil ?? null,
     };
     const stmt = getDb().prepare(`
         INSERT OR IGNORE INTO downloads (
-            group_id, group_name, message_id, file_name, file_size, file_type, file_path, ttl_seconds, file_hash, pending_until
+            group_id, group_name, message_id, file_name, file_size, file_type, file_path, ttl_seconds, file_hash,
+            telegram_media_kind, telegram_media_id, telegram_media_size, pending_until
         ) VALUES (
-            @groupId, @groupName, @messageId, @fileName, @fileSize, @fileType, @filePath, @ttlSeconds, @fileHash, @pendingUntil
+            @groupId, @groupName, @messageId, @fileName, @fileSize, @fileType, @filePath, @ttlSeconds, @fileHash,
+            @telegramMediaKind, @telegramMediaId, @telegramMediaSize, @pendingUntil
         )
     `);
     return stmt.run(row);
+}
+
+/**
+ * Find the first completed local row for a Telegram media identity. A NULL
+ * stored size is accepted for rows written by older releases; when both
+ * sides know the size, mismatches are rejected to avoid a false reuse.
+ */
+export function findDownloadByTelegramMedia(identity) {
+    return findDownloadCandidatesByTelegramMedia(identity)[0];
+}
+
+/** Return all identity matches so callers can skip stale/missing paths. */
+export function findDownloadCandidatesByTelegramMedia(identity) {
+    if (!identity?.kind || !identity.id) return [];
+    const size =
+        Number.isFinite(Number(identity.size)) && Number(identity.size) > 0
+            ? Math.trunc(Number(identity.size))
+            : null;
+    const db = getDb();
+    if (size == null) {
+        return db
+            .prepare(`
+                SELECT id, group_id, group_name, message_id, file_name, file_size,
+                       file_type, file_path, file_hash, telegram_media_kind,
+                       telegram_media_id, telegram_media_size
+                  FROM downloads
+                 WHERE telegram_media_kind = ? AND telegram_media_id = ?
+                   AND file_path IS NOT NULL
+                 ORDER BY id ASC
+                 LIMIT 100
+            `)
+            .all(identity.kind, String(identity.id));
+    }
+    return db
+        .prepare(`
+            SELECT id, group_id, group_name, message_id, file_name, file_size,
+                   file_type, file_path, file_hash, telegram_media_kind,
+                   telegram_media_id, telegram_media_size
+              FROM downloads
+             WHERE telegram_media_kind = ? AND telegram_media_id = ?
+               AND file_path IS NOT NULL
+               AND (telegram_media_size = ? OR telegram_media_size IS NULL)
+             ORDER BY CASE WHEN telegram_media_size = ? THEN 0 ELSE 1 END, id ASC
+             LIMIT 100
+        `)
+        .all(identity.kind, String(identity.id), size, size);
 }
 
 /**

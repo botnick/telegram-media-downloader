@@ -44,6 +44,9 @@ describe('downloads schema', () => {
                 'file_path',
                 'ttl_seconds',
                 'file_hash',
+                'telegram_media_kind',
+                'telegram_media_id',
+                'telegram_media_size',
             ]),
         );
     });
@@ -65,6 +68,7 @@ describe('downloads schema', () => {
                 // rollback doesn't have to rebuild them at boot.
                 'idx_group_id',
                 'idx_group_message',
+                'idx_telegram_media',
             ]),
         );
         expect(downloadsApi.listMissingDeferredIndexes()).toEqual([]);
@@ -187,6 +191,35 @@ describe('insertDownload + isDownloaded', () => {
         });
         const row = db.prepare('SELECT ttl_seconds FROM downloads WHERE message_id = 2').get();
         expect(row.ttl_seconds).toBe(30);
+    });
+
+    it('finds an existing row by Telegram media identity and keeps size checks strict', () => {
+        downloadsApi.insertDownload({
+            groupId: '-100124',
+            groupName: 'Telegram identity',
+            messageId: 3,
+            fileName: 'media.bin',
+            fileSize: 123,
+            fileType: 'document',
+            filePath: 'identity/media.bin',
+            telegramMediaKind: 'document',
+            telegramMediaId: '9001',
+            telegramMediaSize: 123,
+        });
+        expect(
+            downloadsApi.findDownloadByTelegramMedia({
+                kind: 'document',
+                id: '9001',
+                size: 123,
+            }),
+        ).toMatchObject({ message_id: 3, file_path: 'identity/media.bin' });
+        expect(
+            downloadsApi.findDownloadByTelegramMedia({
+                kind: 'document',
+                id: '9001',
+                size: 999,
+            }),
+        ).toBeFalsy();
     });
 });
 

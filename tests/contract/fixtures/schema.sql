@@ -9,7 +9,7 @@ CREATE TABLE downloads (
             file_type TEXT, -- photo, video, document
             file_path TEXT,
             status TEXT DEFAULT 'completed',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, ttl_seconds INTEGER, file_hash TEXT, pinned INTEGER DEFAULT 0, pending_until INTEGER, rescued_at INTEGER, nsfw_score REAL, nsfw_checked_at INTEGER, nsfw_whitelist INTEGER DEFAULT 0, ai_indexed_at INTEGER, owner_peer_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, ttl_seconds INTEGER, file_hash TEXT, pinned INTEGER DEFAULT 0, pending_until INTEGER, rescued_at INTEGER, nsfw_score REAL, nsfw_checked_at INTEGER, nsfw_whitelist INTEGER DEFAULT 0, telegram_media_kind TEXT, telegram_media_id TEXT, telegram_media_size INTEGER, ai_indexed_at INTEGER, owner_peer_id TEXT,
             UNIQUE(group_id, message_id)
         );
 
@@ -40,6 +40,8 @@ CREATE INDEX idx_gallery_group_type_date ON downloads(group_id, file_type, creat
 CREATE INDEX idx_gallery_type_date ON downloads(file_type, created_at DESC, id DESC);
 
 CREATE INDEX idx_gallery_pinned_date ON downloads(pinned DESC, created_at DESC, id DESC);
+
+CREATE INDEX idx_telegram_media ON downloads(telegram_media_kind, telegram_media_id, telegram_media_size, id);
 
 CREATE INDEX idx_file_path ON downloads(file_path);
 
