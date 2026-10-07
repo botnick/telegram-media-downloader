@@ -2,6 +2,7 @@ package dbread
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/hash"
@@ -39,33 +40,24 @@ func (h *Handler) FileNameCandidates(w http.ResponseWriter, r *http.Request) {
 		h.unavailable(w, err)
 		return
 	}
-	rows, err := db.QueryContext(r.Context(), `
+	var row fileNameCandidate
+	var filePath sql.NullString
+	var fileSize sql.NullInt64
+	err = db.QueryRowContext(r.Context(), `
 		SELECT id, file_path, file_size
 		  FROM downloads
 		 WHERE group_id = ? AND file_name = ? AND file_size = ?
 		 ORDER BY id ASC
-		 LIMIT 1`, req.GroupID, req.FileName, *req.Size)
+		 LIMIT 1`, req.GroupID, req.FileName, *req.Size).Scan(&row.ID, &filePath, &fileSize)
+	if errors.Is(err, sql.ErrNoRows) {
+		hash.WriteJSON(w, http.StatusOK, fileNameResponse{Rows: []fileNameCandidate{}})
+		return
+	}
 	if err != nil {
 		h.queryError(w, err, "database file name query failed")
 		return
 	}
-	defer rows.Close()
-	out := make([]fileNameCandidate, 0, 1)
-	for rows.Next() {
-		var row fileNameCandidate
-		var filePath sql.NullString
-		var fileSize sql.NullInt64
-		if err := rows.Scan(&row.ID, &filePath, &fileSize); err != nil {
-			h.queryError(w, err, "database file name scan failed")
-			return
-		}
-		row.FilePath = nullableString(filePath)
-		row.FileSize = nullableInt64(fileSize)
-		out = append(out, row)
-	}
-	if err := rows.Err(); err != nil {
-		h.queryError(w, err, "database file name read failed")
-		return
-	}
-	hash.WriteJSON(w, http.StatusOK, fileNameResponse{Rows: out})
+	row.FilePath = nullableString(filePath)
+	row.FileSize = nullableInt64(fileSize)
+	hash.WriteJSON(w, http.StatusOK, fileNameResponse{Rows: []fileNameCandidate{row}})
 }
