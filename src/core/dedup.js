@@ -130,8 +130,22 @@ export async function findDuplicates(opts = {}) {
     `);
     while (true) {
         if (signal?.aborted) break;
+        let page = null;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                page = (
+                    await gocoreClient.dedupCandidates(
+                        { beforeId, limit: PAGE_SIZE },
+                        { timeoutMs: 5000, signal },
+                    )
+                ).rows;
+            } catch {
+                // Older cores and transient restarts use the local query.
+                if (signal?.aborted) break;
+            }
+        }
         // `.all()` closes the statement before we hit any await below.
-        const page = pageStmt.all(beforeId, PAGE_SIZE);
+        page ||= pageStmt.all(beforeId, PAGE_SIZE);
         if (!page.length) break;
         const pending = [];
         for (const row of page) {

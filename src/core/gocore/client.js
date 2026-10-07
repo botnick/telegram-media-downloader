@@ -1648,6 +1648,28 @@ export async function fileNameCandidates(
     return body;
 }
 
+/** Read a keyset page of unhashed files through tgdl-core. */
+export async function dedupCandidates(
+    { beforeId = Number.MAX_SAFE_INTEGER, limit = 200 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/dedup-candidates',
+        { beforeId, limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validDedupCandidateRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed dedup candidates response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read dedup hash coverage counters through tgdl-core's DB pool. */
 export async function dedupStats({ timeoutMs = 10_000, readyWaitMs, signal } = {}) {
     const feature = 'db';
@@ -1800,6 +1822,22 @@ function validIntegrityCandidateRows(body) {
                 row.id > 0 &&
                 typeof row.file_path === 'string' &&
                 (row.file_size == null || Number.isSafeInteger(row.file_size)),
+        )
+    );
+}
+
+function validDedupCandidateRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                typeof row.file_path === 'string' &&
+                Number.isSafeInteger(row.file_size) &&
+                row.file_size > 0,
         )
     );
 }

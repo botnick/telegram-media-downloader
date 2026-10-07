@@ -734,7 +734,9 @@ describe('answers from a (fake) tgdl-core', () => {
             },
             { features: ['db'] },
         );
-        await expect(client.integrityCandidates({ beforeId: 99, limit: 10 })).resolves.toMatchObject({
+        await expect(
+            client.integrityCandidates({ beforeId: 99, limit: 10 }),
+        ).resolves.toMatchObject({
             rows: [expect.objectContaining({ id: 2, file_size: 20 })],
         });
         expect(request).toEqual({ beforeId: 99, limit: 10 });
@@ -1047,6 +1049,25 @@ describe('answers from a (fake) tgdl-core', () => {
             rows: [expect.objectContaining({ id: 8, file_path: 'G/images/same.jpg' })],
         });
         expect(request).toEqual({ groupId: '-3', fileName: 'same.jpg', size: 12 });
+    });
+
+    it('reads the unhashed dedup queue through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/dedup-candidates': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 9, file_path: 'G/images/unhashed.jpg', file_size: 12 }],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.dedupCandidates({ beforeId: 99, limit: 10 })).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 9, file_size: 12 })],
+        });
+        expect(request).toEqual({ beforeId: 99, limit: 10 });
     });
 
     it('reads dedup coverage counters through the Go DB projection', async () => {

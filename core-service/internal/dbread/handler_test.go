@@ -274,6 +274,30 @@ func TestIntegrityCandidates(t *testing.T) {
 	}
 }
 
+func TestDedupCandidates(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.DedupCandidates), map[string]any{
+		"beforeId": 6,
+		"limit":    10,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 3 {
+		// The fixture has three rows with a positive size and a NULL hash.
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	first := rows[0].(map[string]any)
+	if first["id"] != float64(5) || first["file_path"] != "G/audio/d.ogg" || first["file_size"] != float64(5) {
+		t.Fatalf("row=%v", first)
+	}
+	last := rows[2].(map[string]any)
+	if last["id"] != float64(1) || last["file_path"] != "G/images/a.jpg" || last["file_size"] != float64(10) {
+		t.Fatalf("row=%v", last)
+	}
+}
+
 func TestDedupStats(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.DedupStats), map[string]any{})
