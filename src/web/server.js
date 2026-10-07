@@ -11848,20 +11848,13 @@ app.get('/api/cluster/search', async (req, res) => {
 
 // ---- Phase E (v2.10): failover audit + manual reassign ----------------
 
-app.get('/api/cluster/failover-log', (req, res) => {
+app.get('/api/cluster/failover-log', async (req, res) => {
     try {
         const limit = Number(req.query.limit) || 100;
-        const { listFailoverLog } = require('../core/db.js');
+        const { listFailoverLog } = await import('../core/db.js');
         res.json({ entries: listFailoverLog({ limit }) });
     } catch {
-        try {
-            // ESM dynamic import fallback
-            import('../core/db.js').then((m) => {
-                res.json({ entries: m.listFailoverLog({ limit: Number(req.query.limit) || 100 }) });
-            });
-        } catch (e) {
-            res.status(500).json({ error: 'failover log unavailable' });
-        }
+        res.status(500).json({ error: 'failover log unavailable' });
     }
 });
 
@@ -11872,15 +11865,23 @@ app.get('/api/cluster/stats', async (_req, res) => {
         const { aggregateEgress } = await import('../core/db.js');
         const ownPid = getSelfPeerId();
         const peers = listPeers();
-        const localBytes = (() => {
+        let localBytes;
+        if (gocoreClient.isAvailable('db')) {
             try {
-                return getDb()
+                localBytes = (await gocoreClient.databaseStats()).totalSize;
+            } catch {
+                /* old core or a transient read error — use the local fallback */
+            }
+        }
+        if (localBytes == null) {
+            try {
+                localBytes = getDb()
                     .prepare('SELECT COALESCE(SUM(file_size),0) AS n FROM downloads')
                     .get().n;
             } catch {
-                return 0;
+                localBytes = 0;
             }
-        })();
+        }
         const cachedBytes = peers.map((p) => {
             const n = getDb()
                 .prepare(
