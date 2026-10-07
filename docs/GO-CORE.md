@@ -160,7 +160,9 @@ NTFS on NVMe, warm cache, Node 22. Every pair produced identical results.
   reason. On a cold cache, a spinning disk or a network share, where each
   stat waits on the disk, its 16 parallel stats (libuv: 4) are the
   difference.
-- DBSCAN uses every core but one; the result doesn't depend on how many.
+- DBSCAN defaults to at most 8 workers so a face scan leaves CPU for the
+  Telegram engine and dashboard; `TGDL_DBSCAN_WORKERS` tunes it explicitly.
+  The result doesn't depend on how many workers are used.
 - tgdl-core's working set: 8 MB idle, ~20 MB for the 50 000-file stat
   sweep and walks, 34 MB for DBSCAN 5 000 × 512, 75 MB for 20 000 × 512
   (it holds the 40 MB of embeddings).

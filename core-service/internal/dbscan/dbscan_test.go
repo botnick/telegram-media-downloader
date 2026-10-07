@@ -845,7 +845,10 @@ func BenchmarkLabels5k512(b *testing.B) {
 	if many < 1 {
 		many = 1
 	}
-	for _, w := range []int{1, many} {
+	for _, w := range []int{1, defaultWorkersCap, many} {
+		if w > many {
+			continue
+		}
 		b.Run(fmt.Sprintf("workers=%d", w), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				if _, err := Labels(context.Background(), benchData, 5000, 512, 1.05, 2, w, nil); err != nil {
@@ -853,5 +856,35 @@ func BenchmarkLabels5k512(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func TestDefaultWorkersLeavesCPUHeadroom(t *testing.T) {
+	t.Setenv("TGDL_DBSCAN_WORKERS", "")
+	h := &Handler{}
+	want := runtime.NumCPU() - 1
+	if want < 1 {
+		want = 1
+	}
+	if want > defaultWorkersCap {
+		want = defaultWorkersCap
+	}
+	if got := h.workers(); got != want {
+		t.Fatalf("default workers = %d, want %d", got, want)
+	}
+}
+
+func TestWorkersEnvOverride(t *testing.T) {
+	t.Setenv("TGDL_DBSCAN_WORKERS", "3")
+	if got := (&Handler{}).workers(); got != 3 {
+		t.Fatalf("env workers = %d, want 3", got)
+	}
+	t.Setenv("TGDL_DBSCAN_WORKERS", "invalid")
+	if got := (&Handler{Workers: 2}).workers(); got != 2 {
+		t.Fatalf("explicit workers = %d, want 2", got)
+	}
+	t.Setenv("TGDL_DBSCAN_WORKERS", "999")
+	if got := (&Handler{}).workers(); got != maxWorkers {
+		t.Fatalf("capped env workers = %d, want %d", got, maxWorkers)
 	}
 }

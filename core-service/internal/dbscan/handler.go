@@ -12,8 +12,10 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,10 +27,12 @@ import (
 // maxValues; an O(n²) clustering of more faces than that would not finish
 // anyway.
 const (
-	MaxPoints  = 1 << 19 // points per request (524 288)
-	MaxDim     = 1 << 12 // floats per point (4 096)
-	maxValues  = 1 << 28 // n*dim float32s (1 GiB of body)
-	maxWaiting = 4       // requests queued behind the running one
+	MaxPoints         = 1 << 19 // points per request (524 288)
+	MaxDim            = 1 << 12 // floats per point (4 096)
+	maxValues         = 1 << 28 // n*dim float32s (1 GiB of body)
+	maxWaiting        = 4       // requests queued behind the running one
+	defaultWorkersCap = 8       // leave CPU headroom for Telegram and the dashboard
+	maxWorkers        = 64      // an explicit override cannot create an unbounded fan-out
 )
 
 // errTooLarge marks a request over the limits (413 instead of 400).
@@ -81,7 +85,8 @@ var ErrQueueFull = errors.New("dbscan queue is full")
 // EQUEUEFULL. One clustering runs at a time.
 type Handler struct {
 	Log *slog.Logger
-	// Workers is the goroutines per clustering; <= 0 means NumCPU-1 (min 1).
+	// Workers is the goroutines per clustering; <= 0 means the default capped
+	// worker count. The cap keeps a large host from saturating the whole app.
 	Workers int
 
 	once    sync.Once
@@ -105,10 +110,22 @@ func (h *Handler) workers() int {
 	if h.Workers > 0 {
 		return h.Workers
 	}
-	if w := runtime.NumCPU() - 1; w > 1 {
-		return w
+	workers := runtime.NumCPU() - 1
+	if workers < 1 {
+		workers = 1
 	}
-	return 1
+	if workers > defaultWorkersCap {
+		workers = defaultWorkersCap
+	}
+	if raw := strings.TrimSpace(os.Getenv("TGDL_DBSCAN_WORKERS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			if n > maxWorkers {
+				n = maxWorkers
+			}
+			workers = n
+		}
+	}
+	return workers
 }
 
 func (h *Handler) acquire(ctx context.Context) error {
