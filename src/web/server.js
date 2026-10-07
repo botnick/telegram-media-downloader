@@ -5431,7 +5431,23 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
         const include = req.role === 'guest' ? 'local' : reqInclude;
         const peerIdFilter =
             req.role !== 'guest' && req.query.peerId ? String(req.query.peerId) : null;
-        const result = getDownloadsForGroupFederated(groupId, limit, offset, type, {
+        let result;
+        // The legacy per-group route intentionally leaves negative limits
+        // unclamped (`LIMIT -1` means all rows). Keep that edge case on the
+        // Node query so the optional Go projection cannot change it.
+        if (include === 'local' && limit > 0 && limit <= 500 && gocoreClient.isAvailable('db')) {
+            try {
+                result = await gocoreClient.downloadsGroup({
+                    groupId,
+                    limit,
+                    offset,
+                    type,
+                    pinnedOnly,
+                    pinnedFirst,
+                });
+            } catch {}
+        }
+        result ||= getDownloadsForGroupFederated(groupId, limit, offset, type, {
             pinnedOnly,
             pinnedFirst,
             include,

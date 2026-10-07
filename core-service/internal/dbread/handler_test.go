@@ -133,3 +133,17 @@ func TestAllDownloads(t *testing.T) {
 		t.Fatalf("files=%v", body["files"])
 	}
 }
+
+func TestDownloadsGroup(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.DownloadsGroup), map[string]any{
+		"groupId": "-1", "limit": 1, "offset": 0, "type": "videos", "pinnedOnly": false,
+	})
+	if status != http.StatusOK || body["total"] != float64(1) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["files"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["file_name"] != "b.mp4" {
+		t.Fatalf("files=%v", body["files"])
+	}
+}

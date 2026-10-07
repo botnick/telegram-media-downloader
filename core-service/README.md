@@ -15,7 +15,7 @@ it for:
 | `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `thumb` | `POST /v1/thumb/{video,image,audio}` | Media decode/scale/WebP thumbnail generation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `seekbar` | `POST /v1/seekbar` | Video sampling, tiling and sprite encode with bounded ffmpeg workers (optional; old binaries fall back to Node) |
-| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats`, `/v1/db/group-stats`, `/v1/db/group-files`, `/v1/db/downloads/all` | Read-only SQLite dashboard projections (optional; Node falls back to its local queries) |
+| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats`, `/v1/db/group-stats`, `/v1/db/group-files`, `/v1/db/downloads/all`, `/v1/db/downloads/group` | Read-only SQLite dashboard projections (optional; Node falls back to its local queries) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
@@ -111,6 +111,7 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 | `POST /v1/db/group-stats` | token | JSON `{"groupId":"…"}` → per-group counts, type totals and message timestamps |
 | `POST /v1/db/group-files` | token | JSON `{"groupId":"…","limit":50,"offset":0,"type":"video"}` → paginated file rows |
 | `POST /v1/db/downloads/all` | token | JSON `{"limit":50,"offset":0,"type":"images","pinnedOnly":false,"pinnedFirst":false}` → local gallery page |
+| `POST /v1/db/downloads/group` | token | JSON `{"groupId":"…","limit":50,"offset":0,"type":"videos","pinnedOnly":false,"pinnedFirst":false}` → local group gallery page |
 | `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
 ### `/v1/hash`
