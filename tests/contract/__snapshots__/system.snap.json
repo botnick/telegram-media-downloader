@@ -31,7 +31,8 @@
             "allowRoots": [
               "<DATA>/downloads",
               "<DATA>/thumbs",
-              "<DATA>/seekbar"
+              "<DATA>/seekbar",
+              "<DATA>/backups"
             ],
             "binary": {
               "path": "<masked:string>",
@@ -134,7 +135,8 @@
             "allowRoots": [
               "<DATA>/downloads",
               "<DATA>/thumbs",
-              "<DATA>/seekbar"
+              "<DATA>/seekbar",
+              "<DATA>/backups"
             ],
             "binary": {
               "path": "<masked:string>",

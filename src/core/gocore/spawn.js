@@ -581,6 +581,7 @@ export function allowRoots(config = _safeConfig()) {
     add(path.join(getDataDir(), 'downloads'));
     add(path.join(getDataDir(), 'thumbs'));
     add(path.join(getDataDir(), 'seekbar'));
+    add(path.join(getDataDir(), 'backups'));
     const custom = config?.download?.path;
     if (typeof custom === 'string' && custom.trim()) add(resolveConfigDownloadPath(custom));
     for (const p of String(process.env.TGDL_CORE_ALLOW_ROOTS || '').split(path.delimiter)) add(p);

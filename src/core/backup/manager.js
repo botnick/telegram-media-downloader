@@ -12,7 +12,6 @@ import path from 'path';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import { EventEmitter } from 'events';
-import os from 'os';
 
 import { getDb } from '../db.js';
 import { encryptConfig, decryptConfig } from './credentials.js';
@@ -27,6 +26,7 @@ import { GoogleDriveProvider } from './providers/gdrive.js';
 import { DropboxProvider } from './providers/dropbox.js';
 
 import { getDataDir, getDownloadsDir } from '../paths.js';
+import * as gocoreClient from '../gocore/client.js';
 
 const DATA_DIR = getDataDir();
 const DOWNLOADS_DIR = getDownloadsDir();
@@ -911,16 +911,14 @@ async function _kickSnapshotRun(dest) {
  * Uses the better-sqlite3 backup() API to grab a consistent DB copy
  * so a snapshot during an active write doesn't corrupt the archive.
  *
- * Implementation note: we deliberately avoid an extra `tar` dependency
- * here. The format is a vanilla GNU-tar+gzip stream produced by piping
- * `child_process.spawn('tar', ...)` when the binary is available, and
- * a tiny in-process tar writer as a portable fallback. The fallback is
- * sufficient for the small set of files we archive (db.sqlite +
- * config.json + sessions/), so we don't drag in a node-tar dep just
- * for backup.
+ * tgdl-core handles the CPU-heavy walk and gzip compression when its
+ * optional `tar-gz` feature is available. The small in-process writer stays
+ * as a portable fallback for older cores and development without Go.
  */
 async function _buildSnapshotArchive(archivePath) {
-    const tmpRoot = await fsp.mkdtemp(path.join(os.tmpdir(), 'tgdl-snap-'));
+    // Keep the staging root under data/backups so tgdl-core can archive it
+    // without widening its allow-list to the host's global temp directory.
+    const tmpRoot = await fsp.mkdtemp(path.join(SNAPSHOTS_DIR, '.staging-'));
     try {
         // 1. Consistent DB copy via the SQLite backup API.
         const db = getDb();
@@ -969,12 +967,30 @@ async function _copyRecursive(src, dst) {
 }
 
 /**
- * Write a gzipped USTAR archive of `srcDir` to `archivePath`. No
- * external `tar` binary required — we emit headers + 512-byte-block
- * file bodies + a 1024-byte zero EOF marker, then gzip the whole
- * stream. Sufficient for restoring with `tar -xzf` on any platform.
+ * Write a gzipped USTAR archive of `srcDir` to `archivePath` using the
+ * portable Node fallback. The Go path above streams the same payload without
+ * pinning the Node event loop.
  */
 async function _writeTarGz(srcDir, archivePath) {
+    if (gocoreClient.isAvailable('tar-gz')) {
+        const out = fs.createWriteStream(archivePath);
+        try {
+            await gocoreClient.pipeTarGz(out, srcDir);
+            return;
+        } catch (e) {
+            await new Promise((resolve) => out.destroy(resolve));
+            await fsp.unlink(archivePath).catch(() => {});
+            _log({
+                source: 'backup',
+                level: 'warn',
+                msg: `tgdl-core tar.gz failed; using Node fallback: ${e?.message || e}`,
+            });
+        }
+    }
+    await _writeTarGzNode(srcDir, archivePath);
+}
+
+async function _writeTarGzNode(srcDir, archivePath) {
     const zlib = await import('zlib');
     const gz = zlib.createGzip({ level: 9 });
     const out = fs.createWriteStream(archivePath);

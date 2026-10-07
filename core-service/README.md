@@ -97,7 +97,7 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 
 | Route | Auth | |
 |---|---|---|
-| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan","zip","faststart","thumb","seekbar","db"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
+| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","hash-batch","tar-gz","stat","walk","dbscan","zip","faststart","thumb","seekbar","db"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
 | `POST /v1/hash` | token | Body `{"path":"/abs/file"}` → `{"sha256","size","mtimeMs"}` |
 | `POST /v1/fs/stat-batch` | token | Body `{"paths":["/abs/a", …]}` (≤ 1000) → `{"results":[…]}`, see below |
 | `POST /v1/fs/walk` | token | Body `{"root","maxDepth","stat","entries"}` → NDJSON stream, see below |

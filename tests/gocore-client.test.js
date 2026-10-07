@@ -21,6 +21,7 @@ import os from 'os';
 import path from 'path';
 import readline from 'readline';
 import { PassThrough } from 'stream';
+import { gzipSync } from 'zlib';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { requireCoreBin } from './helpers/gocore-raw.js';
@@ -169,6 +170,27 @@ describe('answers from a (fake) tgdl-core', () => {
         out.on('data', (chunk) => chunks.push(chunk));
         await client.pipeZip(out, [{ path: FILE, name: 'sample.bin' }]);
         expect(Buffer.concat(chunks)).toEqual(wire);
+    });
+
+    it('pipes a tar.gz response into a plain writable stream', async () => {
+        const wire = gzipSync(Buffer.from('fake-tar-gz-wire'));
+        let request;
+        await fakeCore(
+            {
+                '/v1/tar-gz': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    res.writeHead(200, { 'content-type': 'application/gzip' });
+                    res.end(wire);
+                },
+            },
+            { features: ['tar-gz'] },
+        );
+        const out = new PassThrough();
+        const chunks = [];
+        out.on('data', (chunk) => chunks.push(chunk));
+        await client.pipeTarGz(out, DOWNLOADS);
+        expect(Buffer.concat(chunks)).toEqual(wire);
+        expect(request).toEqual({ root: DOWNLOADS });
     });
 
     it('accepts the Go faststart result and rejects malformed status', async () => {

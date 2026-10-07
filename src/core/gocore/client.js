@@ -17,7 +17,7 @@
  *                with plain fs itself — see hash.js / fs.js.
  *   timeout / transport / auth / server / protocol / busy / aborted
  *
- * Optional helpers (`hash-batch`, `db`, `thumb`, `seekbar` and `faststart`) keep a Node fallback for
+ * Optional helpers (`hash-batch`, `tar-gz`, `db`, `thumb`, `seekbar` and `faststart`) keep a Node fallback for
  * older binaries; the required filesystem and clustering calls do not.
  *
  * Every call has a deadline; on expiry (or an AbortSignal) the socket is
@@ -361,7 +361,7 @@ async function _request(method, pathname, body, opts) {
 // public response; this helper only keeps the local Go request alive and
 // forwards the bytes. Non-200 answers are buffered as the small JSON error
 // envelope so callers can still decide whether to fall back.
-function _pipeOnce(out, pathname, body, { timeoutMs, signal }) {
+function _pipeOnce(out, pathname, body, { timeoutMs, signal, feature = 'zip' }) {
     return new Promise((resolve, reject) => {
         if (!_base) {
             reject(new GoCoreError('unavailable', _statusProvider().message));
@@ -409,7 +409,7 @@ function _pipeOnce(out, pathname, body, { timeoutMs, signal }) {
                 method: 'POST',
                 path: pathname,
                 headers: {
-                    accept: 'application/zip, application/json',
+                    accept: 'application/zip, application/gzip, application/json',
                     'content-type': 'application/json',
                     'content-length': String(data.length),
                     ...authHeaders(_token),
@@ -447,13 +447,19 @@ function _pipeOnce(out, pathname, body, { timeoutMs, signal }) {
                             );
                             return;
                         }
-                        fail(_errorFor('zip', incoming.statusCode, bodyObj));
+                        fail(_errorFor(feature, incoming.statusCode, bodyObj));
                     });
                     return;
                 }
                 for (const name of ['content-type', 'cache-control', 'transfer-encoding']) {
                     const value = incoming.headers[name];
-                    if (value !== undefined && !out.headersSent) out.setHeader(name, value);
+                    if (
+                        value !== undefined &&
+                        !out.headersSent &&
+                        typeof out.setHeader === 'function'
+                    ) {
+                        out.setHeader(name, value);
+                    }
                 }
                 closeHandler = () => {
                     if (!out.writableFinished)
@@ -485,11 +491,26 @@ export async function pipeZip(out, entries, { timeoutMs = 30 * 60_000, signal, r
     const feature = 'zip';
     await ensureReady(feature, { waitMs: readyWaitMs, signal });
     try {
-        await _pipeOnce(out, '/v1/zip', { entries }, { timeoutMs, signal });
+        await _pipeOnce(out, '/v1/zip', { entries }, { timeoutMs, signal, feature });
         _count(feature, 'ok');
     } catch (e) {
         // _errorFor already counted an HTTP error; transport/deadline errors
         // are counted here, matching _call's accounting for the JSON APIs.
+        if (!['outside', 'file', 'server', 'busy', 'auth'].includes(e?.kind)) {
+            _count(feature, e?.kind === 'timeout' ? 'timeout' : 'error');
+        }
+        throw e;
+    }
+}
+
+/** Stream a tar.gz backup snapshot from tgdl-core into a local file. */
+export async function pipeTarGz(out, root, { timeoutMs = 30 * 60_000, signal, readyWaitMs } = {}) {
+    const feature = 'tar-gz';
+    await ensureReady(feature, { waitMs: readyWaitMs, signal });
+    try {
+        await _pipeOnce(out, '/v1/tar-gz', { root }, { timeoutMs, signal, feature });
+        _count(feature, 'ok');
+    } catch (e) {
         if (!['outside', 'file', 'server', 'busy', 'auth'].includes(e?.kind)) {
             _count(feature, e?.kind === 'timeout' ? 'timeout' : 'error');
         }
