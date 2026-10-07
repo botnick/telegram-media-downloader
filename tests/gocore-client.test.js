@@ -407,6 +407,23 @@ describe('answers from a (fake) tgdl-core', () => {
         });
     });
 
+    it('reads update history through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/update-history': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { history: [{ id: 4, status: 'failed' }] });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.updateHistory({ limit: 3 })).resolves.toEqual({
+            history: [{ id: 4, status: 'failed' }],
+        });
+        expect(request).toEqual({ limit: 3 });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

@@ -45,6 +45,15 @@ func makeDB(t *testing.T) string {
 	)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = db.Exec(`CREATE TABLE update_history (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		from_version TEXT, to_version TEXT, from_instance_id TEXT,
+		started_at INTEGER NOT NULL, finished_at INTEGER,
+		status TEXT NOT NULL DEFAULT 'pending', error_code TEXT,
+		error_msg TEXT, backup_path TEXT, backup_bytes INTEGER
+	)`); err != nil {
+		t.Fatal(err)
+	}
 	_, err = db.Exec(`INSERT INTO downloads(group_id,group_name,file_size,message_id,file_type,file_name,file_path,created_at,nsfw_score) VALUES
 		('-1','Unknown',10,10,'photo','a.jpg','G/images/a.jpg','2026-01-01T00:00:00Z',NULL),
 		('-1','Cool Channel',20,11,'video','b.mp4','G/videos/b.mp4','2026-01-02T00:00:00Z',0.25),
@@ -59,6 +68,11 @@ func makeDB(t *testing.T) string {
 	}
 	if _, err = db.Exec(`INSERT INTO share_links(download_id,created_at,expires_at,label,access_count) VALUES
 		(2,200,400,'cool',3), (1,100,300,'photo',0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO update_history(from_version,to_version,from_instance_id,started_at,finished_at,status,error_code,error_msg,backup_path,backup_bytes) VALUES
+		('2.31.0','2.32.0','node-a',100,200,'success',NULL,NULL,'/tmp/db.sqlite',42),
+		(NULL,NULL,NULL,300,NULL,'pending','WAIT',NULL,NULL,NULL)`); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -201,5 +215,25 @@ func TestShareLinks(t *testing.T) {
 	})
 	if status != http.StatusOK || body["total"] != float64(2) {
 		t.Fatalf("paging status=%d body=%v", status, body)
+	}
+}
+
+func TestUpdateHistory(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.UpdateHistory), map[string]any{"limit": 1})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["history"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["status"] != "pending" {
+		t.Fatalf("history=%v", body["history"])
+	}
+	status, body = call(t, http.HandlerFunc(h.UpdateHistory), map[string]any{"limit": 20})
+	if status != http.StatusOK {
+		t.Fatalf("full status=%d body=%v", status, body)
+	}
+	rows, _ = body["history"].([]any)
+	if len(rows) != 2 || rows[1].(map[string]any)["backup_bytes"] != float64(42) {
+		t.Fatalf("full history=%v", body["history"])
 	}
 }

@@ -858,6 +858,28 @@ export async function shareLinks(
     return body;
 }
 
+/** Read the newest update audit rows through tgdl-core's DB pool. */
+export async function updateHistory(
+    { limit = 25 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/update-history',
+        { limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!body || !Array.isArray(body.history)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed update-history response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

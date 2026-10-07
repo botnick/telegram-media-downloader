@@ -106,6 +106,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/downloads/group", s.dbRead.DownloadsGroup)
 		private.HandleFunc("POST /v1/db/downloads/search", s.dbRead.Search)
 		private.HandleFunc("POST /v1/db/share-links", s.dbRead.ShareLinks)
+		private.HandleFunc("POST /v1/db/update-history", s.dbRead.UpdateHistory)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

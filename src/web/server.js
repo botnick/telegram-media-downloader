@@ -1899,7 +1899,13 @@ app.get('/api/update/history', async (req, res) => {
     if (!_updateRouteSession(req, res, { adminOnly: true })) return;
     try {
         const limit = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 25));
-        res.json({ history: listUpdateHistory({ limit }) });
+        let result;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                result = await gocoreClient.updateHistory({ limit });
+            } catch {}
+        }
+        res.json(result || { history: listUpdateHistory({ limit }) });
     } catch (e) {
         res.status(500).json({ error: e?.message || 'Failed to read update history' });
     }
