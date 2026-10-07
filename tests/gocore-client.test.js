@@ -113,12 +113,14 @@ describe('answers from a (fake) tgdl-core', () => {
         const previous = {
             dbscan: process.env.TGDL_DBSCAN_WORKERS,
             faststart: process.env.FASTSTART_CONCURRENCY,
+            thumbsImg: process.env.THUMBS_IMG_CONCURRENCY,
             thumbs: process.env.THUMBS_VID_CONCURRENCY,
             ffmpeg: process.env.FFMPEG_PATH,
             secret: process.env.TGDL_FACES_API_TOKEN,
         };
         process.env.TGDL_DBSCAN_WORKERS = '3';
         process.env.FASTSTART_CONCURRENCY = '1';
+        process.env.THUMBS_IMG_CONCURRENCY = '5';
         process.env.THUMBS_VID_CONCURRENCY = '2';
         process.env.FFMPEG_PATH = '/tmp/ffmpeg';
         process.env.TGDL_FACES_API_TOKEN = 'must-not-leak';
@@ -127,6 +129,7 @@ describe('answers from a (fake) tgdl-core', () => {
             expect(env).toMatchObject({
                 TGDL_DBSCAN_WORKERS: '3',
                 FASTSTART_CONCURRENCY: '1',
+                THUMBS_IMG_CONCURRENCY: '5',
                 THUMBS_VID_CONCURRENCY: '2',
                 FFMPEG_PATH: '/tmp/ffmpeg',
             });
@@ -135,6 +138,7 @@ describe('answers from a (fake) tgdl-core', () => {
             for (const [key, value] of Object.entries({
                 TGDL_DBSCAN_WORKERS: previous.dbscan,
                 FASTSTART_CONCURRENCY: previous.faststart,
+                THUMBS_IMG_CONCURRENCY: previous.thumbsImg,
                 THUMBS_VID_CONCURRENCY: previous.thumbs,
                 FFMPEG_PATH: previous.ffmpeg,
             })) {
