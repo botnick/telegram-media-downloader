@@ -185,6 +185,17 @@ func TestStats(t *testing.T) {
 	}
 }
 
+func TestDedupStats(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.DedupStats), map[string]any{})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	if body["totalFiles"] != float64(5) || body["hashed"] != float64(0) || body["missing"] != float64(3) {
+		t.Fatalf("body=%v", body)
+	}
+}
+
 func TestGroupStats(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.GroupStats), map[string]any{"groupId": "-1"})

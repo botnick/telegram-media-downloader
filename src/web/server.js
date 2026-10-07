@@ -7230,23 +7230,34 @@ app.get('/api/maintenance/dedup/sets', async (req, res) => {
 // server restart.
 app.get('/api/maintenance/dedup/stats', async (req, res) => {
     try {
-        const db = getDb();
-        const totalFiles = db.prepare('SELECT COUNT(*) AS n FROM downloads').get().n || 0;
-        const hashed =
-            db.prepare('SELECT COUNT(*) AS n FROM downloads WHERE file_hash IS NOT NULL').get().n ||
-            0;
-        // Same predicate the dedup scanner uses to decide what to hash —
-        // mirrors src/core/dedup.js findDuplicates() so the "Awaiting hash"
-        // count matches what a Scan will actually walk.
-        const missing =
-            db
-                .prepare(`
-                SELECT COUNT(*) AS n FROM downloads
-                 WHERE file_hash IS NULL
-                   AND file_path IS NOT NULL
-                   AND COALESCE(file_size, 0) > 0
-            `)
-                .get().n || 0;
+        let counts;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                counts = await gocoreClient.dedupStats();
+            } catch {
+                /* old core or a transient read error — use the local query */
+            }
+        }
+        if (!counts) {
+            const db = getDb();
+            const totalFiles = db.prepare('SELECT COUNT(*) AS n FROM downloads').get().n || 0;
+            const hashed =
+                db.prepare('SELECT COUNT(*) AS n FROM downloads WHERE file_hash IS NOT NULL').get()
+                    .n || 0;
+            // Same predicate the dedup scanner uses to decide what to hash —
+            // mirrors src/core/dedup.js findDuplicates() so the "Awaiting hash"
+            // count matches what a Scan will actually walk.
+            const missing =
+                db
+                    .prepare(`
+                    SELECT COUNT(*) AS n FROM downloads
+                     WHERE file_hash IS NULL
+                       AND file_path IS NOT NULL
+                       AND COALESCE(file_size, 0) > 0
+                `)
+                    .get().n || 0;
+            counts = { totalFiles, hashed, missing };
+        }
         let lastScan = null;
         try {
             const stored = kvGet('dedup_last_scan');
@@ -7257,7 +7268,7 @@ app.get('/api/maintenance/dedup/stats', async (req, res) => {
             const stored = kvGet('dedup_scan_progress');
             if (stored && typeof stored === 'object' && stored.partial) partialProgress = stored;
         } catch {}
-        res.json({ totalFiles, hashed, missing, lastScan, partialProgress });
+        res.json({ ...counts, lastScan, partialProgress });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }

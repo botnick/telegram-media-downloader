@@ -1511,6 +1511,37 @@ export async function fileNameCandidates(
     return body;
 }
 
+/** Read dedup hash coverage counters through tgdl-core's DB pool. */
+export async function dedupStats({ timeoutMs = 10_000, readyWaitMs, signal } = {}) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/dedup-stats',
+        {},
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (
+        !body ||
+        !Number.isSafeInteger(body.totalFiles) ||
+        body.totalFiles < 0 ||
+        !Number.isSafeInteger(body.hashed) ||
+        body.hashed < 0 ||
+        !Number.isSafeInteger(body.missing) ||
+        body.missing < 0
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed dedup stats response', { status });
+    }
+    _count(feature, 'ok');
+    return {
+        totalFiles: body.totalFiles,
+        hashed: body.hashed,
+        missing: body.missing,
+    };
+}
+
 function validTelegramMediaRows(body) {
     return (
         body &&

@@ -899,6 +899,25 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ groupId: '-3', fileName: 'same.jpg', size: 12 });
     });
 
+    it('reads dedup coverage counters through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/dedup-stats': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { totalFiles: 12, hashed: 9, missing: 2 });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.dedupStats()).resolves.toEqual({
+            totalFiles: 12,
+            hashed: 9,
+            missing: 2,
+        });
+        expect(request).toEqual({});
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(

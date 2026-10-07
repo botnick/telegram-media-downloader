@@ -112,6 +112,7 @@ func TestEverythingElseNeedsToken(t *testing.T) {
 		{"POST", "/v1/db/telegram-media-candidates", ""},
 		{"POST", "/v1/db/file-hash-candidates", ""},
 		{"POST", "/v1/db/file-name-candidates", ""},
+		{"POST", "/v1/db/dedup-stats", ""},
 		{"GET", "/v1/stats", ""},
 		{"GET", "/nope", ""},
 		{"POST", "/health", ""},
