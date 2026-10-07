@@ -222,5 +222,11 @@ describe('snapshot backups through tgdl-core', () => {
                 expect.objectContaining({ id: personId, face_count: 1, cover_download_id: id }),
             ],
         });
+        await expect(gocoreClient.personPhotos({ personId, limit: 1 })).resolves.toMatchObject({
+            success: true,
+            personId,
+            files: [expect.objectContaining({ id, face_id: expect.any(Number) })],
+            total: 1,
+        });
     }, 60_000);
 });

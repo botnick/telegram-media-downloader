@@ -1234,6 +1234,57 @@ export async function personGroups(
     return body;
 }
 
+/** Read one person's paginated gallery through tgdl-core. */
+export async function personPhotos(
+    { personId, limit = 50, offset = 0 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/person-photos',
+        { personId, limit, offset },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const validRows =
+        body &&
+        Array.isArray(body.files) &&
+        body.files.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.file_name == null || typeof row.file_name === 'string') &&
+                (row.file_path == null || typeof row.file_path === 'string') &&
+                (row.file_type == null || typeof row.file_type === 'string') &&
+                (row.file_size == null || Number.isSafeInteger(row.file_size)) &&
+                (row.created_at == null || typeof row.created_at === 'string') &&
+                (row.group_id == null || typeof row.group_id === 'string') &&
+                (row.group_name == null || typeof row.group_name === 'string') &&
+                (row.message_id == null || Number.isSafeInteger(row.message_id)) &&
+                Number.isSafeInteger(row.face_id) &&
+                typeof row.face_x === 'number' &&
+                typeof row.face_y === 'number' &&
+                typeof row.face_w === 'number' &&
+                typeof row.face_h === 'number',
+        );
+    if (
+        !validRows ||
+        body.success !== true ||
+        !Number.isSafeInteger(body.personId) ||
+        body.personId <= 0 ||
+        !Number.isSafeInteger(body.total) ||
+        body.total < 0
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed person photos response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

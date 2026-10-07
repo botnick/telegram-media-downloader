@@ -677,6 +677,49 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ limit: 1 });
     });
 
+    it('reads a person gallery through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/person-photos': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        success: true,
+                        personId: 1,
+                        files: [
+                            {
+                                id: 2,
+                                file_name: 'b.mp4',
+                                file_path: 'G/videos/b.mp4',
+                                file_type: 'video',
+                                file_size: 20,
+                                created_at: '2026-01-02T00:00:00Z',
+                                group_id: '-1',
+                                group_name: 'Cool Channel',
+                                message_id: 11,
+                                face_id: 2,
+                                face_x: 0.1,
+                                face_y: 0.2,
+                                face_w: 0.3,
+                                face_h: 0.4,
+                            },
+                        ],
+                        total: 1,
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.personPhotos({ personId: 1, limit: 1, offset: 2 }),
+        ).resolves.toMatchObject({
+            success: true,
+            personId: 1,
+            files: [expect.objectContaining({ id: 2, face_id: 2 })],
+        });
+        expect(request).toEqual({ personId: 1, limit: 1, offset: 2 });
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(

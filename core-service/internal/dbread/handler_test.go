@@ -320,6 +320,22 @@ func TestPersonGroups(t *testing.T) {
 	}
 }
 
+func TestPersonPhotos(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.PersonPhotos), map[string]any{"personId": 1, "limit": 1})
+	if status != http.StatusOK || body["success"] != true || body["personId"] != float64(1) || body["total"] != float64(2) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["files"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("files=%v", body["files"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(2) || row["file_name"] != "b.mp4" || row["face_id"] != float64(2) {
+		t.Fatalf("row=%v", row)
+	}
+}
+
 func TestShareLinks(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.ShareLinks), map[string]any{

@@ -9772,6 +9772,13 @@ app.get('/api/ai/people/:id/photos', async (req, res) => {
         }
         const limit = Math.max(1, Math.min(200, Number(req.query?.limit) || 50));
         const offset = Math.max(0, Number(req.query?.offset) || 0);
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                const result = await gocoreClient.personPhotos({ personId: id, limit, offset });
+                res.set('Cache-Control', 'no-store, max-age=0');
+                return res.json(result);
+            } catch {}
+        }
         const result = listPhotosForPerson(id, { limit, offset });
         res.json({ success: true, personId: id, ...result });
     } catch (e) {
