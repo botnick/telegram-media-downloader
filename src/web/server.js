@@ -433,6 +433,51 @@ const SESSION_PASSWORD = getOrGenerateSecret();
 sharp.cache(false);
 
 const app = express();
+
+// Bulk delete/ZIP both need the same bounded catalog projection before they
+// touch the filesystem. Keep that read off better-sqlite3's synchronous
+// connection when the optional Go DB pool is available; a single failed or
+// older core call falls back to the exact local query for the whole request.
+async function readDownloadRowsByIds(ids) {
+    const normalized = [...new Set(
+        (Array.isArray(ids) ? ids : [])
+            .map(Number)
+            .filter((id) => Number.isSafeInteger(id) && id > 0),
+    )];
+    if (!normalized.length) return [];
+
+    const local = () => {
+        const db = getDb();
+        const rows = [];
+        for (let i = 0; i < normalized.length; i += 500) {
+            const chunk = normalized.slice(i, i + 500);
+            rows.push(
+                ...db
+                    .prepare(
+                        `SELECT id, group_id, group_name, file_name, file_type, file_size, file_path
+                           FROM downloads WHERE id IN (${chunk.map(() => '?').join(',')})`,
+                    )
+                    .all(...chunk),
+            );
+        }
+        return rows;
+    };
+
+    if (!gocoreClient.isAvailable('db')) return local();
+    try {
+        const rows = [];
+        for (let i = 0; i < normalized.length; i += 500) {
+            const result = await gocoreClient.downloadsByIds(
+                { ids: normalized.slice(i, i + 500) },
+                { timeoutMs: 10_000 },
+            );
+            rows.push(...result.rows);
+        }
+        return rows;
+    } catch {
+        return local();
+    }
+}
 const server = createServer(app);
 // Cloudflare's idle/origin window is ~100 s; nginx default proxy_read_timeout
 // is 60 s. Setting our own timeouts slightly above keepAliveTimeout avoids
@@ -5762,7 +5807,6 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
             }
         }
         if (idList.length) {
-            const db = getDb();
             // SELECT `file_path` so we use the same on-disk path the
             // downloader / thumbs / bulk-zip rely on. The previous
             // implementation re-built `<group>/<typeFolder>/<file_name>`
@@ -5773,16 +5817,7 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
             // safeResolveDownload return ENOENT and the file survived
             // on disk while the DB row got dropped. Chunked so a huge
             // gallery selection can't overflow SQLite's bound-parameter cap.
-            const selectRows = (chunk) =>
-                db
-                    .prepare(
-                        `SELECT id, group_id, group_name, file_name, file_type, file_path FROM downloads WHERE id IN (${chunk.map(() => '?').join(',')})`,
-                    )
-                    .all(...chunk);
-            const rows = [];
-            for (let i = 0; i < idList.length; i += 500) {
-                rows.push(...selectRows(idList.slice(i, i + 500)));
-            }
+            const rows = await readDownloadRowsByIds(idList);
             const config = loadConfig();
             const folderById = new Map();
             for (const g of config.groups || []) folderById.set(String(g.id), sanitizeName(g.name));
@@ -5934,13 +5969,7 @@ app.post('/api/downloads/bulk-zip', async (req, res) => {
         }
 
         // Resolve everything up-front so we can size-check + stream sensibly.
-        const db = getDb();
-        const placeholders = idList.map(() => '?').join(',');
-        const rows = db
-            .prepare(
-                `SELECT id, group_id, group_name, file_name, file_size, file_type, file_path FROM downloads WHERE id IN (${placeholders})`,
-            )
-            .all(...idList);
+        const rows = await readDownloadRowsByIds(idList);
 
         if (rows.length === 0) return res.status(404).json({ error: 'No matching files' });
 

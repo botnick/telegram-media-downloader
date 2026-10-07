@@ -26,6 +26,7 @@ Node's single thread:
 | Read-only group data | `/api/groups/:id/stats` and `/api/groups/:id/files` | `POST /v1/db/group-stats`, `/v1/db/group-files` (optional feature) |
 | Read-only local gallery | `/api/downloads/all` with `include=local` | `POST /v1/db/downloads/all` (optional feature) |
 | Read-only group gallery | `/api/downloads/:groupId` with `include=local` | `POST /v1/db/downloads/group` (optional feature) |
+| Bulk download row projection | bulk delete and bulk ZIP row reads | `POST /v1/db/downloads/by-ids` (optional feature) |
 | Read-only local search | `/api/downloads/search` with `include=local` | `POST /v1/db/downloads/search` (optional feature) |
 | Read-only share-link list | `/api/share/links` | `POST /v1/db/share-links` (optional feature) |
 | Read-only update history | `/api/update/history` | `POST /v1/db/update-history` (optional feature) |

@@ -380,6 +380,35 @@ describe('answers from a (fake) tgdl-core', () => {
         ).resolves.toMatchObject({ total: 1 });
     });
 
+    it('reads bounded download rows by id through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/downloads/by-ids': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [
+                            {
+                                id: 2,
+                                group_id: '-1',
+                                group_name: 'Photos',
+                                file_name: 'b.mp4',
+                                file_size: 20,
+                                file_type: 'video',
+                                file_path: 'G/videos/b.mp4',
+                            },
+                        ],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.downloadsByIds({ ids: [2, 2, -1] })).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 2, file_path: 'G/videos/b.mp4' })],
+        });
+        expect(request).toEqual({ ids: [2, 2, -1] });
+    });
+
     it('reads a local search page through the Go DB projection', async () => {
         let request;
         await fakeCore(

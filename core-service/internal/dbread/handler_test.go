@@ -213,6 +213,28 @@ func TestAICandidates(t *testing.T) {
 	}
 }
 
+func TestDownloadsByIDs(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.DownloadsByIDs), map[string]any{
+		"ids": []int{2, 1, 2, -1, 999},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 2 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	first := rows[0].(map[string]any)
+	second := rows[1].(map[string]any)
+	if first["id"] != float64(1) || first["group_id"] != "-1" || first["file_path"] != "G/images/a.jpg" {
+		t.Fatalf("first row=%v", first)
+	}
+	if second["id"] != float64(2) || second["file_size"] != float64(20) || second["file_type"] != "video" {
+		t.Fatalf("second row=%v", second)
+	}
+}
+
 func TestNsfwCandidates(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.NsfwCandidates), map[string]any{
