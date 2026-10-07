@@ -824,6 +824,40 @@ export async function searchDownloads(
     return body;
 }
 
+/** Read the joined local share-link page through tgdl-core's DB pool. */
+export async function shareLinks(
+    {
+        downloadId = null,
+        includeRevoked = true,
+        limit = 500,
+        offset = 0,
+        search = null,
+    } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/share-links',
+        {
+            ...(downloadId == null ? {} : { downloadId: Number(downloadId) }),
+            includeRevoked: !!includeRevoked,
+            limit,
+            offset,
+            ...(search != null ? { search: String(search) } : {}),
+        },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!body || !Array.isArray(body.rows) || !Number.isSafeInteger(body.total) || body.total < 0) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed share-links response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

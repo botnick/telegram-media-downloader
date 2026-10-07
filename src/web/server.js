@@ -11964,8 +11964,23 @@ app.get('/api/share/links', async (req, res) => {
         const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit, 10) || 500));
         const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
         const search = typeof req.query.q === 'string' ? req.query.q : null;
-        const rows = listShareLinks({ downloadId, includeRevoked, limit, offset, search });
-        const total = countShareLinks({ downloadId, includeRevoked, search });
+        let result;
+        // An invalid downloadId (for example `abc`) is kept on the Node
+        // query so SQLite preserves its legacy NaN binding behavior.
+        if ((downloadId === null || Number.isInteger(downloadId)) && gocoreClient.isAvailable('db')) {
+            try {
+                result = await gocoreClient.shareLinks({
+                    downloadId,
+                    includeRevoked,
+                    limit,
+                    offset,
+                    search,
+                });
+            } catch {}
+        }
+        const rows =
+            result?.rows || listShareLinks({ downloadId, includeRevoked, limit, offset, search });
+        const total = result?.total ?? countShareLinks({ downloadId, includeRevoked, search });
         res.json({
             success: true,
             links: rows.map((r) => _shareLinkPayload(req, r)),

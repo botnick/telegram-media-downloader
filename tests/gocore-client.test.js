@@ -375,6 +375,38 @@ describe('answers from a (fake) tgdl-core', () => {
         });
     });
 
+    it('reads the joined share-link page through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/share-links': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 1, download_id: 2, file_name: 'b.mp4' }],
+                        total: 1,
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.shareLinks({
+                downloadId: 2,
+                includeRevoked: false,
+                limit: 10,
+                offset: 20,
+                search: 'b.mp4',
+            }),
+        ).resolves.toMatchObject({ total: 1 });
+        expect(request).toMatchObject({
+            downloadId: 2,
+            includeRevoked: false,
+            limit: 10,
+            offset: 20,
+            search: 'b.mp4',
+        });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

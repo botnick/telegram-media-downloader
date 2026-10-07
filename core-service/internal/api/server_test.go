@@ -90,6 +90,7 @@ func TestEverythingElseNeedsToken(t *testing.T) {
 		{"POST", "/v1/db/downloads/all", ""},
 		{"POST", "/v1/db/downloads/group", ""},
 		{"POST", "/v1/db/downloads/search", ""},
+		{"POST", "/v1/db/share-links", ""},
 		{"GET", "/v1/stats", ""},
 		{"GET", "/nope", ""},
 		{"POST", "/health", ""},

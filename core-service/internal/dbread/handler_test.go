@@ -33,6 +33,18 @@ func makeDB(t *testing.T) string {
 	if _, err = db.Exec(`CREATE TABLE seekbar_sprites (download_id INTEGER, duration_sec REAL)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = db.Exec(`CREATE TABLE share_links (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		download_id INTEGER NOT NULL,
+		created_at INTEGER NOT NULL,
+		expires_at INTEGER NOT NULL,
+		revoked_at INTEGER,
+		label TEXT,
+		last_accessed_at INTEGER,
+		access_count INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatal(err)
+	}
 	_, err = db.Exec(`INSERT INTO downloads(group_id,group_name,file_size,message_id,file_type,file_name,file_path,created_at,nsfw_score) VALUES
 		('-1','Unknown',10,10,'photo','a.jpg','G/images/a.jpg','2026-01-01T00:00:00Z',NULL),
 		('-1','Cool Channel',20,11,'video','b.mp4','G/videos/b.mp4','2026-01-02T00:00:00Z',0.25),
@@ -43,6 +55,10 @@ func makeDB(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO seekbar_sprites(download_id,duration_sec) VALUES (2, 12.5)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO share_links(download_id,created_at,expires_at,label,access_count) VALUES
+		(2,200,400,'cool',3), (1,100,300,'photo',0)`); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -165,5 +181,25 @@ func TestSearch(t *testing.T) {
 	})
 	if status != http.StatusOK || body["total"] != float64(0) {
 		t.Fatalf("no match status=%d body=%v", status, body)
+	}
+}
+
+func TestShareLinks(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.ShareLinks), map[string]any{
+		"downloadId": 2, "includeRevoked": true, "limit": 50, "offset": 0, "search": "cool",
+	})
+	if status != http.StatusOK || body["total"] != float64(1) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["file_name"] != "b.mp4" || rows[0].(map[string]any)["group_id"] != "-1" {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	status, body = call(t, http.HandlerFunc(h.ShareLinks), map[string]any{
+		"includeRevoked": false, "limit": 1, "offset": 1,
+	})
+	if status != http.StatusOK || body["total"] != float64(2) {
+		t.Fatalf("paging status=%d body=%v", status, body)
 	}
 }

@@ -27,6 +27,7 @@ Node's single thread:
 | Read-only local gallery | `/api/downloads/all` with `include=local` | `POST /v1/db/downloads/all` (optional feature) |
 | Read-only group gallery | `/api/downloads/:groupId` with `include=local` | `POST /v1/db/downloads/group` (optional feature) |
 | Read-only local search | `/api/downloads/search` with `include=local` | `POST /v1/db/downloads/search` (optional feature) |
+| Read-only share-link list | `/api/share/links` | `POST /v1/db/share-links` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 For the required features it is the **only** implementation. Optional
