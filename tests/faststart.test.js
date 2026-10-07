@@ -124,6 +124,21 @@ describe('faststart remux', () => {
         expect(fs.existsSync(`${abs}.faststart.tmp`)).toBe(false);
     });
 
+    it('can optimise from a catalog row supplied by the bulk sweep', async () => {
+        mock.onSpawn = () => ({ code: 0, write: true });
+        const { id, abs } = addVideo('catalog-row.mp4');
+        // Remove the DB row after capturing the projection. If the optimizer
+        // performs its legacy lookup, it would report "no row" instead.
+        dbApi.getDb().prepare('DELETE FROM downloads WHERE id = ?').run(id);
+        const r = await faststart.optimizeDownload(id, {
+            id,
+            file_path: `g/videos/catalog-row.mp4`,
+            file_type: 'video',
+        });
+        expect(r.status).toBe('optimized');
+        expect(fs.existsSync(abs)).toBe(true);
+    });
+
     it('gives up on a file after repeated failures until it changes', async () => {
         mock.onSpawn = () => ({ code: 1, stderr: 'Invalid data found when processing input\n' });
         const { id, abs } = addVideo('corrupt.mp4');

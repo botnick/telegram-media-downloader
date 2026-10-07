@@ -383,14 +383,20 @@ async function _remuxInPlace(absPath) {
  * Updates `downloads.file_size` after a successful rewrite (the file
  * grows by the size of the relocated moov atom — a few KB).
  */
-export async function optimizeDownload(id) {
+export async function optimizeDownload(id, knownRow = null) {
     const dlId = parseInt(id, 10);
     if (!Number.isInteger(dlId) || dlId <= 0) return { status: 'skipped', reason: 'bad id' };
     const goAvailable = gocoreClient.isAvailable('faststart');
     if (!hasFfmpeg()) return { status: 'skipped', reason: 'no ffmpeg' };
-    const row = getDb()
-        .prepare('SELECT id, file_path, file_type FROM downloads WHERE id = ?')
-        .get(dlId);
+    // Bulk maintenance already has the catalog row in hand. Reusing it
+    // avoids a synchronous SQLite round-trip for every video while keeping
+    // the single-download API's lookup behavior intact.
+    const row =
+        knownRow && Number(knownRow.id) === dlId
+            ? knownRow
+            : getDb()
+                  .prepare('SELECT id, file_path, file_type FROM downloads WHERE id = ?')
+                  .get(dlId);
     if (!row) return { status: 'skipped', reason: 'no row' };
     // Operator-mode downloads often land as `file_type='document'` even
     // though the container IS MP4 (Telegram doesn't always set the video
@@ -557,7 +563,7 @@ export async function optimizeAll(opts = {}) {
     const PAGE_SIZE = 50;
     let beforeId = Number.MAX_SAFE_INTEGER;
     const pageStmt = db.prepare(`
-        SELECT id FROM downloads
+        SELECT id, file_path, file_type FROM downloads
          WHERE file_type = 'video' AND file_path IS NOT NULL
            AND id < ?
          ORDER BY id DESC
@@ -605,7 +611,14 @@ export async function optimizeAll(opts = {}) {
             if (signal?.aborted) break;
             processed++;
             try {
-                const result = await optimizeDownload(r.id);
+                // The Go projection intentionally returns only the fields
+                // needed by the sweep; the local query includes file_type.
+                // Normalize both shapes before handing the row to the
+                // optimizer so neither path performs a second DB read.
+                const row = r.file_type
+                    ? r
+                    : { ...r, file_type: 'video' };
+                const result = await optimizeDownload(r.id, row);
                 if (result.status === 'optimized') optimized++;
                 else if (result.status === 'already') already++;
                 else if (result.status === 'errored') errored++;
