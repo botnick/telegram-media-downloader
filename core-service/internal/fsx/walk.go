@@ -104,8 +104,9 @@ func (w *walker) wantsStat(kind string) bool {
 }
 
 type statted struct {
-	st   Stat
-	code string
+	st     Stat
+	code   string
+	stated bool
 }
 
 func (w *walker) dir(abs, rel string, depth int) error {
@@ -118,14 +119,15 @@ func (w *walker) dir(abs, rel string, depth int) error {
 		return w.emit(Event{T: "e", P: rel, Code: code})
 	}
 	// Stat this directory's entries in parallel; emit in order.
-	stats := make([]*statted, len(ents))
 	var todo []int
 	for i, e := range ents {
 		if e.Kind != KindDir && w.wantsStat(e.Kind) {
 			todo = append(todo, i)
 		}
 	}
+	var stats []statted
 	if len(todo) > 0 {
+		stats = make([]statted, len(ents))
 		w.statAll(abs, ents, todo, stats)
 	}
 	for i, e := range ents {
@@ -147,7 +149,8 @@ func (w *walker) dir(abs, rel string, depth int) error {
 		}
 		w.sum.Files++
 		ev := Event{T: "f", P: p, Kind: e.Kind}
-		if s := stats[i]; s != nil {
+		if i < len(stats) && stats[i].stated {
+			s := &stats[i]
 			ev.Stated = true
 			w.sum.Stated++
 			if s.code != "" {
@@ -169,7 +172,7 @@ func (w *walker) dir(abs, rel string, depth int) error {
 	return nil
 }
 
-func (w *walker) statAll(abs string, ents []Dirent, todo []int, out []*statted) {
+func (w *walker) statAll(abs string, ents []Dirent, todo []int, out []statted) {
 	par := w.opts.Parallel
 	if par > len(todo) {
 		par = len(todo)
@@ -180,7 +183,7 @@ func (w *walker) statAll(abs string, ents []Dirent, todo []int, out []*statted) 
 		if code == "" && (link || ents[i].Kind == KindLink) && !w.c.resolvedInside(p) {
 			code = CodeOutside
 		}
-		out[i] = &statted{st: st, code: code}
+		out[i] = statted{st: st, code: code, stated: true}
 	}
 	if par <= 1 {
 		for _, i := range todo {
