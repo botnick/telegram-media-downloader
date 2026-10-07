@@ -916,6 +916,36 @@ export async function nsfwTiers(
     return body;
 }
 
+/** Read a dense NSFW score histogram through tgdl-core's DB pool. */
+export async function nsfwHistogram(
+    { fileTypes = ['photo'], bins = 20 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/nsfw-histogram',
+        { fileTypes: Array.isArray(fileTypes) ? fileTypes : ['photo'], bins },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (
+        !body ||
+        !Number.isSafeInteger(body.bins) ||
+        body.bins < 4 ||
+        body.bins > 50 ||
+        !Array.isArray(body.counts) ||
+        body.counts.length !== body.bins ||
+        !body.counts.every((n) => Number.isSafeInteger(n) && n >= 0)
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed nsfw histogram response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

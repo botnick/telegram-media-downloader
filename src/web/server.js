@@ -8517,7 +8517,13 @@ app.get('/api/maintenance/nsfw/v2/histogram', async (req, res) => {
     try {
         const cfg = _nsfwCfg();
         const bins = Number(req.query.bins) || 20;
-        res.json(getNsfwHistogram(cfg.fileTypes, bins));
+        let result;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                result = await gocoreClient.nsfwHistogram({ fileTypes: cfg.fileTypes, bins });
+            } catch {}
+        }
+        res.json(result || getNsfwHistogram(cfg.fileTypes, bins));
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

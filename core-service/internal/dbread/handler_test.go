@@ -259,3 +259,15 @@ func TestNsfwTiers(t *testing.T) {
 		t.Fatalf("body=%v", body)
 	}
 }
+
+func TestNsfwHistogram(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.NsfwHistogram), map[string]any{"fileTypes": []string{"photo", "video"}, "bins": 4})
+	if status != http.StatusOK || body["bins"] != float64(4) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	counts, _ := body["counts"].([]any)
+	if len(counts) != 4 || counts[0] != float64(1) || counts[3] != float64(1) {
+		t.Fatalf("counts=%v", body["counts"])
+	}
+}

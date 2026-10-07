@@ -448,6 +448,24 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ fileTypes: ['photo', 'video'] });
     });
 
+    it('reads an NSFW histogram through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/nsfw-histogram': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { bins: 4, counts: [1, 0, 2, 0] });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.nsfwHistogram({ fileTypes: ['photo'], bins: 4 })).resolves.toEqual({
+            bins: 4,
+            counts: [1, 0, 2, 0],
+        });
+        expect(request).toEqual({ fileTypes: ['photo'], bins: 4 });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

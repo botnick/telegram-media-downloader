@@ -108,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/share-links", s.dbRead.ShareLinks)
 		private.HandleFunc("POST /v1/db/update-history", s.dbRead.UpdateHistory)
 		private.HandleFunc("POST /v1/db/nsfw-tiers", s.dbRead.NsfwTiers)
+		private.HandleFunc("POST /v1/db/nsfw-histogram", s.dbRead.NsfwHistogram)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

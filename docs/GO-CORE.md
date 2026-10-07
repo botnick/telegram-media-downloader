@@ -30,6 +30,7 @@ Node's single thread:
 | Read-only share-link list | `/api/share/links` | `POST /v1/db/share-links` (optional feature) |
 | Read-only update history | `/api/update/history` | `POST /v1/db/update-history` (optional feature) |
 | Read-only NSFW tier counters | `/api/maintenance/nsfw/v2/tiers` | `POST /v1/db/nsfw-tiers` (optional feature) |
+| Read-only NSFW histogram | `/api/maintenance/nsfw/v2/histogram` | `POST /v1/db/nsfw-histogram` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 For the required features it is the **only** implementation. Optional
