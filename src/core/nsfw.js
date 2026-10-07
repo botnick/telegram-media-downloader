@@ -470,19 +470,42 @@ let _scanState = {
     error: null,
 };
 
+/**
+ * Keep the progress counters from one scan together. `getNsfwStats()` is a
+ * library-wide snapshot, while `_scanState.total` is the denominator for
+ * the current run; mixing its global `scanned` count with that denominator
+ * makes a completed 14k-row scan look like 399k/14k (over 100%).
+ *
+ * Exported for the small state-contract test; callers should use
+ * `getScanState()` for the public snapshot.
+ */
+export function _mergeScanState(state, stats) {
+    const hasRun = state?.startedAt != null;
+    const running = state?.running === true;
+    const usableRunCounter = hasRun && !state?.error;
+    return {
+        ...state,
+        ...stats,
+        // Keep the idle shape (`total: 0`) and preserve the global scanned
+        // count when a run failed before it processed a row. A successful or
+        // cancelled run owns its denominator and scanned counter.
+        total: state.total,
+        scanned: usableRunCounter ? state.scanned : stats.scanned,
+        // Once a run is over, reflect the current threshold/whitelist in the
+        // DB. During a run, keep the counters from that run in lockstep with
+        // its denominator.
+        candidates: running ? state.candidates : stats.candidates,
+        keep: running ? state.keep : stats.keep,
+    };
+}
+
 export function getScanState(cfg) {
     const stats = getNsfwStats(
         cfg.fileTypes || NSFW_DEFAULTS.fileTypes,
         cfg.threshold ?? NSFW_DEFAULTS.threshold,
     );
-    const running = _scanState.running;
     return {
-        ..._scanState,
-        ...stats,
-        // `stats.scanned` is the global DB count. During a run it includes
-        // rows classified before this run, so using it for the run counter
-        // can make the progress bar exceed 100%.
-        scanned: running ? _scanState.scanned : stats.scanned,
+        ..._mergeScanState(_scanState, stats),
         model: cfg.model || NSFW_DEFAULTS.model,
         threshold: cfg.threshold ?? NSFW_DEFAULTS.threshold,
     };

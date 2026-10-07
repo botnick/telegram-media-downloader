@@ -30,7 +30,8 @@
           "goCore": {
             "allowRoots": [
               "<DATA>/downloads",
-              "<DATA>/thumbs"
+              "<DATA>/thumbs",
+              "<DATA>/seekbar"
             ],
             "binary": {
               "path": "<masked:string>",
@@ -132,7 +133,8 @@
           "goCore": {
             "allowRoots": [
               "<DATA>/downloads",
-              "<DATA>/thumbs"
+              "<DATA>/thumbs",
+              "<DATA>/seekbar"
             ],
             "binary": {
               "path": "<masked:string>",
