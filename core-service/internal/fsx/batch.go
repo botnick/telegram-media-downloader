@@ -236,6 +236,9 @@ func StatBatch(ctx context.Context, roots *hash.Roots, paths []string, parallel 
 		go func() {
 			defer wg.Done()
 			for i := range next {
+				if ctx.Err() != nil {
+					return
+				}
 				out[i] = statOne(c, paths[i])
 			}
 		}()
@@ -252,5 +255,8 @@ feed:
 	}
 	close(next)
 	wg.Wait()
+	if err == nil {
+		err = ctx.Err()
+	}
 	return out, err
 }
