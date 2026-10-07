@@ -9612,6 +9612,13 @@ app.get('/api/ai/faces/by-download/:id', async (req, res) => {
         if (!Number.isFinite(downloadId) || downloadId <= 0) {
             return res.status(400).json({ error: 'invalid download id' });
         }
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                const result = await gocoreClient.facesByDownload(downloadId);
+                res.set('Cache-Control', 'no-store, max-age=0');
+                return res.json(result);
+            } catch {}
+        }
         const rows = aiGetDb()
             .prepare(`
                 SELECT f.id, f.x, f.y, f.w, f.h, f.person_id, f.quality_score,

@@ -288,6 +288,22 @@ func TestSeekbarList(t *testing.T) {
 	}
 }
 
+func TestFacesByDownload(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.FacesByDownload), map[string]any{"downloadId": 2})
+	if status != http.StatusOK || body["success"] != true || body["downloadId"] != float64(2) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["faces"].([]any)
+	if len(rows) != 2 {
+		t.Fatalf("faces=%v", body["faces"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(2) || row["person_label"] != "Alice" || row["quality_score"] != 0.6 {
+		t.Fatalf("row=%v", row)
+	}
+}
+
 func TestShareLinks(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.ShareLinks), map[string]any{

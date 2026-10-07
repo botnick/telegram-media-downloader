@@ -1156,6 +1156,49 @@ export async function seekbarList(
     return body;
 }
 
+/** Read indexed face boxes for one download through tgdl-core. */
+export async function facesByDownload(
+    downloadId,
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/faces-by-download',
+        { downloadId },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const validRows =
+        body &&
+        Array.isArray(body.faces) &&
+        body.faces.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                typeof row.x === 'number' &&
+                typeof row.y === 'number' &&
+                typeof row.w === 'number' &&
+                typeof row.h === 'number' &&
+                (row.person_id == null || Number.isSafeInteger(row.person_id)) &&
+                (row.quality_score == null || typeof row.quality_score === 'number') &&
+                (row.person_label == null || typeof row.person_label === 'string'),
+        );
+    if (
+        !validRows ||
+        !Number.isSafeInteger(body.downloadId) ||
+        body.downloadId <= 0 ||
+        body.success !== true
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed faces response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

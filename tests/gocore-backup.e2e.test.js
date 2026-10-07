@@ -195,5 +195,10 @@ describe('snapshot backups through tgdl-core', () => {
             rows: [expect.objectContaining({ id, duration_sec: 12.5, file_name: 'cached.jpg' })],
             hasMore: false,
         });
+        await expect(gocoreClient.facesByDownload(id)).resolves.toMatchObject({
+            success: true,
+            downloadId: id,
+            faces: [],
+        });
     }, 60_000);
 });

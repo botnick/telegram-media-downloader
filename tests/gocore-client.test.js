@@ -622,6 +622,40 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ limit: 1, offset: 3 });
     });
 
+    it('reads face boxes through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/faces-by-download': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        success: true,
+                        downloadId: 2,
+                        faces: [
+                            {
+                                id: 9,
+                                x: 0.1,
+                                y: 0.2,
+                                w: 0.3,
+                                h: 0.4,
+                                person_id: null,
+                                quality_score: 0.8,
+                                person_label: null,
+                            },
+                        ],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.facesByDownload(2)).resolves.toMatchObject({
+            success: true,
+            downloadId: 2,
+            faces: [expect.objectContaining({ id: 9, x: 0.1 })],
+        });
+        expect(request).toEqual({ downloadId: 2 });
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(
