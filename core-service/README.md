@@ -16,7 +16,7 @@ it for:
 | `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `thumb` | `POST /v1/thumb/{video,image,audio}` | Media decode/scale/WebP thumbnail generation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `seekbar` | `POST /v1/seekbar` | Video sampling, tiling and sprite encode with bounded ffmpeg workers (optional; old binaries fall back to Node) |
-| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats`, `/v1/db/group-stats`, `/v1/db/group-files`, `/v1/db/downloads/all`, `/v1/db/downloads/group`, `/v1/db/downloads/search`, `/v1/db/share-links`, `/v1/db/update-history`, `/v1/db/nsfw-tiers`, `/v1/db/nsfw-histogram`, `/v1/db/nsfw-list`, `/v1/db/people` | Read-only SQLite dashboard projections (optional; Node falls back to its local queries) |
+| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats`, `/v1/db/group-stats`, `/v1/db/group-files`, `/v1/db/downloads/all`, `/v1/db/downloads/group`, `/v1/db/downloads/search`, `/v1/db/share-links`, `/v1/db/update-history`, `/v1/db/nsfw-tiers`, `/v1/db/nsfw-histogram`, `/v1/db/nsfw-list`, `/v1/db/people`, `/v1/db/thumbs-list` | Read-only SQLite dashboard projections (optional; Node falls back to its local queries) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
@@ -121,6 +121,7 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 | `POST /v1/db/nsfw-histogram` | token | JSON `{"fileTypes":["photo"],"bins":20}` → dense score histogram |
 | `POST /v1/db/nsfw-list` | token | JSON `{"fileTypes":["photo"],"tier":"def_not","page":1,"limit":50}` → paginated scored rows |
 | `POST /v1/db/people` | token | JSON `{"limit":100,"offset":0,"sort":"face_count","dir":"desc"}` → local people page |
+| `POST /v1/db/thumbs-list` | token | JSON `{"limit":60,"cursor":0,"kind":"all","cachedOnly":false,"cacheRoot":"/abs/data/thumbs"}` → thumbnail maintenance page |
 | `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
 ### `/v1/hash`

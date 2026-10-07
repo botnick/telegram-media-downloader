@@ -2,10 +2,13 @@ package dbread
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -229,6 +232,36 @@ func TestSearch(t *testing.T) {
 	})
 	if status != http.StatusOK || body["total"] != float64(0) {
 		t.Fatalf("no match status=%d body=%v", status, body)
+	}
+}
+
+func TestThumbsList(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	cache := t.TempDir()
+	sum := sha256.Sum256([]byte("1:320"))
+	cacheFile := filepath.Join(cache, hex.EncodeToString(sum[:])[:32]+".webp")
+	if err := os.WriteFile(cacheFile, []byte("thumb"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status, body := call(t, http.HandlerFunc(h.ThumbsList), map[string]any{
+		"limit": 1, "kind": "image", "cacheRoot": cache,
+	})
+	if status != http.StatusOK || body["total"] != float64(1) || body["hasMore"] != true {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(1) || row["cached"] != true || row["file_name"] != "a.jpg" {
+		t.Fatalf("row=%v", row)
+	}
+	status, body = call(t, http.HandlerFunc(h.ThumbsList), map[string]any{
+		"limit": 1, "kind": "image", "cachedOnly": true, "cacheRoot": cache,
+	})
+	if status != http.StatusOK || body["hasMore"] != true {
+		t.Fatalf("cached-only status=%d body=%v", status, body)
 	}
 }
 

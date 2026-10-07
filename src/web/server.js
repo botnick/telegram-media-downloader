@@ -7589,6 +7589,19 @@ app.get('/api/maintenance/thumbs/list', async (req, res) => {
         const cursor = Number.isFinite(rawCursor) && rawCursor > 0 ? rawCursor : null;
         const kindRaw = String(req.query.kind || 'all').toLowerCase();
         const types = thumbKindTypes(kindRaw) || thumbKindTypes('all');
+        const cachedOnly = req.query.cachedOnly === '1';
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                const result = await gocoreClient.thumbsList({
+                    limit,
+                    cursor,
+                    kind: thumbKindTypes(kindRaw) ? kindRaw : 'all',
+                    cachedOnly,
+                    cacheRoot: path.join(DATA_DIR, 'thumbs'),
+                });
+                return res.json(result);
+            } catch {}
+        }
         const placeholders = types.map(() => '?').join(',');
         const args = [...types];
         // `file_path IS NOT NULL` matches what `buildAllThumbnails` walks —
@@ -7616,7 +7629,6 @@ app.get('/api/maintenance/thumbs/list', async (req, res) => {
             .all(...args, limit);
         // Decorate with `cached:true|false` — the gallery uses this to
         // surface "12 not built yet" without round-tripping per tile.
-        const cachedOnly = req.query.cachedOnly === '1';
         const decorated = rows.map((r) => ({ ...r, cached: hasCachedThumb(r.id) }));
         const out = cachedOnly ? decorated.filter((r) => r.cached) : decorated;
         const nextCursor = rows.length === limit ? rows[rows.length - 1].id : null;
@@ -11982,7 +11994,10 @@ app.get('/api/share/links', async (req, res) => {
         let result;
         // An invalid downloadId (for example `abc`) is kept on the Node
         // query so SQLite preserves its legacy NaN binding behavior.
-        if ((downloadId === null || Number.isInteger(downloadId)) && gocoreClient.isAvailable('db')) {
+        if (
+            (downloadId === null || Number.isInteger(downloadId)) &&
+            gocoreClient.isAvailable('db')
+        ) {
             try {
                 result = await gocoreClient.shareLinks({
                     downloadId,

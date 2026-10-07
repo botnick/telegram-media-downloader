@@ -266,8 +266,7 @@ describe('answers from a (fake) tgdl-core', () => {
     it('writes a seekbar sprite through the Go core client', async () => {
         await fakeCore(
             {
-                '/v1/seekbar': (req, raw, res) =>
-                    json(res, 200, { status: 'ok', size: 789 }),
+                '/v1/seekbar': (req, raw, res) => json(res, 200, { status: 'ok', size: 789 }),
             },
             { features: ['seekbar'] },
         );
@@ -376,7 +375,9 @@ describe('answers from a (fake) tgdl-core', () => {
             },
             { features: ['db'] },
         );
-        await expect(client.downloadsGroup({ groupId: '-1', type: 'videos' })).resolves.toMatchObject({ total: 1 });
+        await expect(
+            client.downloadsGroup({ groupId: '-1', type: 'videos' }),
+        ).resolves.toMatchObject({ total: 1 });
     });
 
     it('reads a local search page through the Go DB projection', async () => {
@@ -561,6 +562,40 @@ describe('answers from a (fake) tgdl-core', () => {
             client.peopleList({ limit: 2, offset: 4, sort: 'name', dir: 'asc' }),
         ).resolves.toMatchObject({ total: 1 });
         expect(request).toEqual({ limit: 2, offset: 4, sort: 'name', dir: 'asc' });
+    });
+
+    it('reads the thumbnail maintenance catalog through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/thumbs-list': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 1, file_name: 'a.jpg', file_type: 'photo', cached: true }],
+                        nextCursor: 1,
+                        hasMore: true,
+                        total: 3,
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.thumbsList({
+                limit: 2,
+                cursor: 4,
+                kind: 'image',
+                cachedOnly: true,
+                cacheRoot: '/tmp/thumbs',
+            }),
+        ).resolves.toMatchObject({ total: 3, hasMore: true });
+        expect(request).toEqual({
+            limit: 2,
+            cursor: 4,
+            kind: 'image',
+            cachedOnly: true,
+            cacheRoot: '/tmp/thumbs',
+        });
     });
 
     it('hashes a bounded batch and preserves per-file errors', async () => {

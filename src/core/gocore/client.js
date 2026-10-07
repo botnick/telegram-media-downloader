@@ -594,7 +594,20 @@ export function generateAudioThumb(absPath, outputPath, width, opts) {
 export async function generateSeekbarSprite(
     absPath,
     outputPath,
-    { frames, intervalSec, cols, rows, tileWidth, format = 'webp', quality = 75, timeoutMs = 60 * 60_000, signal, readyWaitMs, ffmpegPath, hwaccel } = {},
+    {
+        frames,
+        intervalSec,
+        cols,
+        rows,
+        tileWidth,
+        format = 'webp',
+        quality = 75,
+        timeoutMs = 60 * 60_000,
+        signal,
+        readyWaitMs,
+        ffmpegPath,
+        hwaccel,
+    } = {},
 ) {
     const feature = 'seekbar';
     const { status, body } = await _call(
@@ -783,7 +796,14 @@ export async function downloadsGroup(
         feature,
         'POST',
         '/v1/db/downloads/group',
-        { groupId: String(groupId), limit, offset, type, pinnedOnly: !!pinnedOnly, pinnedFirst: !!pinnedFirst },
+        {
+            groupId: String(groupId),
+            limit,
+            offset,
+            type,
+            pinnedOnly: !!pinnedOnly,
+            pinnedFirst: !!pinnedFirst,
+        },
         { timeoutMs, readyWaitMs, signal },
     );
     if (status !== 200) throw _errorFor(feature, status, body);
@@ -847,13 +867,7 @@ export async function searchDownloads(
 
 /** Read the joined local share-link page through tgdl-core's DB pool. */
 export async function shareLinks(
-    {
-        downloadId = null,
-        includeRevoked = true,
-        limit = 500,
-        offset = 0,
-        search = null,
-    } = {},
+    { downloadId = null, includeRevoked = true, limit = 500, offset = 0, search = null } = {},
     { timeoutMs = 10_000, readyWaitMs, signal } = {},
 ) {
     const feature = 'db';
@@ -916,7 +930,9 @@ export async function nsfwTiers(
     );
     const tiers = body?.tiers;
     const validTierCounts =
-        tiers && typeof tiers === 'object' && !Array.isArray(tiers) &&
+        tiers &&
+        typeof tiers === 'object' &&
+        !Array.isArray(tiers) &&
         Object.values(tiers).every((n) => Number.isSafeInteger(n) && n >= 0);
     if (status !== 200) throw _errorFor(feature, status, body);
     if (
@@ -1036,6 +1052,56 @@ export async function peopleList(
     ) {
         _count(feature, 'error');
         throw new GoCoreError('protocol', 'malformed people response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
+/** Read the paginated thumbnail maintenance catalog through tgdl-core. */
+export async function thumbsList(
+    { limit = 60, cursor = null, kind = 'all', cachedOnly = false, cacheRoot = '' } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/thumbs-list',
+        {
+            limit,
+            ...(Number.isInteger(cursor) && cursor > 0 ? { cursor } : {}),
+            kind: String(kind || 'all'),
+            cachedOnly: !!cachedOnly,
+            ...(cacheRoot ? { cacheRoot: String(cacheRoot) } : {}),
+        },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const validRows =
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                typeof row.cached === 'boolean' &&
+                (row.file_name == null || typeof row.file_name === 'string') &&
+                (row.file_type == null || typeof row.file_type === 'string') &&
+                (row.file_size == null ||
+                    (Number.isSafeInteger(row.file_size) && row.file_size >= 0)) &&
+                (row.file_path == null || typeof row.file_path === 'string') &&
+                (row.created_at == null || typeof row.created_at === 'string'),
+        );
+    if (
+        !validRows ||
+        (body.total != null && (!Number.isSafeInteger(body.total) || body.total < 0)) ||
+        (body.nextCursor != null &&
+            (!Number.isSafeInteger(body.nextCursor) || body.nextCursor <= 0)) ||
+        typeof body.hasMore !== 'boolean'
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed thumbnail list response', { status });
     }
     _count(feature, 'ok');
     return body;
@@ -1206,7 +1272,11 @@ export async function walk(req, { onEvent, timeoutMs = 30 * 60_000, signal, read
 }
 
 /** Remove a directory tree while preserving absolute paths in `keep`. */
-export async function removeTree(root, keep = [], { timeoutMs = 30 * 60_000, readyWaitMs, signal } = {}) {
+export async function removeTree(
+    root,
+    keep = [],
+    { timeoutMs = 30 * 60_000, readyWaitMs, signal } = {},
+) {
     const feature = 'remove-tree';
     if (!Array.isArray(keep)) throw new TypeError('removeTree: keep must be an array');
     const { status, body } = await _call(

@@ -15,6 +15,16 @@ function flush(ms = 30) {
     return new Promise((res) => setTimeout(res, ms));
 }
 
+async function waitFor(predicate, timeoutMs = 1_000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const value = predicate();
+        if (value) return value;
+        await flush(10);
+    }
+    return predicate();
+}
+
 describe('JobTracker multi-client WS contract', () => {
     it('two virtual clients receive every progress + done frame from a slow runFn', async () => {
         const clientA = [];
@@ -37,7 +47,7 @@ describe('JobTracker multi-client WS contract', () => {
         });
         expect(r.started).toBe(true);
 
-        await flush(80);
+        await waitFor(() => clientA.find((m) => m.type === 'fanout_done'));
 
         expect(clientA).toEqual(clientB);
         const aProg = clientA.filter((m) => m.type === 'fanout_progress');

@@ -2,6 +2,7 @@
 // Node, but the CPU-heavy tar.gz walk/compression runs in tgdl-core.
 
 import fs from 'fs';
+import crypto from 'crypto';
 import { gunzipSync } from 'zlib';
 import os from 'os';
 import path from 'path';
@@ -18,6 +19,7 @@ let spawnMod;
 let dbMod;
 let dedup;
 let manager;
+let gocoreClient;
 let destinationId;
 
 function tarNames(archive) {
@@ -61,6 +63,7 @@ beforeAll(async () => {
     dbMod = await import('../src/core/db.js');
     dedup = await import('../src/core/dedup.js');
     manager = await import('../src/core/backup/manager.js');
+    gocoreClient = await import('../src/core/gocore/client.js');
     if (!(await spawnMod.startGoCore())) {
         throw new Error(`tgdl-core did not start: ${JSON.stringify(spawnMod.getGoCoreStatus())}`);
     }
@@ -147,5 +150,33 @@ describe('snapshot backups through tgdl-core', () => {
         ).resolves.toEqual({ kept: 1, removed: 1 });
         expect(fs.existsSync(shared)).toBe(true);
         expect(fs.existsSync(drop)).toBe(false);
+    }, 60_000);
+
+    it('reads the thumbnail catalog through the real Go DB projection', async () => {
+        const cache = path.join(DATA, 'thumbs');
+        fs.mkdirSync(cache, { recursive: true });
+        const result = dbMod.insertDownload({
+            groupId: '3',
+            groupName: 'G3',
+            messageId: 1004,
+            fileName: 'cached.jpg',
+            fileSize: 6,
+            fileType: 'photo',
+            filePath: 'G3/images/cached.jpg',
+        });
+        const id = Number(result.lastInsertRowid);
+        const digest = crypto.createHash('sha256').update(`${id}:320`).digest('hex').slice(0, 32);
+        fs.writeFileSync(path.join(cache, `${digest}.webp`), 'thumb');
+        await expect(
+            gocoreClient.thumbsList({
+                limit: 1,
+                kind: 'image',
+                cacheRoot: cache,
+            }),
+        ).resolves.toMatchObject({
+            total: 4,
+            rows: [expect.objectContaining({ id, cached: true })],
+            hasMore: true,
+        });
     }, 60_000);
 });

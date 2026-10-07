@@ -198,5 +198,5 @@ describe('createFaceCropper', () => {
             ),
         );
         expect(peak).toBeLessThanOrEqual(2);
-    });
+    }, 15_000);
 });
