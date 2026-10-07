@@ -504,6 +504,23 @@ describe('answers from a (fake) tgdl-core', () => {
         });
     });
 
+    it('reads the local people page through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/people': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { people: [{ id: 1, label: 'Alice' }], total: 1 });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.peopleList({ limit: 2, offset: 4, sort: 'name', dir: 'asc' }),
+        ).resolves.toMatchObject({ total: 1 });
+        expect(request).toEqual({ limit: 2, offset: 4, sort: 'name', dir: 'asc' });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

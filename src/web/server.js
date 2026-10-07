@@ -9539,7 +9539,13 @@ app.get('/api/ai/people', async (req, res) => {
             String(req.query?.sort || ''),
             String(req.query?.dir || '').toLowerCase(),
         );
-        const local = listPeople({ limit, offset, sort, dir });
+        let local;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                local = await gocoreClient.peopleList({ limit, offset, sort, dir });
+            } catch {}
+        }
+        local ||= listPeople({ limit, offset, sort, dir });
         if (scope !== 'federated') {
             return res.json({ success: true, scope: 'local', sort, dir, ...local });
         }

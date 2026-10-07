@@ -55,6 +55,20 @@ func makeDB(t *testing.T) string {
 	)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = db.Exec(`CREATE TABLE people (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		label TEXT, embedding_centroid BLOB NOT NULL, face_count INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`CREATE TABLE faces (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, download_id INTEGER NOT NULL,
+		x REAL NOT NULL, y REAL NOT NULL, w REAL NOT NULL, h REAL NOT NULL,
+		embedding BLOB NOT NULL, person_id INTEGER, quality_score REAL
+	)`); err != nil {
+		t.Fatal(err)
+	}
 	_, err = db.Exec(`INSERT INTO downloads(group_id,group_name,file_size,message_id,file_type,file_name,file_path,created_at,nsfw_score) VALUES
 		('-1','Unknown',10,10,'photo','a.jpg','G/images/a.jpg','2026-01-01T00:00:00Z',NULL),
 		('-1','Cool Channel',20,11,'video','b.mp4','G/videos/b.mp4','2026-01-02T00:00:00Z',0.25),
@@ -83,6 +97,16 @@ func makeDB(t *testing.T) string {
 	if _, err = db.Exec(`INSERT INTO update_history(from_version,to_version,from_instance_id,started_at,finished_at,status,error_code,error_msg,backup_path,backup_bytes) VALUES
 		('2.31.0','2.32.0','node-a',100,200,'success',NULL,NULL,'/tmp/db.sqlite',42),
 		(NULL,NULL,NULL,300,NULL,'pending','WAIT',NULL,NULL,NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO people(label,embedding_centroid,face_count,created_at,updated_at) VALUES
+		('Alice',X'01',2,100,200), (NULL,X'02',1,110,210)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO faces(download_id,x,y,w,h,embedding,person_id,quality_score) VALUES
+		(1,0.1,0.2,0.3,0.4,X'11',1,0.8),
+		(2,0.2,0.3,0.4,0.5,X'12',1,0.6),
+		(2,0.3,0.4,0.5,0.6,X'13',2,0.9)`); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -290,5 +314,25 @@ func TestNsfwList(t *testing.T) {
 	})
 	if status != http.StatusOK || body["total"] != float64(2) {
 		t.Fatalf("include whitelist status=%d body=%v", status, body)
+	}
+}
+
+func TestPeople(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.People), map[string]any{"limit": 1, "offset": 0, "sort": "face_count", "dir": "desc"})
+	if status != http.StatusOK || body["total"] != float64(2) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["people"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["label"] != "Alice" || rows[0].(map[string]any)["cover_face_id"] != float64(1) {
+		t.Fatalf("people=%v", body["people"])
+	}
+	status, body = call(t, http.HandlerFunc(h.People), map[string]any{"limit": 10, "sort": "name", "dir": "asc"})
+	if status != http.StatusOK {
+		t.Fatalf("name status=%d body=%v", status, body)
+	}
+	rows, _ = body["people"].([]any)
+	if len(rows) != 2 || rows[0].(map[string]any)["label"] != nil {
+		t.Fatalf("name people=%v", body["people"])
 	}
 }

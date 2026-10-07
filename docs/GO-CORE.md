@@ -32,6 +32,7 @@ Node's single thread:
 | Read-only NSFW tier counters | `/api/maintenance/nsfw/v2/tiers` | `POST /v1/db/nsfw-tiers` (optional feature) |
 | Read-only NSFW histogram | `/api/maintenance/nsfw/v2/histogram` | `POST /v1/db/nsfw-histogram` (optional feature) |
 | Read-only NSFW review list | `/api/maintenance/nsfw/v2/list` | `POST /v1/db/nsfw-list` (optional feature) |
+| Read-only people list | `/api/ai/people` with local scope | `POST /v1/db/people` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 For the required features it is the **only** implementation. Optional

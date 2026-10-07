@@ -993,6 +993,33 @@ export async function nsfwList(
     return body;
 }
 
+/** Read the local people page through tgdl-core's DB pool. */
+export async function peopleList(
+    { limit = 100, offset = 0, sort = 'face_count', dir = 'desc' } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/people',
+        { limit, offset, sort, dir },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (
+        !body ||
+        !Array.isArray(body.people) ||
+        !Number.isSafeInteger(body.total) ||
+        body.total < 0
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed people response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;
