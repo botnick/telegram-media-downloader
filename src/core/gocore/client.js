@@ -17,7 +17,7 @@
  *                with plain fs itself — see hash.js / fs.js.
  *   timeout / transport / auth / server / protocol / busy / aborted
  *
- * Optional media helpers (`thumb`, `seekbar` and `faststart`) keep a Node fallback for
+ * Optional helpers (`db`, `thumb`, `seekbar` and `faststart`) keep a Node fallback for
  * older binaries; the required filesystem and clustering calls do not.
  *
  * Every call has a deadline; on expiry (or an AbortSignal) the socket is
@@ -602,6 +602,38 @@ export async function generateSeekbarSprite(
     }
     _count(feature, 'ok');
     return { status: 'ok', size: body.size };
+}
+
+/** Read the cached dashboard group aggregate from tgdl-core's read-only DB pool. */
+export async function groupAggregates({ timeoutMs = 10_000, readyWaitMs, signal } = {}) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/group-aggregates',
+        {},
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const rows = body?.rows;
+    const valid =
+        Array.isArray(rows) &&
+        rows.every(
+            (r) =>
+                r &&
+                typeof r.group_id === 'string' &&
+                Number.isSafeInteger(r.count) &&
+                r.count >= 0 &&
+                (r.best_name == null || typeof r.best_name === 'string') &&
+                (r.any_name == null || typeof r.any_name === 'string') &&
+                (r.size == null || (Number.isSafeInteger(r.size) && r.size >= 0)),
+        );
+    if (!valid) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed group aggregate response', { status });
+    }
+    _count(feature, 'ok');
+    return rows;
 }
 
 /** Map a non-200 JSON answer to a GoCoreError. */

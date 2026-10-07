@@ -11,6 +11,8 @@
 //	POST /v1/thumb/{video,image,audio}
 //	                          decode, scale and encode a WebP thumbnail
 //	POST /v1/seekbar         decode, sample, tile and encode a video sprite
+//	POST /v1/db/group-aggregates
+//	                         read-only SQLite group counts/names
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -27,6 +29,7 @@ import (
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/dbscan"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/dbread"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/faststart"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/fsx"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/hash"
@@ -50,13 +53,14 @@ type Server struct {
 	limiter   *hash.Limiter
 	stats     *hash.Stats
 	fsStats   *fsx.Stats
+	dbRead    *dbread.Handler
 	startedAt time.Time
 }
 
 // New builds a Server. hashConcurrency follows HASH_WORKER_POOL_SIZE;
 // roots limits which files may be read (nil or empty refuses all).
-func New(token string, hashConcurrency int, roots *hash.Roots, log *slog.Logger) *Server {
-	return &Server{
+func New(token string, hashConcurrency int, roots *hash.Roots, log *slog.Logger, dbPath ...string) *Server {
+	s := &Server{
 		token:     []byte(token),
 		log:       log,
 		roots:     roots,
@@ -65,6 +69,10 @@ func New(token string, hashConcurrency int, roots *hash.Roots, log *slog.Logger)
 		fsStats:   &fsx.Stats{},
 		startedAt: time.Now(),
 	}
+	if len(dbPath) > 0 && dbPath[0] != "" {
+		s.dbRead = dbread.NewHandler(dbPath[0], log)
+	}
+	return s
 }
 
 // Handler returns the root handler.
@@ -80,6 +88,9 @@ func (s *Server) Handler() http.Handler {
 	private.Handle("POST /v1/thumb/image", &thumbs.Handler{Roots: s.roots, Log: s.log, Kind: "image"})
 	private.Handle("POST /v1/thumb/audio", &thumbs.Handler{Roots: s.roots, Log: s.log, Kind: "audio"})
 	private.Handle("POST /v1/seekbar", &seekbar.Handler{Roots: s.roots, Log: s.log})
+	if s.dbRead != nil {
+		private.Handle("POST /v1/db/group-aggregates", s.dbRead)
+	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		hash.WriteError(w, http.StatusNotFound, "ENOTFOUND", "no such route")

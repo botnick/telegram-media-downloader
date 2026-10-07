@@ -51,6 +51,7 @@ func TestFromEnv(t *testing.T) {
 	env := map[string]string{
 		"TGDL_CORE_ALLOW_ROOTS": string(filepath.ListSeparator) + "/a" + string(filepath.ListSeparator) + " " + string(filepath.ListSeparator) + "/b c",
 		"TGDL_CORE_TOKEN":       " secret ",
+		"TGDL_CORE_DB":          "/var/lib/tgdl/db.sqlite",
 		"TGDL_CORE_PORT":        "4567",
 		"TGDL_CORE_WATCH_STDIN": "1",
 		"HASH_WORKER_POOL_SIZE": "3",
@@ -59,7 +60,7 @@ func TestFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Token != "secret" || cfg.Port != 4567 || !cfg.WatchStdin || cfg.HashConcurrency != 3 || cfg.LogLevel != "info" {
+	if cfg.Token != "secret" || cfg.DBPath != "/var/lib/tgdl/db.sqlite" || cfg.Port != 4567 || !cfg.WatchStdin || cfg.HashConcurrency != 3 || cfg.LogLevel != "info" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
 	if len(cfg.AllowRoots) != 2 || cfg.AllowRoots[0] != "/a" || cfg.AllowRoots[1] != "/b c" {

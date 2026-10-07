@@ -1,8 +1,9 @@
 // tgdl-core is the Go companion process of telegram-media-downloader.
 //
 // The Node app spawns `tgdl-core serve` and talks to it over HTTP on
-// 127.0.0.1. Node stays the only process that opens db.sqlite; tgdl-core
-// only reads the files it is asked about.
+// 127.0.0.1. Node stays the only process that writes db.sqlite; tgdl-core
+// opens it query-only for small read projections and only reads the files it
+// is asked about.
 //
 //	tgdl-core serve            run the HTTP service (config from env, see internal/config)
 //	tgdl-core version          print the version
@@ -45,6 +46,7 @@ serve reads its settings from the environment:
   TGDL_CORE_ALLOW_ROOTS  directories files may be read from, separated like PATH
                          (":" on Linux/macOS, ";" on Windows); empty = refuse all
   TGDL_CORE_PORT         port on 127.0.0.1 (default 0 = any free port)
+  TGDL_CORE_DB           absolute path to db.sqlite (read-only aggregate reads)
   TGDL_CORE_WATCH_STDIN  1 = exit when stdin closes (set by the Node app)
   TGDL_CORE_LOG_LEVEL    debug | info | warn | error
   HASH_WORKER_POOL_SIZE  files hashed at once (same rules as the Node pool)
@@ -145,7 +147,7 @@ func serve(ctx context.Context, cfg config.Config, stdin io.Reader, stdout io.Wr
 	}
 
 	srv := &http.Server{
-		Handler:           api.New(cfg.Token, cfg.HashConcurrency, roots, log).Handler(),
+		Handler:           api.New(cfg.Token, cfg.HashConcurrency, roots, log, cfg.DBPath).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		// No WriteTimeout: a multi-GB hash legitimately takes minutes.
@@ -164,7 +166,7 @@ func serve(ctx context.Context, cfg config.Config, stdin io.Reader, stdout io.Wr
 
 	line, _ := json.Marshal(listening{Event: "listening", Addr: addr, Version: version.Version, PID: os.Getpid()})
 	fmt.Fprintf(stdout, "%s\n", line)
-	log.Info("tgdl-core listening", "addr", addr, "version", version.Version, "hash_concurrency", cfg.HashConcurrency, "allow_roots", roots.Len())
+	log.Info("tgdl-core listening", "addr", addr, "version", version.Version, "hash_concurrency", cfg.HashConcurrency, "allow_roots", roots.Len(), "db_read", cfg.DBPath != "")
 
 	var serveErr error
 	select {

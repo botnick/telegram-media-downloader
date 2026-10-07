@@ -5033,7 +5033,8 @@ function dialogsTypeFor(id) {
 }
 
 // Per-group aggregate — best DB-side display name, file count, total
-// size — shared by /api/groups and /api/downloads. Even index-only
+// size — shared by /api/groups and /api/downloads. Go reads the same
+// projection through its read-only SQLite pool when available. Even index-only
 // (idx_group_name_size) it's a pass over every row, and one sidebar paint
 // hits both routes, so the rows are cached briefly. Invalidated by the
 // same broadcasts that refresh the footer stats (_STATS_TRIGGER_TYPES in
@@ -5046,10 +5047,17 @@ function dialogsTypeFor(id) {
 // before MAX, then fall back to MAX(any) only if every row was one.
 const GROUP_AGG_TTL_MS = 15_000;
 let _groupAggCache = { at: 0, rows: null };
-function getGroupAggregates() {
+async function getGroupAggregates() {
     const now = Date.now();
     if (_groupAggCache.rows && Math.max(0, now - _groupAggCache.at) < GROUP_AGG_TTL_MS) {
         return _groupAggCache.rows;
+    }
+    if (gocoreClient.isAvailable('db')) {
+        try {
+            const rows = await gocoreClient.groupAggregates();
+            _groupAggCache = { at: now, rows };
+            return rows;
+        } catch {}
     }
     const rows = getDb()
         .prepare(`
@@ -5084,7 +5092,7 @@ app.get('/api/groups', async (req, res) => {
         // download time.
         let dbNames = new Map();
         try {
-            for (const r of getGroupAggregates()) {
+            for (const r of await getGroupAggregates()) {
                 dbNames.set(String(r.group_id), r.best_name || r.any_name);
             }
         } catch {}
@@ -5215,7 +5223,7 @@ app.get('/api/downloads', async (req, res) => {
         const configGroups = config.groups || [];
         // Placeholder-filtered best name + count + size per group (cached;
         // see getGroupAggregates).
-        const rows = getGroupAggregates();
+        const rows = await getGroupAggregates();
 
         const dialogsNames = await getDialogsNameCache();
 
@@ -13251,7 +13259,7 @@ app.post('/api/groups/refresh-info', async (req, res) => {
         try {
             // One row per group from the (usually still cached) sidebar
             // aggregate instead of another DISTINCT pass over every row.
-            for (const rr of getGroupAggregates()) {
+            for (const rr of await getGroupAggregates()) {
                 if (ids.size >= 10000) break;
                 ids.add(String(rr.group_id));
             }

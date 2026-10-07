@@ -867,8 +867,8 @@
       },
       "security": "e30ca64edb",
       "body": {
-        "textSha256": "5c5196e75539fb9f70dbaecbf4a8a3cd4b50ae970f25108d3cbd064217bf8d24",
-        "chars": 399746
+        "textSha256": "c37fa35f7992e5533bf085baec7666218d5cd4e3a23f43799a3ab63ff84176e7",
+        "chars": 399750
       }
     },
     "small response stays uncompressed": {

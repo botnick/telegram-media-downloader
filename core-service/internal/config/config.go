@@ -8,6 +8,7 @@
 //	                        PATH (":" on Linux / macOS, ";" on Windows); empty =
 //	                        every hash request is refused (EOUTSIDE)
 //	TGDL_CORE_PORT          listen port on 127.0.0.1; 0 or unset = pick a free one
+//	TGDL_CORE_DB            absolute path to db.sqlite (read-only aggregate reads)
 //	TGDL_CORE_WATCH_STDIN   "1" = exit when stdin reaches EOF (parent died)
 //	TGDL_CORE_LOG_LEVEL     debug | info (default) | warn | error
 //	HASH_WORKER_POOL_SIZE   hash concurrency, same rules as the Node worker pool
@@ -26,6 +27,7 @@ import (
 type Config struct {
 	Port            int
 	Token           string
+	DBPath          string
 	AllowRoots      []string
 	HashConcurrency int
 	WatchStdin      bool
@@ -40,6 +42,7 @@ var ErrNoToken = errors.New("TGDL_CORE_TOKEN is required")
 func FromEnv(getenv func(string) string, numCPU int) (Config, error) {
 	cfg := Config{
 		Token:           strings.TrimSpace(getenv("TGDL_CORE_TOKEN")),
+		DBPath:          strings.TrimSpace(getenv("TGDL_CORE_DB")),
 		AllowRoots:      splitRoots(getenv("TGDL_CORE_ALLOW_ROOTS")),
 		HashConcurrency: PoolSize(getenv("HASH_WORKER_POOL_SIZE"), numCPU),
 		WatchStdin:      isTrue(getenv("TGDL_CORE_WATCH_STDIN")),
@@ -57,6 +60,9 @@ func FromEnv(getenv func(string) string, numCPU int) (Config, error) {
 	}
 	if cfg.Token == "" {
 		return cfg, ErrNoToken
+	}
+	if cfg.DBPath != "" && !filepath.IsAbs(cfg.DBPath) {
+		return cfg, fmt.Errorf("TGDL_CORE_DB: path must be absolute")
 	}
 	return cfg, nil
 }

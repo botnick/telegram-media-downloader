@@ -132,6 +132,7 @@ describe('answers from a (fake) tgdl-core', () => {
                 THUMBS_IMG_CONCURRENCY: '5',
                 THUMBS_VID_CONCURRENCY: '2',
                 FFMPEG_PATH: '/tmp/ffmpeg',
+                TGDL_CORE_DB: path.join(process.env.TGDL_DATA_DIR, 'db.sqlite'),
             });
             expect(env.TGDL_FACES_API_TOKEN).toBeUndefined();
         } finally {
@@ -239,6 +240,35 @@ describe('answers from a (fake) tgdl-core', () => {
                 quality: 75,
             }),
         ).resolves.toEqual({ status: 'ok', size: 789 });
+    });
+
+    it('reads group aggregates through the Go DB projection', async () => {
+        await fakeCore(
+            {
+                '/v1/db/group-aggregates': (req, raw, res) =>
+                    json(res, 200, {
+                        rows: [
+                            {
+                                group_id: '-1001',
+                                best_name: 'Photos',
+                                any_name: 'Unknown',
+                                count: 4,
+                                size: 1234,
+                            },
+                        ],
+                    }),
+            },
+            { features: ['db'] },
+        );
+        await expect(client.groupAggregates()).resolves.toEqual([
+            {
+                group_id: '-1001',
+                best_name: 'Photos',
+                any_name: 'Unknown',
+                count: 4,
+                size: 1234,
+            },
+        ]);
     });
 
     it('a file error (422) becomes the error fs would throw', async () => {

@@ -15,6 +15,7 @@ it for:
 | `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `thumb` | `POST /v1/thumb/{video,image,audio}` | Media decode/scale/WebP thumbnail generation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `seekbar` | `POST /v1/seekbar` | Video sampling, tiling and sprite encode with bounded ffmpeg workers (optional; old binaries fall back to Node) |
+| `db` | `POST /v1/db/group-aggregates` | Read-only SQLite group counts, sizes and display names (optional; Node falls back to its local query) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
@@ -51,6 +52,7 @@ in `ps`), plus the few OS variables a Go binary needs (`PATH`,
 |---|---|---|
 | `TGDL_CORE_TOKEN` | — (required) | Shared secret; every route except `/health` needs it as `X-API-Token`. The app mints a new one per spawn. |
 | `TGDL_CORE_ALLOW_ROOTS` | empty = refuse everything | Directories files may be read from and thumbnail/seekbar output may be written to, separated like `PATH` (`:` on Linux / macOS, `;` on Windows; quote an entry containing `;` on Windows). The app passes its download directories and `<data dir>/thumbs` + `<data dir>/seekbar`, plus anything in its own `TGDL_CORE_ALLOW_ROOTS`. Anything else is refused with `EOUTSIDE` and the app handles that path itself. |
+| `TGDL_CORE_DB` | unset | Absolute `db.sqlite` path for the read-only aggregate projection. The Node parent remains the only writer. |
 | `TGDL_CORE_PORT` | `0` | Port on `127.0.0.1`; `0` picks a free one. The bound address is printed as one JSON line on stdout: `{"event":"listening","addr":"127.0.0.1:NNNNN","version":"0.4.0","pid":123}`. |
 | `TGDL_CORE_WATCH_STDIN` | off | `1`: exit when stdin reaches EOF. The app keeps the pipe open, so when the app dies (crash, `kill -9`, Task Manager) tgdl-core exits instead of lingering as an orphan — Windows doesn't reap children with their parent. |
 | `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once (`parseInt`, values ≥ 1 capped at 32). |
@@ -95,7 +97,7 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 
 | Route | Auth | |
 |---|---|---|
-| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan","zip","faststart","thumb","seekbar"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
+| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan","zip","faststart","thumb","seekbar","db"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
 | `POST /v1/hash` | token | Body `{"path":"/abs/file"}` → `{"sha256","size","mtimeMs"}` |
 | `POST /v1/fs/stat-batch` | token | Body `{"paths":["/abs/a", …]}` (≤ 1000) → `{"results":[…]}`, see below |
 | `POST /v1/fs/walk` | token | Body `{"root","maxDepth","stat","entries"}` → NDJSON stream, see below |
@@ -104,6 +106,7 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 | `POST /v1/faststart` | token | JSON `{"path":"/abs/file.mp4"}` → `{status:"already"|"optimized",newSize?}`; writes atomically inside an allow-root |
 | `POST /v1/thumb/{video,image,audio}` | token | JSON `{"path":"/abs/media","output":"/abs/thumb.tmp","width":320}` → `{status:"ok",size}`; output must be inside an allow-root |
 | `POST /v1/seekbar` | token | JSON `{"path":"/abs/video","output":"/abs/sprite.tmp","frames":120,"intervalSec":4,"cols":10,"rows":12,"tileWidth":160,"format":"webp","quality":75}` → `{status:"ok",size}`; output must be inside an allow-root |
+| `POST /v1/db/group-aggregates` | token | JSON `{}` → `{rows:[{group_id,best_name,any_name,count,size}]}` from a query-only `db.sqlite` connection |
 | `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
 ### `/v1/hash`

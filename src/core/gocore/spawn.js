@@ -600,6 +600,7 @@ export function childEnv(token, roots = allowRoots()) {
         TGDL_CORE_PORT: '0',
         TGDL_CORE_WATCH_STDIN: '1',
         TGDL_CORE_ALLOW_ROOTS: _joinRoots(roots),
+        TGDL_CORE_DB: path.join(getDataDir(), 'db.sqlite'),
     };
     for (const k of PASSTHROUGH_ENV) {
         const v = process.env[k];

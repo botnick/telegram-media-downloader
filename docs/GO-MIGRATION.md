@@ -157,6 +157,10 @@ browser ──► Go front server ──┬─► Go handlers (domains already m
 - Read APIs move: library / gallery / search, groups sidebar, stats,
   GET config, share-link list, people / faces reads, NSFW tiers, backup
   destination reads, cluster reads, update history, logs.
+- First read-only slice shipped: the groups/downloads aggregate projection is
+  served by `tgdl-core` from a query-only SQLite pool (`db` feature), with the
+  Node query retained as a compatibility fallback while the rest of Wave B
+  moves.
 - Node still writes. Exit: the domain files pass on `go`.
 
 ### C — write APIs, WS broadcaster, jobs, backup, cluster
