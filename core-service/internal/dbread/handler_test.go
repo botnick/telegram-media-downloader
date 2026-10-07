@@ -147,3 +147,23 @@ func TestDownloadsGroup(t *testing.T) {
 		t.Fatalf("files=%v", body["files"])
 	}
 }
+
+func TestSearch(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.Search), map[string]any{
+		"query": "Cool", "limit": 50, "offset": 0, "type": "all", "order": "relevance",
+	})
+	if status != http.StatusOK || body["total"] != float64(1) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["files"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["file_name"] != "b.mp4" {
+		t.Fatalf("files=%v", body["files"])
+	}
+	status, body = call(t, http.HandlerFunc(h.Search), map[string]any{
+		"query": "zzznomatch", "limit": 50, "offset": 0,
+	})
+	if status != http.StatusOK || body["total"] != float64(0) {
+		t.Fatalf("no match status=%d body=%v", status, body)
+	}
+}

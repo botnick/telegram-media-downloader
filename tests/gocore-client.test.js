@@ -337,6 +337,44 @@ describe('answers from a (fake) tgdl-core', () => {
         await expect(client.downloadsGroup({ groupId: '-1', type: 'videos' })).resolves.toMatchObject({ total: 1 });
     });
 
+    it('reads a local search page through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/downloads/search': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        files: [{ id: 2, group_id: '-1', file_name: 'b.mp4' }],
+                        total: 1,
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.searchDownloads({
+                query: 'cool',
+                groupId: '-1',
+                type: 'videos',
+                limit: 3,
+                offset: 6,
+                pinnedOnly: true,
+                pinnedFirst: true,
+                order: 'newest',
+            }),
+        ).resolves.toMatchObject({ total: 1 });
+        expect(request).toMatchObject({
+            query: 'cool',
+            groupId: '-1',
+            type: 'videos',
+            limit: 3,
+            offset: 6,
+            pinnedOnly: true,
+            pinnedFirst: true,
+            order: 'newest',
+        });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

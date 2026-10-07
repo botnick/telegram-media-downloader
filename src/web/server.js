@@ -5591,16 +5591,22 @@ app.get('/api/downloads/search', async (req, res) => {
         // chip / pinned-first) so the gallery search box keeps the active
         // filter. `order=newest` sorts like the gallery; the default stays
         // FTS relevance for existing callers.
-        const r = searchDownloadsFederated(q, {
+        const searchOpts = {
             limit,
             offset: (page - 1) * limit,
             groupId,
-            include,
             type: typeof req.query.type === 'string' ? req.query.type : 'all',
             pinnedOnly: req.query.pinned === '1' || req.query.pinned === 'true',
             pinnedFirst: req.query.pinnedFirst === '1' || req.query.pinnedFirst === 'true',
             order: req.query.order === 'newest' ? 'newest' : 'relevance',
-        });
+        };
+        let r;
+        if (include === 'local' && gocoreClient.isAvailable('db')) {
+            try {
+                r = await gocoreClient.searchDownloads({ query: q, ...searchOpts });
+            } catch {}
+        }
+        r ||= searchDownloadsFederated(q, { ...searchOpts, include });
 
         const config = loadConfig();
         const groupFolderById = new Map();

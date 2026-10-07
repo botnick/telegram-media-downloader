@@ -20,6 +20,8 @@
 //	                         read-only local gallery feed
 //	POST /v1/db/downloads/group
 //	                         read-only local per-group gallery feed
+//	POST /v1/db/downloads/search
+//	                         read-only local FTS/LIKE search
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -102,6 +104,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/group-files", s.dbRead.GroupFiles)
 		private.HandleFunc("POST /v1/db/downloads/all", s.dbRead.AllDownloads)
 		private.HandleFunc("POST /v1/db/downloads/group", s.dbRead.DownloadsGroup)
+		private.HandleFunc("POST /v1/db/downloads/search", s.dbRead.Search)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
