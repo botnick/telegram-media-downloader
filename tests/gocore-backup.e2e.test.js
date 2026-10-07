@@ -228,5 +228,18 @@ describe('snapshot backups through tgdl-core', () => {
             files: [expect.objectContaining({ id, face_id: expect.any(Number) })],
             total: 1,
         });
+        await expect(gocoreClient.aiCounts({ fileTypes: ['photo', 'video'] })).resolves.toEqual(
+            expect.objectContaining({
+                totalEligible: expect.any(Number),
+                indexed: expect.any(Number),
+                unindexed: expect.any(Number),
+                withEmbedding: expect.any(Number),
+                withFaces: expect.any(Number),
+                withTags: expect.any(Number),
+                peopleCount: expect.any(Number),
+                totalFaces: expect.any(Number),
+                noiseFaces: expect.any(Number),
+            }),
+        );
     }, 60_000);
 });

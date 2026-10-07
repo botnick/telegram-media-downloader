@@ -1285,6 +1285,39 @@ export async function personPhotos(
     return body;
 }
 
+/** Read the AI maintenance counters through tgdl-core. */
+export async function aiCounts(
+    { fileTypes = ['photo'] } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/ai-counts',
+        { fileTypes: Array.isArray(fileTypes) ? fileTypes : ['photo'] },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const fields = [
+        'totalEligible',
+        'indexed',
+        'unindexed',
+        'withEmbedding',
+        'withFaces',
+        'withTags',
+        'peopleCount',
+        'totalFaces',
+        'noiseFaces',
+    ];
+    if (!body || fields.some((field) => !Number.isSafeInteger(body[field]) || body[field] < 0)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed AI counts response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

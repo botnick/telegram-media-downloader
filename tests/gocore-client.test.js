@@ -720,6 +720,34 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ personId: 1, limit: 1, offset: 2 });
     });
 
+    it('reads AI maintenance counters through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/ai-counts': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        totalEligible: 2,
+                        indexed: 1,
+                        unindexed: 1,
+                        withEmbedding: 1,
+                        withFaces: 1,
+                        withTags: 1,
+                        peopleCount: 1,
+                        totalFaces: 1,
+                        noiseFaces: 0,
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.aiCounts({ fileTypes: ['photo', 'video'] })).resolves.toMatchObject({
+            totalEligible: 2,
+            indexed: 1,
+        });
+        expect(request).toEqual({ fileTypes: ['photo', 'video'] });
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(

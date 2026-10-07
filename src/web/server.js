@@ -8910,18 +8910,24 @@ app.get('/api/ai/status', async (_req, res) => {
     try {
         const cfg = _aiCfg();
         const facesBlock = cfg.faces && typeof cfg.faces === 'object' ? cfg.faces : {};
-        const counts = (() => {
+        const baseTypes = cfg.fileTypes || ['photo'];
+        const fileTypes =
+            facesBlock.scanVideos === true && !baseTypes.includes('video')
+                ? [...baseTypes, 'video']
+                : baseTypes;
+        let counts;
+        if (gocoreClient.isAvailable('db')) {
             try {
-                const baseTypes = cfg.fileTypes || ['photo'];
-                const fileTypes =
-                    facesBlock.scanVideos === true && !baseTypes.includes('video')
-                        ? [...baseTypes, 'video']
-                        : baseTypes;
-                return getAiCounts({ fileTypes });
+                counts = await gocoreClient.aiCounts({ fileTypes });
+            } catch {}
+        }
+        if (!counts) {
+            try {
+                counts = getAiCounts({ fileTypes });
             } catch {
-                return { totalEligible: 0, indexed: 0, withFaces: 0 };
+                counts = { totalEligible: 0, indexed: 0, withFaces: 0 };
             }
-        })();
+        }
         res.json({
             success: true,
             config: {

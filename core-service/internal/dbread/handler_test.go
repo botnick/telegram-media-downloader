@@ -30,6 +30,7 @@ func makeDB(t *testing.T) string {
 		created_at TEXT, nsfw_score REAL, nsfw_checked_at INTEGER,
 		nsfw_whitelist INTEGER DEFAULT 0, pending_until INTEGER,
 		rescued_at INTEGER, pinned INTEGER DEFAULT 0
+		, ai_indexed_at INTEGER
 	)`)
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +78,17 @@ func makeDB(t *testing.T) string {
 	)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = db.Exec(`CREATE TABLE image_embeddings (
+		download_id INTEGER PRIMARY KEY, embedding BLOB NOT NULL, model TEXT NOT NULL, indexed_at INTEGER NOT NULL
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`CREATE TABLE image_tags (
+		download_id INTEGER NOT NULL, tag TEXT NOT NULL, score REAL NOT NULL,
+		PRIMARY KEY (download_id, tag)
+	)`); err != nil {
+		t.Fatal(err)
+	}
 	_, err = db.Exec(`INSERT INTO downloads(group_id,group_name,file_size,message_id,file_type,file_name,file_path,created_at,nsfw_score) VALUES
 		('-1','Unknown',10,10,'photo','a.jpg','G/images/a.jpg','2026-01-01T00:00:00Z',NULL),
 		('-1','Cool Channel',20,11,'video','b.mp4','G/videos/b.mp4','2026-01-02T00:00:00Z',0.25),
@@ -93,6 +105,9 @@ func makeDB(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`UPDATE downloads SET nsfw_score=0.8, nsfw_checked_at=100, nsfw_whitelist=1 WHERE id=3`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE downloads SET ai_indexed_at=100 WHERE id IN (1, 2)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO seekbar_sprites(download_id,duration_sec) VALUES (2, 12.5)`); err != nil {
@@ -115,6 +130,12 @@ func makeDB(t *testing.T) string {
 		(1,0.1,0.2,0.3,0.4,X'11',1,0.8),
 		(2,0.2,0.3,0.4,0.5,X'12',1,0.6),
 		(2,0.3,0.4,0.5,0.6,X'13',2,0.9)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO image_embeddings(download_id,embedding,model,indexed_at) VALUES (1,X'21','test',100)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO image_tags(download_id,tag,score) VALUES (1,'cat',0.9), (2,'dog',0.8)`); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -333,6 +354,17 @@ func TestPersonPhotos(t *testing.T) {
 	row := rows[0].(map[string]any)
 	if row["id"] != float64(2) || row["file_name"] != "b.mp4" || row["face_id"] != float64(2) {
 		t.Fatalf("row=%v", row)
+	}
+}
+
+func TestAICounts(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.AICounts), map[string]any{"fileTypes": []string{"photo", "video"}})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	if body["totalEligible"] != float64(2) || body["indexed"] != float64(2) || body["unindexed"] != float64(0) || body["withEmbedding"] != float64(1) || body["withFaces"] != float64(2) || body["withTags"] != float64(2) || body["peopleCount"] != float64(2) || body["totalFaces"] != float64(3) || body["noiseFaces"] != float64(0) {
+		t.Fatalf("body=%v", body)
 	}
 }
 
