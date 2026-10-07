@@ -34,6 +34,7 @@ import {
     getSpritePath,
 } from './generator.js';
 import { buildAllSeekbar, purgeAllSeekbar } from './scan-runner.js';
+import * as gocoreClient from '../gocore/client.js';
 
 export {
     buildAllSeekbar,
@@ -102,11 +103,11 @@ function _allQueuesEmpty() {
     return _bgQueueRealtime.length === 0 && _bgQueueBackfill.length === 0;
 }
 
-async function _processOne(id, lookupRow, cfg) {
+async function _processOne(id, rowsById, lookupRow, cfg) {
     _inFlight.add(id);
     _bgParallelCount++;
     try {
-        const row = lookupRow.get(Number(id));
+        const row = rowsById ? rowsById.get(Number(id)) : lookupRow.get(Number(id));
         if (!row || row.file_type !== 'video') return;
         try {
             const meta = await generateForDownload(row, cfg, { overwrite: 'if-changed' });
@@ -154,11 +155,24 @@ async function _drainBg() {
                 batch.push(id);
             }
             if (!batch.length) break;
-            // Fan out to the Go sidecar's worker pool — it handles its own
-            // internal concurrency, so sending N requests in parallel just
-            // keeps its queue fed rather than forcing a serial bottleneck
-            // on the Node side.
-            await Promise.all(batch.map((id) => _processOne(id, lookupRow, cfg)));
+            // Read the whole batch through Go's query-only pool when
+            // available. A failed/old core falls back to the prepared local
+            // statement for this batch; generation and all writes stay in
+            // Node. The Go sidecar handles its own worker pool, so this keeps
+            // the Node event loop free without multiplying requests.
+            let rowsById = null;
+            if (gocoreClient.isAvailable('db')) {
+                try {
+                    const result = await gocoreClient.downloadsByIds(
+                        { ids: batch },
+                        { timeoutMs: 5000 },
+                    );
+                    rowsById = new Map(result.rows.map((row) => [Number(row.id), row]));
+                } catch {
+                    /* older/restarting cores use the local statement */
+                }
+            }
+            await Promise.all(batch.map((id) => _processOne(id, rowsById, lookupRow, cfg)));
             // Yield after every parallel batch so realtime downloads and DB
             // writes can interleave between rounds of pregenerate work.
             await new Promise((r) => setImmediate(r));
