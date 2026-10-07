@@ -649,7 +649,20 @@ export async function getStats() {
         unknown = 0;
     let beforeId = Number.MAX_SAFE_INTEGER;
     while (true) {
-        const page = pageStmt.all(beforeId, PAGE_SIZE);
+        let page = null;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                page = (
+                    await gocoreClient.faststartCandidates(
+                        { beforeId, limit: PAGE_SIZE },
+                        { timeoutMs: 5000 },
+                    )
+                ).rows;
+            } catch {
+                // Older cores and transient restarts use the local query.
+            }
+        }
+        page ||= pageStmt.all(beforeId, PAGE_SIZE);
         if (!page.length) break;
         for (const r of page) {
             total++;
