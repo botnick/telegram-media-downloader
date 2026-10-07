@@ -6426,19 +6426,11 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
         const folderPath = path.join(DOWNLOADS_DIR, folderName);
         let filesDeleted = 0;
         if (existsSync(folderPath)) {
-            const countFiles = (dir) => {
-                let count = 0;
-                const items = fsSync.readdirSync(dir, { withFileTypes: true });
-                for (const item of items) {
-                    if (item.isDirectory()) count += countFiles(path.join(dir, item.name));
-                    else count++;
-                }
-                return count;
-            };
-            filesDeleted = countFiles(folderPath);
+            filesDeleted = await _countPurgeFiles(folderPath);
             onProgress({ stage: 'deleting_files', groupId, total: filesDeleted, processed: 0 });
             // Files other groups still use (download-time dedup) stay.
-            filesDeleted -= await removeGroupFolder(groupId, folderPath);
+            const removal = await removeGroupFolder(groupId, folderPath, { details: true });
+            filesDeleted -= Number.isSafeInteger(removal?.kept) ? removal.kept : 0;
             onProgress({
                 stage: 'deleting_files',
                 groupId,
@@ -6580,19 +6572,11 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
         const folderPath = path.join(DOWNLOADS_DIR, folderName);
         let filesDeleted = 0;
         if (existsSync(folderPath)) {
-            const countFiles = (dir) => {
-                let count = 0;
-                const items = fsSync.readdirSync(dir, { withFileTypes: true });
-                for (const item of items) {
-                    if (item.isDirectory()) count += countFiles(path.join(dir, item.name));
-                    else count++;
-                }
-                return count;
-            };
-            filesDeleted = countFiles(folderPath);
+            filesDeleted = await _countPurgeFiles(folderPath);
             onProgress({ stage: 'deleting_files', groupId, total: filesDeleted, processed: 0 });
             // Files other groups still use (download-time dedup) stay.
-            filesDeleted -= await removeGroupFolder(groupId, folderPath);
+            const removal = await removeGroupFolder(groupId, folderPath, { details: true });
+            filesDeleted -= Number.isSafeInteger(removal?.kept) ? removal.kept : 0;
             onProgress({
                 stage: 'deleting_files',
                 groupId,
@@ -14064,6 +14048,35 @@ const _jobTrackers = {
 // because we don't know the group ids in advance, and a group that's
 // finished its purge can be GC'd from this map. Keep last 32 to bound.
 const _groupPurgeTrackers = new Map();
+
+// Count purge candidates without recursively blocking Node. New cores use
+// the streaming Go walker; the async Node fallback keeps old cores compatible.
+async function _countPurgeFiles(root) {
+    if (gocoreClient.isAvailable('walk')) {
+        try {
+            const summary = await gocoreClient.walk(
+                { root, maxDepth: 0, stat: 'none', entries: false },
+                { timeoutMs: 30 * 60_000 },
+            );
+            return Number.isSafeInteger(summary?.files) ? summary.files : 0;
+        } catch {
+            // Fall through when an older core is restarting or unavailable.
+        }
+    }
+    let count = 0;
+    const walk = async (dir) => {
+        for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+            const child = path.join(dir, entry.name);
+            if (entry.isDirectory()) await walk(child);
+            else count++;
+        }
+    };
+    try {
+        await walk(root);
+    } catch {}
+    return count;
+}
+
 function _groupPurgeTracker(groupId) {
     const k = `groupPurge:${groupId}`;
     if (!_groupPurgeTrackers.has(k)) {

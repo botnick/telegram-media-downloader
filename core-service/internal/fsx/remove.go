@@ -56,12 +56,12 @@ func (h *RemoveTreeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		hash.WriteError(w, http.StatusBadRequest, "EINVAL", err.Error())
 		return
 	}
-	kept, err := removeTree(root, keep)
+	result, err := removeTree(root, keep)
 	if err != nil {
 		hash.WriteError(w, http.StatusUnprocessableEntity, "EIO", err.Error())
 		return
 	}
-	hash.WriteJSON(w, http.StatusOK, map[string]any{"kept": kept})
+	hash.WriteJSON(w, http.StatusOK, result)
 }
 
 func keepPaths(root string, paths []string) (map[string]struct{}, error) {
@@ -80,8 +80,13 @@ func keepPaths(root string, paths []string) (map[string]struct{}, error) {
 	return keep, nil
 }
 
-func removeTree(root string, keep map[string]struct{}) (int, error) {
-	kept := 0
+type removeTreeResult struct {
+	Kept    int `json:"kept"`
+	Removed int `json:"removed"`
+}
+
+func removeTree(root string, keep map[string]struct{}) (removeTreeResult, error) {
+	result := removeTreeResult{}
 	var dirs []string
 	err := filepath.WalkDir(root, func(abs string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -95,21 +100,22 @@ func removeTree(root string, keep map[string]struct{}) (int, error) {
 			return nil
 		}
 		if _, ok := keep[abs]; ok {
-			kept++
+			result.Kept++
 			return nil
 		}
 		if err := os.Remove(abs); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
+		result.Removed++
 		return nil
 	})
 	if err != nil {
-		return kept, err
+		return result, err
 	}
 	for i := len(dirs) - 1; i >= 0; i-- {
 		_ = os.Remove(dirs[i])
 	}
-	return kept, nil
+	return result, nil
 }
 
 func (h *RemoveTreeHandler) writeResolveError(w http.ResponseWriter, err error) {

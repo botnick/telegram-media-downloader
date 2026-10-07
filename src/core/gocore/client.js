@@ -1217,12 +1217,17 @@ export async function removeTree(root, keep = [], { timeoutMs = 30 * 60_000, rea
         { timeoutMs, readyWaitMs, signal },
     );
     if (status !== 200) throw _errorFor(feature, status, body);
-    if (!Number.isSafeInteger(body?.kept) || body.kept < 0) {
+    if (
+        !Number.isSafeInteger(body?.kept) ||
+        body.kept < 0 ||
+        !Number.isSafeInteger(body?.removed) ||
+        body.removed < 0
+    ) {
         _count(feature, 'error');
         throw new GoCoreError('protocol', 'malformed remove-tree response', { status });
     }
     _count(feature, 'ok');
-    return { kept: body.kept };
+    return { kept: body.kept, removed: body.removed };
 }
 
 function _b64(s, Type) {

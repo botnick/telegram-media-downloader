@@ -199,14 +199,14 @@ describe('answers from a (fake) tgdl-core', () => {
             {
                 '/v1/fs/remove-tree': (req, raw, res) => {
                     request = JSON.parse(raw);
-                    json(res, 200, { kept: 2 });
+                    json(res, 200, { kept: 2, removed: 3 });
                 },
             },
             { features: ['remove-tree'] },
         );
-        await expect(client.removeTree(DOWNLOADS, [FILE, path.join(DOWNLOADS, 'shared.jpg')])).resolves.toEqual({
-            kept: 2,
-        });
+        await expect(
+            client.removeTree(DOWNLOADS, [FILE, path.join(DOWNLOADS, 'shared.jpg')]),
+        ).resolves.toEqual({ kept: 2, removed: 3 });
         expect(request).toEqual({
             root: DOWNLOADS,
             keep: [FILE, path.join(DOWNLOADS, 'shared.jpg')],

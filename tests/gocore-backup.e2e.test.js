@@ -142,7 +142,9 @@ describe('snapshot backups through tgdl-core', () => {
             filePath: 'G1/images/shared.jpg',
         });
 
-        await expect(dedup.removeGroupFolder('1', path.join(DATA, 'downloads', 'G1'))).resolves.toBe(1);
+        await expect(
+            dedup.removeGroupFolder('1', path.join(DATA, 'downloads', 'G1'), { details: true }),
+        ).resolves.toEqual({ kept: 1, removed: 1 });
         expect(fs.existsSync(shared)).toBe(true);
         expect(fs.existsSync(drop)).toBe(false);
     }, 60_000);

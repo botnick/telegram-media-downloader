@@ -36,13 +36,17 @@ func TestRemoveTreeKeepsSharedFiles(t *testing.T) {
 		t.Fatalf("status %d: %s", res.Code, res.Body.String())
 	}
 	var got struct {
-		Kept int `json:"kept"`
+		Kept    int `json:"kept"`
+		Removed int `json:"removed"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
 	if got.Kept != 1 {
 		t.Fatalf("kept = %d, want 1", got.Kept)
+	}
+	if got.Removed != 1 {
+		t.Fatalf("removed = %d, want 1", got.Removed)
 	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Fatal(err)

@@ -466,7 +466,7 @@ export function deleteByIds(ids) {
  * @param {string} folderAbs  absolute path of the group's folder
  * @returns {Promise<number>} number of files kept
  */
-export async function removeGroupFolder(groupId, folderAbs) {
+export async function removeGroupFolder(groupId, folderAbs, { details = false } = {}) {
     const esc = (s) => s.replace(/\\/g, '/').replace(/[\\%_]/g, '\\$&');
     const rel = path.relative(DEFAULT_DOWNLOAD_ROOT, folderAbs);
     const used = new Set(
@@ -491,7 +491,8 @@ export async function removeGroupFolder(groupId, folderAbs) {
             return rel && !rel.startsWith('..') && !path.isAbsolute(rel);
         });
         try {
-            return (await gocoreClient.removeTree(folderAbs, keep)).kept;
+            const result = await gocoreClient.removeTree(folderAbs, keep);
+            return details ? result : result.kept;
         } catch {
             // Old cores, custom paths outside the allow-list, and transient
             // core failures use the proven Node fallback below.
@@ -499,9 +500,10 @@ export async function removeGroupFolder(groupId, folderAbs) {
     }
     if (!used.size) {
         await fs.promises.rm(folderAbs, { recursive: true, force: true });
-        return 0;
+        return details ? { kept: 0, removed: null } : 0;
     }
     let kept = 0;
+    let removed = 0;
     const walk = async (dir) => {
         for (const ent of await fs.promises.readdir(dir, { withFileTypes: true })) {
             const p = path.join(dir, ent.name);
@@ -512,10 +514,11 @@ export async function removeGroupFolder(groupId, folderAbs) {
                 kept++;
             } else {
                 await fs.promises.rm(p, { force: true });
+                removed++;
             }
         }
     };
     await walk(folderAbs);
     await fs.promises.rmdir(folderAbs).catch(() => {});
-    return kept;
+    return details ? { kept, removed } : kept;
 }
