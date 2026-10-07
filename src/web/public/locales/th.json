@@ -1683,7 +1683,7 @@
     "maintenance.nsfw.threshold": "เกณฑ์ (0.10–0.99)",
     "maintenance.nsfw.threshold_help": "คะแนน >= ค่านี้ ถือว่าเป็น 18+ (เก็บไว้) ต่ำกว่า = ขึ้นในรายการตรวจสอบ ค่ายิ่งสูง = เข้มขึ้น",
     "maintenance.nsfw.concurrency": "Concurrency (1–4)",
-    "maintenance.nsfw.concurrency_help": "จำนวน inference ที่ทำพร้อมกันต่อหนึ่งสแกน ค่าสูงใช้ CPU/RAM มากขึ้น ค่าเริ่มต้น 1 ทำให้ server ตอบสนองดี",
+    "maintenance.nsfw.concurrency_help": "มีผลเฉพาะ sidecar ภายนอก; โมเดลในเครื่องใช้ worker แบบ batch เดียว ค่าสูงใช้ CPU/RAM มากขึ้น",
     "maintenance.nsfw.sidecar_mode": "โหมด Classifier",
     "maintenance.nsfw.sidecar_url": "URL classifier ภายนอก",
     "maintenance.nsfw.sidecar_url_help": "ทดสอบการเชื่อมต่อก่อน แล้วกดใช้ External เพื่อสลับ",

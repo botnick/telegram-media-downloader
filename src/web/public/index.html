@@ -2902,7 +2902,7 @@
                             <div>
                                 <label for="setting-adv-nsfw-concurrency" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.nsfw.concurrency">Concurrency (1–4)</label>
                                 <input id="setting-adv-nsfw-concurrency" type="number" min="1" max="4" class="tg-input w-full text-sm" placeholder="1">
-                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.nsfw.concurrency_help">Parallel inferences per scan. Higher uses more CPU/RAM; default 1 keeps the server responsive.</p>
+                                    <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.nsfw.concurrency_help">Remote sidecar only; the local model uses one batched worker. Higher values use more CPU/RAM.</p>
                             </div>
                         </div>
 

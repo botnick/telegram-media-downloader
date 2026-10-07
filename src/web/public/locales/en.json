@@ -1683,7 +1683,7 @@
     "maintenance.nsfw.threshold": "Threshold (0.10–0.99)",
     "maintenance.nsfw.threshold_help": "Score >= this counts as 18+ (kept). Below = surfaced for review. Higher = stricter.",
     "maintenance.nsfw.concurrency": "Concurrency (1–4)",
-    "maintenance.nsfw.concurrency_help": "Parallel inferences per scan. Higher uses more CPU/RAM; default 1 keeps the server responsive.",
+    "maintenance.nsfw.concurrency_help": "Remote sidecar only; the local model uses one batched worker. Higher values use more CPU/RAM.",
     "maintenance.nsfw.sidecar_mode": "Classifier mode",
     "maintenance.nsfw.sidecar_url": "External classifier URL",
     "maintenance.nsfw.sidecar_url_help": "Test the connection first, then click Use External to switch.",
