@@ -15,6 +15,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { getDb, insertDownload, purgeOrphanPeople } from './db.js';
+import * as gocoreClient from './gocore/client.js';
 import { statMany, uvError, walkTree } from './gocore/fs.js';
 import { sanitizeName } from './downloader.js';
 import { getDownloadsDir } from './paths.js';
@@ -116,20 +117,42 @@ export async function sweep(onProgress, { auto = false } = {}) {
         const STAT_AHEAD_ROWS = 1024;
         let exhausted = false;
         while (!exhausted) {
-            // `.all()` opens + closes the statement synchronously; the
-            // connection is free by the time the async stat checks run.
             const pages = [];
             let ahead = 0;
-            while (!exhausted && (ahead === 0 || ahead + PAGE_SIZE <= STAT_AHEAD_ROWS)) {
-                const page = pageStmt.all(beforeId, PAGE_SIZE);
-                if (!page.length) {
-                    exhausted = true;
-                    break;
+            let usedGo = false;
+            if (gocoreClient.isAvailable('db')) {
+                try {
+                    const rows = (
+                        await gocoreClient.integrityCandidates(
+                            { beforeId, limit: STAT_AHEAD_ROWS },
+                            { timeoutMs: 5000 },
+                        )
+                    ).rows;
+                    usedGo = true;
+                    for (let i = 0; i < rows.length; i += PAGE_SIZE) {
+                        pages.push(rows.slice(i, i + PAGE_SIZE));
+                    }
+                    ahead = rows.length;
+                    exhausted = rows.length < STAT_AHEAD_ROWS;
+                    if (rows.length) beforeId = Number(rows[rows.length - 1].id);
+                } catch {
+                    // Older cores and transient restarts use the local query.
                 }
-                pages.push(page);
-                ahead += page.length;
-                beforeId = Number(page[page.length - 1].id);
-                if (page.length < PAGE_SIZE) exhausted = true;
+            }
+            if (!usedGo) {
+                // `.all()` opens + closes the statement synchronously; the
+                // connection is free by the time the async stat checks run.
+                while (!exhausted && (ahead === 0 || ahead + PAGE_SIZE <= STAT_AHEAD_ROWS)) {
+                    const page = pageStmt.all(beforeId, PAGE_SIZE);
+                    if (!page.length) {
+                        exhausted = true;
+                        break;
+                    }
+                    pages.push(page);
+                    ahead += page.length;
+                    beforeId = Number(page[page.length - 1].id);
+                    if (page.length < PAGE_SIZE) exhausted = true;
+                }
             }
             if (!pages.length) break;
             const targets = pages.map((page) => {

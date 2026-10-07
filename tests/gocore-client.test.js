@@ -721,6 +721,25 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ beforeId: 99, limit: 10 });
     });
 
+    it('reads integrity candidates through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/integrity-candidates': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 2, file_path: 'G/videos/b.mp4', file_size: 20 }],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.integrityCandidates({ beforeId: 99, limit: 10 })).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 2, file_size: 20 })],
+        });
+        expect(request).toEqual({ beforeId: 99, limit: 10 });
+    });
+
     it('reads face boxes through the Go DB projection', async () => {
         let request;
         await fakeCore(

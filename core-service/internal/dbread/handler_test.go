@@ -251,6 +251,29 @@ func TestFaststartCandidates(t *testing.T) {
 	}
 }
 
+func TestIntegrityCandidates(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.IntegrityCandidates), map[string]any{
+		"beforeId": 3,
+		"limit":    2,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 2 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	first := rows[0].(map[string]any)
+	if first["id"] != float64(2) || first["file_path"] != "G/videos/b.mp4" || first["file_size"] != float64(20) {
+		t.Fatalf("row=%v", first)
+	}
+	second := rows[1].(map[string]any)
+	if second["id"] != float64(1) || second["file_path"] != "G/images/a.jpg" || second["file_size"] != float64(10) {
+		t.Fatalf("row=%v", second)
+	}
+}
+
 func TestDedupStats(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.DedupStats), map[string]any{})

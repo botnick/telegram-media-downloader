@@ -1378,6 +1378,28 @@ export async function faststartCandidates(
     return body;
 }
 
+/** Read a keyset page of local files for the integrity sweep. */
+export async function integrityCandidates(
+    { beforeId = Number.MAX_SAFE_INTEGER, limit = 64 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/integrity-candidates',
+        { beforeId, limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validIntegrityCandidateRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed integrity candidates response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read the AI maintenance counters through tgdl-core. */
 export async function aiCounts(
     { fileTypes = ['photo'] } = {},
@@ -1763,6 +1785,21 @@ function validFaststartCandidateRows(body) {
                 Number.isSafeInteger(row.id) &&
                 row.id > 0 &&
                 typeof row.file_path === 'string',
+        )
+    );
+}
+
+function validIntegrityCandidateRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                typeof row.file_path === 'string' &&
+                (row.file_size == null || Number.isSafeInteger(row.file_size)),
         )
     );
 }
