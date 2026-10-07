@@ -252,6 +252,13 @@ describe('snapshot backups through tgdl-core', () => {
             rows: expect.arrayContaining([expect.objectContaining({ id, group_id: '3' })]),
         });
         await expect(
+            gocoreClient.clusterDownloads({ limit: 10, offset: 0 }),
+        ).resolves.toMatchObject({
+            rows: expect.arrayContaining([
+                expect.objectContaining({ id, file_name: 'cached.jpg' }),
+            ]),
+        });
+        await expect(
             gocoreClient.clusterSearch({ query: 'cached', limit: 10 }),
         ).resolves.toMatchObject({
             rows: expect.arrayContaining([

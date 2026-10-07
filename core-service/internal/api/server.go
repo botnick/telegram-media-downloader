@@ -42,6 +42,8 @@
 //	                         read-only grouped recovery counters
 //	POST /v1/db/cluster-downloads-since
 //	                         read-only local catalog delta
+//	POST /v1/db/cluster-downloads
+//	                         read-only local catalog page
 //	POST /v1/db/cluster-search
 //	                         read-only local catalog search
 //	GET  /v1/stats           counters (cheap token check for the parent)
@@ -144,6 +146,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/person-photos", s.dbRead.PersonPhotos)
 		private.HandleFunc("POST /v1/db/ai-counts", s.dbRead.AICounts)
 		private.HandleFunc("POST /v1/db/recovery-stats", s.dbRead.RecoveryStats)
+		private.HandleFunc("POST /v1/db/cluster-downloads", s.dbRead.ClusterDownloads)
 		private.HandleFunc("POST /v1/db/cluster-downloads-since", s.dbRead.ClusterDownloadsSince)
 		private.HandleFunc("POST /v1/db/cluster-search", s.dbRead.ClusterSearch)
 	}

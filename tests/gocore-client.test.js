@@ -771,6 +771,10 @@ describe('answers from a (fake) tgdl-core', () => {
         const requests = [];
         await fakeCore(
             {
+                '/v1/db/cluster-downloads': (req, raw, res) => {
+                    requests.push([req, JSON.parse(raw)]);
+                    json(res, 200, { rows: [{ id: 4, group_id: '-2', file_name: 'c.pdf' }] });
+                },
                 '/v1/db/cluster-downloads-since': (req, raw, res) => {
                     requests.push([req, JSON.parse(raw)]);
                     json(res, 200, {
@@ -799,6 +803,9 @@ describe('answers from a (fake) tgdl-core', () => {
             },
             { features: ['db'] },
         );
+        await expect(client.clusterDownloads({ limit: 2, offset: 1 })).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 4, file_name: 'c.pdf' })],
+        });
         await expect(client.clusterDownloadsSince({ sinceId: 1, limit: 2 })).resolves.toMatchObject(
             {
                 rows: [expect.objectContaining({ id: 2, file_name: 'b.mp4' })],
@@ -808,6 +815,7 @@ describe('answers from a (fake) tgdl-core', () => {
             rows: [expect.objectContaining({ id: 2, group_id: '-1' })],
         });
         expect(requests.map(([req, body]) => [req.method, body])).toEqual([
+            ['POST', { limit: 2, offset: 1 }],
             ['POST', { sinceId: 1, limit: 2 }],
             ['POST', { query: 'Cool', limit: 10 }],
         ]);

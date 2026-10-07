@@ -12,6 +12,7 @@ type clusterRowsRequest struct {
 	SinceID int64  `json:"sinceId"`
 	Query   string `json:"query"`
 	Limit   int    `json:"limit"`
+	Offset  int    `json:"offset"`
 }
 
 type clusterRow struct {
@@ -31,6 +32,47 @@ type clusterRow struct {
 
 type clusterRowsResponse struct {
 	Rows []clusterRow `json:"rows"`
+}
+
+// ClusterDownloads serves the local catalog page used by the cluster view.
+func (h *Handler) ClusterDownloads(w http.ResponseWriter, r *http.Request) {
+	var req clusterRowsRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		return
+	}
+	limit := req.Limit
+	if limit < 1 {
+		limit = 200
+	}
+	if limit > 2000 {
+		limit = 2000
+	}
+	offset := req.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	db, err := h.open()
+	if err != nil {
+		h.unavailable(w, err)
+		return
+	}
+	rows, err := db.QueryContext(r.Context(), `
+		SELECT id, CAST(group_id AS TEXT), group_name, message_id, file_name,
+		       file_size, file_type, file_path, file_hash, status,
+		       CAST(created_at AS TEXT), nsfw_score
+		  FROM downloads
+		 ORDER BY id DESC
+		 LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		h.queryError(w, err, "database cluster downloads query failed")
+		return
+	}
+	out, err := scanClusterRows(rows, limit)
+	if err != nil {
+		h.queryError(w, err, "database cluster downloads read failed")
+		return
+	}
+	hash.WriteJSON(w, http.StatusOK, clusterRowsResponse{Rows: out})
 }
 
 // ClusterDownloadsSince serves the local delta used by cluster catalog sync.

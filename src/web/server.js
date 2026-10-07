@@ -11377,7 +11377,7 @@ app.get('/api/cluster/sync/state', (_req, res) => {
 
 // Admin — merged downloads view (self + every peer's catalog). Powers
 // the unified gallery + downloads list. ?peerId=<self|<id>|all> filters.
-app.get('/api/cluster/downloads', (req, res) => {
+app.get('/api/cluster/downloads', async (req, res) => {
     try {
         const filter = req.query.peerId || 'all';
         const limit = Math.max(1, Math.min(2000, Number(req.query.limit) || 200));
@@ -11385,7 +11385,13 @@ app.get('/api/cluster/downloads', (req, res) => {
         const ownPid = getSelfPeerId();
         const rows = [];
         if (filter === 'all' || filter === 'self' || filter === ownPid) {
-            const own = getDb()
+            let own;
+            if (gocoreClient.isAvailable('db')) {
+                try {
+                    own = (await gocoreClient.clusterDownloads({ limit, offset })).rows;
+                } catch {}
+            }
+            own ||= getDb()
                 .prepare(
                     `SELECT id, group_id, group_name, message_id, file_name, file_size,
                             file_type, file_path, file_hash, status, created_at, nsfw_score

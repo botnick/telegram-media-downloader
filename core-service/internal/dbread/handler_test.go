@@ -389,11 +389,20 @@ func TestRecoveryStats(t *testing.T) {
 
 func TestClusterCatalogReads(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
-	status, body := call(t, http.HandlerFunc(h.ClusterDownloadsSince), map[string]any{"sinceId": 1, "limit": 2})
+	status, body := call(t, http.HandlerFunc(h.ClusterDownloads), map[string]any{"limit": 2, "offset": 1})
+	if status != http.StatusOK {
+		t.Fatalf("page status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 2 || rows[0].(map[string]any)["id"] != float64(4) {
+		t.Fatalf("page rows=%v", body["rows"])
+	}
+
+	status, body = call(t, http.HandlerFunc(h.ClusterDownloadsSince), map[string]any{"sinceId": 1, "limit": 2})
 	if status != http.StatusOK {
 		t.Fatalf("delta status=%d body=%v", status, body)
 	}
-	rows, _ := body["rows"].([]any)
+	rows, _ = body["rows"].([]any)
 	if len(rows) != 2 {
 		t.Fatalf("delta rows=%v", body["rows"])
 	}
