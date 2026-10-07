@@ -20,6 +20,8 @@
 //	POST /v1/db/stats       read-only SQLite total file/byte counts
 //	POST /v1/db/group-stats read-only per-group counts and timestamps
 //	POST /v1/db/group-files read-only paginated per-group file rows
+//	POST /v1/db/nsfw-candidates
+//	                         read-only bounded unscanned NSFW queue
 //	POST /v1/db/downloads/all
 //	                         read-only local gallery feed
 //	POST /v1/db/downloads/group
@@ -152,6 +154,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/nsfw-tiers", s.dbRead.NsfwTiers)
 		private.HandleFunc("POST /v1/db/nsfw-histogram", s.dbRead.NsfwHistogram)
 		private.HandleFunc("POST /v1/db/nsfw-list", s.dbRead.NsfwList)
+		private.HandleFunc("POST /v1/db/nsfw-candidates", s.dbRead.NsfwCandidates)
 		private.HandleFunc("POST /v1/db/people", s.dbRead.People)
 		private.HandleFunc("POST /v1/db/thumbs-list", s.dbRead.ThumbsList)
 		private.HandleFunc("POST /v1/db/seekbar-list", s.dbRead.SeekbarList)

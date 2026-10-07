@@ -547,6 +547,38 @@ describe('answers from a (fake) tgdl-core', () => {
         });
     });
 
+    it('reads the bounded unscanned NSFW queue through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/nsfw-candidates': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [
+                            {
+                                id: 3,
+                                group_id: '-2',
+                                group_name: 'Group 2',
+                                file_name: 'c.pdf',
+                                file_path: 'G/documents/c.pdf',
+                                file_type: 'document',
+                                file_size: 20,
+                                created_at: '2026-01-03T00:00:00Z',
+                            },
+                        ],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.nsfwCandidates({ fileTypes: ['photo', 'video'], limit: 12 }),
+        ).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 3, file_type: 'document' })],
+        });
+        expect(request).toEqual({ fileTypes: ['photo', 'video'], limit: 12 });
+    });
+
     it('reads the local people page through the Go DB projection', async () => {
         let request;
         await fakeCore(

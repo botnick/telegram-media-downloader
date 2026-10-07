@@ -213,6 +213,25 @@ func TestAICandidates(t *testing.T) {
 	}
 }
 
+func TestNsfwCandidates(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.NsfwCandidates), map[string]any{
+		"fileTypes": []string{"audio"},
+		"limit":     1,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(5) || row["file_path"] != "G/audio/d.ogg" || row["file_type"] != "audio" {
+		t.Fatalf("row=%v", row)
+	}
+}
+
 func TestDedupStats(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.DedupStats), map[string]any{})

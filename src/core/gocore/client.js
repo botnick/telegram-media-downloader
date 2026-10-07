@@ -1030,6 +1030,28 @@ export async function nsfwList(
     return body;
 }
 
+/** Read the bounded unscanned NSFW queue through tgdl-core's DB pool. */
+export async function nsfwCandidates(
+    { fileTypes = ['photo'], limit = 50 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/nsfw-candidates',
+        { fileTypes: Array.isArray(fileTypes) ? fileTypes : ['photo'], limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validNsfwCandidateRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed NSFW candidates response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read the local people page through tgdl-core's DB pool. */
 export async function peopleList(
     { limit = 100, offset = 0, sort = 'face_count', dir = 'desc' } = {},
@@ -1653,6 +1675,26 @@ function validFileCandidates(body) {
 }
 
 function validAiCandidateRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.group_id == null || typeof row.group_id === 'string') &&
+                (row.group_name == null || typeof row.group_name === 'string') &&
+                (row.file_name == null || typeof row.file_name === 'string') &&
+                (row.file_path == null || typeof row.file_path === 'string') &&
+                (row.file_type == null || typeof row.file_type === 'string') &&
+                (row.file_size == null || Number.isSafeInteger(row.file_size)) &&
+                (row.created_at == null || typeof row.created_at === 'string'),
+        )
+    );
+}
+
+function validNsfwCandidateRows(body) {
     return (
         body &&
         Array.isArray(body.rows) &&

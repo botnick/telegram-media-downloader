@@ -32,6 +32,7 @@ Node's single thread:
 | Read-only NSFW tier counters | `/api/maintenance/nsfw/v2/tiers` | `POST /v1/db/nsfw-tiers` (optional feature) |
 | Read-only NSFW histogram | `/api/maintenance/nsfw/v2/histogram` | `POST /v1/db/nsfw-histogram` (optional feature) |
 | Read-only NSFW review list | `/api/maintenance/nsfw/v2/list` | `POST /v1/db/nsfw-list` (optional feature) |
+| NSFW scan queue | NSFW maintenance scanner's unscanned rows | `POST /v1/db/nsfw-candidates` (optional feature) |
 | Read-only people list | `/api/ai/people` with local scope | `POST /v1/db/people` (optional feature) |
 | Read-only thumbnail maintenance catalog | `/api/maintenance/thumbs/list` | `POST /v1/db/thumbs-list` (optional feature) |
 | Read-only seekbar sprite catalog | `/api/maintenance/seekbar/list` | `POST /v1/db/seekbar-list` (optional feature) |

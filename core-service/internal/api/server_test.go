@@ -98,6 +98,7 @@ func TestEverythingElseNeedsToken(t *testing.T) {
 		{"POST", "/v1/db/nsfw-tiers", ""},
 		{"POST", "/v1/db/nsfw-histogram", ""},
 		{"POST", "/v1/db/nsfw-list", ""},
+		{"POST", "/v1/db/nsfw-candidates", ""},
 		{"POST", "/v1/db/people", ""},
 		{"POST", "/v1/db/thumbs-list", ""},
 		{"POST", "/v1/db/seekbar-list", ""},

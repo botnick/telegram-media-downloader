@@ -16,7 +16,7 @@ it for:
 | `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `thumb` | `POST /v1/thumb/{video,image,audio}` | Media decode/scale/WebP thumbnail generation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `seekbar` | `POST /v1/seekbar` | Video sampling, tiling and sprite encode with bounded ffmpeg workers (optional; old binaries fall back to Node) |
-| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats`, `/v1/db/group-stats`, `/v1/db/group-files`, `/v1/db/downloads/all`, `/v1/db/downloads/group`, `/v1/db/downloads/search`, `/v1/db/share-links`, `/v1/db/update-history`, `/v1/db/nsfw-tiers`, `/v1/db/nsfw-histogram`, `/v1/db/nsfw-list`, `/v1/db/people`, `/v1/db/thumbs-list`, `/v1/db/seekbar-list`, `/v1/db/faces-by-download`, `/v1/db/person-groups`, `/v1/db/person-photos`, `/v1/db/ai-counts`, `/v1/db/ai-candidates`, `/v1/db/recovery-stats`, `/v1/db/cluster-downloads`, `/v1/db/cluster-downloads-since`, `/v1/db/cluster-search`, `/v1/db/telegram-media-candidates`, `/v1/db/file-hash-candidates`, `/v1/db/file-name-candidates`, `/v1/db/seekbar-candidates` | Read-only SQLite dashboard projections (optional; Node falls back to its local queries) |
+| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats`, `/v1/db/group-stats`, `/v1/db/group-files`, `/v1/db/downloads/all`, `/v1/db/downloads/group`, `/v1/db/downloads/search`, `/v1/db/share-links`, `/v1/db/update-history`, `/v1/db/nsfw-tiers`, `/v1/db/nsfw-histogram`, `/v1/db/nsfw-list`, `/v1/db/nsfw-candidates`, `/v1/db/people`, `/v1/db/thumbs-list`, `/v1/db/seekbar-list`, `/v1/db/faces-by-download`, `/v1/db/person-groups`, `/v1/db/person-photos`, `/v1/db/ai-counts`, `/v1/db/ai-candidates`, `/v1/db/recovery-stats`, `/v1/db/cluster-downloads`, `/v1/db/cluster-downloads-since`, `/v1/db/cluster-search`, `/v1/db/telegram-media-candidates`, `/v1/db/file-hash-candidates`, `/v1/db/file-name-candidates`, `/v1/db/seekbar-candidates` | Read-only SQLite dashboard projections (optional; Node falls back to its local queries) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
@@ -120,6 +120,7 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 | `POST /v1/db/nsfw-tiers` | token | JSON `{"fileTypes":["photo"]}` → tier/scanned/whitelist counters |
 | `POST /v1/db/nsfw-histogram` | token | JSON `{"fileTypes":["photo"],"bins":20}` → dense score histogram |
 | `POST /v1/db/nsfw-list` | token | JSON `{"fileTypes":["photo"],"tier":"def_not","page":1,"limit":50}` → paginated scored rows |
+| `POST /v1/db/nsfw-candidates` | token | JSON `{"fileTypes":["photo"],"limit":50}` → bounded unscanned rows |
 | `POST /v1/db/people` | token | JSON `{"limit":100,"offset":0,"sort":"face_count","dir":"desc"}` → local people page |
 | `POST /v1/db/thumbs-list` | token | JSON `{"limit":60,"cursor":0,"kind":"all","cachedOnly":false,"cacheRoot":"/abs/data/thumbs"}` → thumbnail maintenance page |
 | `POST /v1/db/seekbar-list` | token | JSON `{"limit":50,"offset":0}` → seekbar sprite catalog |

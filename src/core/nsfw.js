@@ -32,6 +32,7 @@ import {
 import { sha256OfFile } from './checksum.js';
 import { getSpritePath, getMetaFilePath } from './seekbar/generator.js';
 import { getDataDir, getRepoRoot } from './paths.js';
+import * as gocoreClient from './gocore/client.js';
 import {
     setSidecarUrl as _setNsfwSidecarUrl,
     setSidecarAuth as _setNsfwSidecarAuth,
@@ -659,7 +660,21 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
 
         try {
             while (!ctrl.signal.aborted) {
-                const batch = getUnscannedNsfwBatch(fileTypes, batchSize);
+                let batch;
+                if (gocoreClient.isAvailable('db')) {
+                    try {
+                        batch = (
+                            await gocoreClient.nsfwCandidates(
+                                { fileTypes, limit: batchSize },
+                                { timeoutMs: 5_000, signal: ctrl.signal },
+                            )
+                        ).rows;
+                    } catch {
+                        // Older cores and transient restarts use the local
+                        // query; the scan remains resumable either way.
+                    }
+                }
+                batch ||= getUnscannedNsfwBatch(fileTypes, batchSize);
                 if (!batch.length) break;
 
                 if (!useRemote) {
