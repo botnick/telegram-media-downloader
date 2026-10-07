@@ -1318,6 +1318,39 @@ export async function aiCounts(
     return body;
 }
 
+/** Read grouped recovery counters through tgdl-core. */
+export async function recoveryStats(
+    _request = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/recovery-stats',
+        {},
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const validRows =
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                typeof row.group_id === 'string' &&
+                Number.isSafeInteger(row.files) &&
+                row.files >= 0 &&
+                (row.lastSeen == null || typeof row.lastSeen === 'string'),
+        );
+    if (!validRows) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed recovery stats response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

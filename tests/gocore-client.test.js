@@ -748,6 +748,25 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ fileTypes: ['photo', 'video'] });
     });
 
+    it('reads grouped recovery counters through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/recovery-stats': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ group_id: '-1', files: 2, lastSeen: '2026-01-02T00:00:00Z' }],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.recoveryStats()).resolves.toMatchObject({
+            rows: [expect.objectContaining({ group_id: '-1', files: 2 })],
+        });
+        expect(request).toEqual({});
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(

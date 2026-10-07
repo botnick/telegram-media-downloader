@@ -241,5 +241,10 @@ describe('snapshot backups through tgdl-core', () => {
                 noiseFaces: expect.any(Number),
             }),
         );
+        await expect(gocoreClient.recoveryStats()).resolves.toMatchObject({
+            rows: expect.arrayContaining([
+                expect.objectContaining({ group_id: '3', files: expect.any(Number) }),
+            ]),
+        });
     }, 60_000);
 });

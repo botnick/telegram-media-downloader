@@ -10538,7 +10538,13 @@ app.get('/api/maintenance/recovery/list', async (req, res) => {
         // list endpoint stays cheap even for large libraries.
         const dbStats = new Map();
         try {
-            const rows = getDb()
+            let rows;
+            if (gocoreClient.isAvailable('db')) {
+                try {
+                    rows = (await gocoreClient.recoveryStats()).rows;
+                } catch {}
+            }
+            rows ||= getDb()
                 .prepare(`
                     SELECT group_id, COUNT(*) AS files, MAX(created_at) AS lastSeen
                       FROM downloads

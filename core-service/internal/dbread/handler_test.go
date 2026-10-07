@@ -368,6 +368,24 @@ func TestAICounts(t *testing.T) {
 	}
 }
 
+func TestRecoveryStats(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.RecoveryStats), map[string]any{})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 3 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	for _, raw := range rows {
+		row := raw.(map[string]any)
+		if row["group_id"] == "-1" && (row["files"] != float64(2) || row["lastSeen"] != "2026-01-02T00:00:00Z") {
+			t.Fatalf("group row=%v", row)
+		}
+	}
+}
+
 func TestShareLinks(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.ShareLinks), map[string]any{
