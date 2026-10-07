@@ -11307,12 +11307,18 @@ app.get('/api/cluster/audit', (req, res) => {
 
 // Delta-pull endpoint: P2P, HMAC-required. Caller passes the highest id
 // it's already cached so we only return new rows.
-app.get('/api/cluster/downloads/since', (req, res) => {
+app.get('/api/cluster/downloads/since', async (req, res) => {
     const v = _peerHmacGate(req, res);
     if (!v) return;
     const sinceId = Number(req.query.sinceId) || 0;
     const limit = Number(req.query.limit) || 500;
-    const rows = listOwnDownloadsSince({ sinceId, limit });
+    let rows;
+    if (gocoreClient.isAvailable('db')) {
+        try {
+            rows = (await gocoreClient.clusterDownloadsSince({ sinceId, limit })).rows;
+        } catch {}
+    }
+    rows ||= listOwnDownloadsSince({ sinceId, limit });
     res.json({ rows, peerId: getSelfPeerId(), now: Date.now() });
 });
 
@@ -11757,24 +11763,32 @@ app.post('/api/cluster/files/delete', async (req, res) => {
 // ---- Phase I (v2.10): federated search ------------------------------
 
 // HMAC peer-to-peer search. Returns matching local download rows.
-app.get('/api/cluster/search/peer', (req, res) => {
+app.get('/api/cluster/search/peer', async (req, res) => {
     const v = _peerHmacGate(req, res);
     if (!v) return;
     const q = String(req.query.q || '').trim();
     const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
     if (!q) return res.json({ rows: [] });
     try {
-        const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
-        const rows = getDb()
-            .prepare(
-                `SELECT id, group_id, group_name, message_id, file_name, file_size, file_type,
-                        file_path, file_hash, status, created_at, nsfw_score
-                   FROM downloads
-                  WHERE file_name LIKE ? ESCAPE '\\' OR group_name LIKE ? ESCAPE '\\'
-                  ORDER BY created_at DESC
-                  LIMIT ?`,
-            )
-            .all(like, like, limit);
+        let rows;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                rows = (await gocoreClient.clusterSearch({ query: q, limit })).rows;
+            } catch {}
+        }
+        if (!rows) {
+            const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+            rows = getDb()
+                .prepare(
+                    `SELECT id, group_id, group_name, message_id, file_name, file_size, file_type,
+                            file_path, file_hash, status, created_at, nsfw_score
+                       FROM downloads
+                      WHERE file_name LIKE ? ESCAPE '\\' OR group_name LIKE ? ESCAPE '\\'
+                      ORDER BY created_at DESC
+                      LIMIT ?`,
+                )
+                .all(like, like, limit);
+        }
         res.json({ rows, peerId: getSelfPeerId(), q });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
@@ -11787,17 +11801,25 @@ app.get('/api/cluster/search', async (req, res) => {
     const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
     if (!q) return res.json({ rows: [] });
     try {
-        const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
         const ownPid = getSelfPeerId();
-        const local = getDb()
-            .prepare(
-                `SELECT id, group_id, group_name, message_id, file_name, file_size, file_type,
-                        file_path, file_hash, status, created_at, nsfw_score
-                   FROM downloads
-                  WHERE file_name LIKE ? ESCAPE '\\' OR group_name LIKE ? ESCAPE '\\'
-                  ORDER BY created_at DESC LIMIT ?`,
-            )
-            .all(like, like, limit);
+        let local;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                local = (await gocoreClient.clusterSearch({ query: q, limit })).rows;
+            } catch {}
+        }
+        if (!local) {
+            const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+            local = getDb()
+                .prepare(
+                    `SELECT id, group_id, group_name, message_id, file_name, file_size, file_type,
+                            file_path, file_hash, status, created_at, nsfw_score
+                       FROM downloads
+                      WHERE file_name LIKE ? ESCAPE '\\' OR group_name LIKE ? ESCAPE '\\'
+                      ORDER BY created_at DESC LIMIT ?`,
+                )
+                .all(like, like, limit);
+        }
         const merged = local.map((r) => ({ ...r, peer_id: ownPid, peer_name: getSelfPeerName() }));
 
         // Fan-out to paired peers (online only).

@@ -40,6 +40,8 @@ Node's single thread:
 | Read-only person gallery | `/api/ai/people/:id/photos` | `POST /v1/db/person-photos` (optional feature) |
 | AI maintenance counters | `/api/ai/status` counts | `POST /v1/db/ai-counts` (optional feature) |
 | Recovery group counters | `/api/maintenance/recovery/list` grouped DB stats | `POST /v1/db/recovery-stats` (optional feature) |
+| Cluster catalog delta | `/api/cluster/downloads/since` local rows | `POST /v1/db/cluster-downloads-since` (optional feature) |
+| Cluster catalog search | `/api/cluster/search` and `/api/cluster/search/peer` local rows | `POST /v1/db/cluster-search` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 For the required features it is the **only** implementation. Optional

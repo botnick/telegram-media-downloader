@@ -27,6 +27,7 @@ func makeDB(t *testing.T) string {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		group_id TEXT, group_name TEXT, file_size INTEGER,
 		message_id INTEGER, file_type TEXT, file_name TEXT, file_path TEXT,
+		status TEXT, file_hash TEXT,
 		created_at TEXT, nsfw_score REAL, nsfw_checked_at INTEGER,
 		nsfw_whitelist INTEGER DEFAULT 0, pending_until INTEGER,
 		rescued_at INTEGER, pinned INTEGER DEFAULT 0
@@ -383,6 +384,31 @@ func TestRecoveryStats(t *testing.T) {
 		if row["group_id"] == "-1" && (row["files"] != float64(2) || row["lastSeen"] != "2026-01-02T00:00:00Z") {
 			t.Fatalf("group row=%v", row)
 		}
+	}
+}
+
+func TestClusterCatalogReads(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.ClusterDownloadsSince), map[string]any{"sinceId": 1, "limit": 2})
+	if status != http.StatusOK {
+		t.Fatalf("delta status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 2 {
+		t.Fatalf("delta rows=%v", body["rows"])
+	}
+	first := rows[0].(map[string]any)
+	if first["id"] != float64(2) || first["group_id"] != "-1" || first["file_hash"] != nil {
+		t.Fatalf("delta first=%v", first)
+	}
+
+	status, body = call(t, http.HandlerFunc(h.ClusterSearch), map[string]any{"query": "Cool", "limit": 10})
+	if status != http.StatusOK {
+		t.Fatalf("search status=%d body=%v", status, body)
+	}
+	rows, _ = body["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["file_name"] != "b.mp4" {
+		t.Fatalf("search rows=%v", body["rows"])
 	}
 }
 

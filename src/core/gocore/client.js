@@ -1351,6 +1351,76 @@ export async function recoveryStats(
     return body;
 }
 
+/** Read the local cluster catalog delta through tgdl-core. */
+export async function clusterDownloadsSince(
+    { sinceId = 0, limit = 500 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/cluster-downloads-since',
+        { sinceId, limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validClusterRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed cluster delta response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
+/** Read the local catalog search used by cluster federation through Go. */
+export async function clusterSearch(
+    { query, limit = 50 } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/cluster-search',
+        { query: String(query || ''), limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validClusterRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed cluster search response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
+function validClusterRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.group_id == null || typeof row.group_id === 'string') &&
+                (row.group_name == null || typeof row.group_name === 'string') &&
+                (row.message_id == null || Number.isSafeInteger(row.message_id)) &&
+                (row.file_name == null || typeof row.file_name === 'string') &&
+                (row.file_size == null ||
+                    (Number.isSafeInteger(row.file_size) && row.file_size >= 0)) &&
+                (row.file_type == null || typeof row.file_type === 'string') &&
+                (row.file_path == null || typeof row.file_path === 'string') &&
+                (row.file_hash == null || typeof row.file_hash === 'string') &&
+                (row.status == null || typeof row.status === 'string') &&
+                (row.created_at == null || typeof row.created_at === 'string') &&
+                (row.nsfw_score == null ||
+                    (typeof row.nsfw_score === 'number' && Number.isFinite(row.nsfw_score))),
+        )
+    );
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

@@ -767,6 +767,52 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({});
     });
 
+    it('reads cluster catalog deltas and searches through the Go DB projection', async () => {
+        const requests = [];
+        await fakeCore(
+            {
+                '/v1/db/cluster-downloads-since': (req, raw, res) => {
+                    requests.push([req, JSON.parse(raw)]);
+                    json(res, 200, {
+                        rows: [
+                            {
+                                id: 2,
+                                group_id: '-1',
+                                group_name: 'Cool Channel',
+                                message_id: 11,
+                                file_name: 'b.mp4',
+                                file_size: 20,
+                                file_type: 'video',
+                                file_path: 'G/videos/b.mp4',
+                                file_hash: null,
+                                status: 'completed',
+                                created_at: '2026-01-02T00:00:00Z',
+                                nsfw_score: 0.25,
+                            },
+                        ],
+                    });
+                },
+                '/v1/db/cluster-search': (req, raw, res) => {
+                    requests.push([req, JSON.parse(raw)]);
+                    json(res, 200, { rows: [{ id: 2, group_id: '-1', file_name: 'b.mp4' }] });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.clusterDownloadsSince({ sinceId: 1, limit: 2 })).resolves.toMatchObject(
+            {
+                rows: [expect.objectContaining({ id: 2, file_name: 'b.mp4' })],
+            },
+        );
+        await expect(client.clusterSearch({ query: 'Cool', limit: 10 })).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 2, group_id: '-1' })],
+        });
+        expect(requests.map(([req, body]) => [req.method, body])).toEqual([
+            ['POST', { sinceId: 1, limit: 2 }],
+            ['POST', { query: 'Cool', limit: 10 }],
+        ]);
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(
