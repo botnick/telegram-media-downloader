@@ -5301,7 +5301,19 @@ app.get('/api/downloads/all', async (req, res) => {
         const include = req.role === 'guest' ? 'local' : reqInclude;
         const peerIdFilter =
             req.role !== 'guest' && req.query.peerId ? String(req.query.peerId) : null;
-        const result = getAllDownloadsFederated(limit, offset, type, {
+        let result;
+        if (include === 'local' && gocoreClient.isAvailable('db')) {
+            try {
+                result = await gocoreClient.allDownloads({
+                    limit,
+                    offset,
+                    type,
+                    pinnedOnly,
+                    pinnedFirst,
+                });
+            } catch {}
+        }
+        result ||= getAllDownloadsFederated(limit, offset, type, {
             pinnedOnly,
             pinnedFirst,
             include,

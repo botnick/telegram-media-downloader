@@ -24,9 +24,13 @@ func makeDB(t *testing.T) string {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		group_id TEXT, group_name TEXT, file_size INTEGER,
 		message_id INTEGER, file_type TEXT, file_name TEXT, file_path TEXT,
-		created_at TEXT, nsfw_score REAL
+		created_at TEXT, nsfw_score REAL, pending_until INTEGER,
+		rescued_at INTEGER, pinned INTEGER DEFAULT 0
 	)`)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`CREATE TABLE seekbar_sprites (download_id INTEGER, duration_sec REAL)`); err != nil {
 		t.Fatal(err)
 	}
 	_, err = db.Exec(`INSERT INTO downloads(group_id,group_name,file_size,message_id,file_type,file_name,file_path,created_at,nsfw_score) VALUES
@@ -36,6 +40,9 @@ func makeDB(t *testing.T) string {
 		('-2','unknown',NULL,21,NULL,NULL,NULL,NULL,NULL),
 		('-3','',5,30,'audio','d.ogg','G/audio/d.ogg','2026-01-04T00:00:00Z',NULL)`)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO seekbar_sprites(download_id,duration_sec) VALUES (2, 12.5)`); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -110,5 +117,19 @@ func TestGroupFiles(t *testing.T) {
 	rows, _ := body["rows"].([]any)
 	if len(rows) != 1 || rows[0].(map[string]any)["file_name"] != "b.mp4" {
 		t.Fatalf("rows=%v", body["rows"])
+	}
+}
+
+func TestAllDownloads(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.AllDownloads), map[string]any{
+		"limit": 1, "offset": 0, "type": "videos", "pinnedOnly": false, "pinnedFirst": false,
+	})
+	if status != http.StatusOK || body["total"] != float64(1) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["files"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["file_name"] != "b.mp4" || rows[0].(map[string]any)["duration_sec"] != 12.5 {
+		t.Fatalf("files=%v", body["files"])
 	}
 }

@@ -16,6 +16,8 @@
 //	POST /v1/db/stats       read-only SQLite total file/byte counts
 //	POST /v1/db/group-stats read-only per-group counts and timestamps
 //	POST /v1/db/group-files read-only paginated per-group file rows
+//	POST /v1/db/downloads/all
+//	                         read-only local gallery feed
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -96,6 +98,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/stats", s.dbRead.Stats)
 		private.HandleFunc("POST /v1/db/group-stats", s.dbRead.GroupStats)
 		private.HandleFunc("POST /v1/db/group-files", s.dbRead.GroupFiles)
+		private.HandleFunc("POST /v1/db/downloads/all", s.dbRead.AllDownloads)
 	}
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

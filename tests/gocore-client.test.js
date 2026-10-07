@@ -309,6 +309,20 @@ describe('answers from a (fake) tgdl-core', () => {
         await expect(client.groupFiles({ groupId: '-1' })).resolves.toMatchObject({ total: 1 });
     });
 
+    it('reads the local all-media page through the Go DB projection', async () => {
+        await fakeCore(
+            {
+                '/v1/db/downloads/all': (req, raw, res) =>
+                    json(res, 200, {
+                        files: [{ id: 2, group_id: '-1', file_name: 'b.mp4' }],
+                        total: 1,
+                    }),
+            },
+            { features: ['db'] },
+        );
+        await expect(client.allDownloads({ type: 'videos' })).resolves.toMatchObject({ total: 1 });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({
