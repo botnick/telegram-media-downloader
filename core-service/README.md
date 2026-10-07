@@ -15,7 +15,7 @@ it for:
 | `faststart` | `POST /v1/faststart` | MP4 `moov` relocation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `thumb` | `POST /v1/thumb/{video,image,audio}` | Media decode/scale/WebP thumbnail generation with bounded ffmpeg workers (optional; old binaries fall back to Node) |
 | `seekbar` | `POST /v1/seekbar` | Video sampling, tiling and sprite encode with bounded ffmpeg workers (optional; old binaries fall back to Node) |
-| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats` | Read-only SQLite sidebar aggregates and library totals (optional; Node falls back to its local queries) |
+| `db` | `POST /v1/db/group-aggregates`, `/v1/db/stats`, `/v1/db/group-stats`, `/v1/db/group-files` | Read-only SQLite dashboard projections (optional; Node falls back to its local queries) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
@@ -108,6 +108,8 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 | `POST /v1/seekbar` | token | JSON `{"path":"/abs/video","output":"/abs/sprite.tmp","frames":120,"intervalSec":4,"cols":10,"rows":12,"tileWidth":160,"format":"webp","quality":75}` → `{status:"ok",size}`; output must be inside an allow-root |
 | `POST /v1/db/group-aggregates` | token | JSON `{}` → `{rows:[{group_id,best_name,any_name,count,size}]}` from a query-only `db.sqlite` connection |
 | `POST /v1/db/stats` | token | JSON `{}` → `{totalFiles,totalSize}` from a query-only `db.sqlite` connection |
+| `POST /v1/db/group-stats` | token | JSON `{"groupId":"…"}` → per-group counts, type totals and message timestamps |
+| `POST /v1/db/group-files` | token | JSON `{"groupId":"…","limit":50,"offset":0,"type":"video"}` → paginated file rows |
 | `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
 ### `/v1/hash`

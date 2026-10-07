@@ -660,6 +660,71 @@ export async function databaseStats({ timeoutMs = 10_000, readyWaitMs, signal } 
     return { totalFiles: body.totalFiles, totalSize: body.totalSize };
 }
 
+/** Read per-group counters and timestamps through tgdl-core's DB projection. */
+export async function groupStats(groupId, { timeoutMs = 10_000, readyWaitMs, signal } = {}) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/group-stats',
+        { groupId: String(groupId) },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const byType = body?.byType;
+    const valid =
+        body &&
+        Number.isSafeInteger(body.totalFiles) &&
+        body.totalFiles >= 0 &&
+        Number.isSafeInteger(body.totalBytes) &&
+        body.totalBytes >= 0 &&
+        byType &&
+        typeof byType === 'object' &&
+        !Array.isArray(byType) &&
+        Object.values(byType).every((n) => Number.isSafeInteger(n) && n >= 0) &&
+        (body.firstMessageId == null || Number.isSafeInteger(body.firstMessageId)) &&
+        (body.lastMessageId == null || Number.isSafeInteger(body.lastMessageId)) &&
+        (body.lastDownloadAt == null || typeof body.lastDownloadAt === 'string');
+    if (!valid) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed group stats response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
+/** Read a paginated group file projection through tgdl-core's DB pool. */
+export async function groupFiles(
+    { groupId, limit = 50, offset = 0, type = null },
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/group-files',
+        { groupId: String(groupId), limit, offset, ...(type ? { type } : {}) },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    const valid =
+        body &&
+        Array.isArray(body.rows) &&
+        Number.isSafeInteger(body.total) &&
+        body.total >= 0 &&
+        Number.isSafeInteger(body.limit) &&
+        body.limit >= 1 &&
+        Number.isSafeInteger(body.offset) &&
+        body.offset >= 0 &&
+        typeof body.hasMore === 'boolean';
+    if (!valid) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed group files response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

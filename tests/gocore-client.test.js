@@ -282,6 +282,33 @@ describe('answers from a (fake) tgdl-core', () => {
         await expect(client.databaseStats()).resolves.toEqual({ totalFiles: 12, totalSize: 3456 });
     });
 
+    it('reads group stats and paginated files through the Go DB projection', async () => {
+        await fakeCore(
+            {
+                '/v1/db/group-stats': (req, raw, res) =>
+                    json(res, 200, {
+                        totalFiles: 2,
+                        totalBytes: 30,
+                        byType: { photo: 1, video: 1 },
+                        firstMessageId: 10,
+                        lastMessageId: 11,
+                        lastDownloadAt: '2026-01-02T00:00:00Z',
+                    }),
+                '/v1/db/group-files': (req, raw, res) =>
+                    json(res, 200, {
+                        rows: [{ id: 2, message_id: 11, file_name: 'b.mp4' }],
+                        total: 1,
+                        limit: 50,
+                        offset: 0,
+                        hasMore: false,
+                    }),
+            },
+            { features: ['db'] },
+        );
+        await expect(client.groupStats('-1')).resolves.toMatchObject({ totalFiles: 2 });
+        await expect(client.groupFiles({ groupId: '-1' })).resolves.toMatchObject({ total: 1 });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

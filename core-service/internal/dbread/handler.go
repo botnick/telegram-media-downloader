@@ -201,9 +201,13 @@ func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 }
 
 func decodeEmptyBody(w http.ResponseWriter, r *http.Request) error {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
 	var ignored map[string]any
-	if err := dec.Decode(&ignored); err != nil {
+	return decodeJSON(w, r, &ignored)
+}
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	if err := dec.Decode(dst); err != nil {
 		msg := "body must be JSON {}"
 		if errors.Is(err, io.EOF) {
 			msg = "empty body; expected JSON {}"

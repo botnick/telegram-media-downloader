@@ -6482,6 +6482,12 @@ app.get('/api/groups/:id/stats', async (req, res) => {
     try {
         const groupId = req.params.id;
         if (!groupId) return res.status(400).json({ error: 'group id required' });
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                const stats = await gocoreClient.groupStats(groupId);
+                return res.json({ success: true, ...stats });
+            } catch {}
+        }
         const stats = getGroupStats(groupId);
         res.json({ success: true, ...stats });
     } catch (e) {
@@ -6497,6 +6503,12 @@ app.get('/api/groups/:id/files', async (req, res) => {
         const limit = Math.max(1, Math.min(500, parseInt(req.query.limit, 10) || 50));
         const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
         const type = typeof req.query.type === 'string' ? req.query.type : null;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                const result = await gocoreClient.groupFiles({ groupId, limit, offset, type });
+                return res.json({ success: true, ...result });
+            } catch {}
+        }
         const r = listGroupFiles({ groupId, limit, offset, type });
         res.json({ success: true, ...r });
     } catch (e) {

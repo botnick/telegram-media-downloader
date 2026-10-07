@@ -23,6 +23,7 @@ Node's single thread:
 | Video seekbar sprite decode/scale/tile/encode | seekbar maintenance and auto-generation | `POST /v1/seekbar` (optional feature) |
 | Read-only group aggregate projection | `/api/groups` and `/api/downloads` sidebar reads | `POST /v1/db/group-aggregates` (optional feature) |
 | Read-only library totals | `/api/stats` database totals | `POST /v1/db/stats` (optional feature) |
+| Read-only group data | `/api/groups/:id/stats` and `/api/groups/:id/files` | `POST /v1/db/group-stats`, `/v1/db/group-files` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 For the required features it is the **only** implementation. Optional
