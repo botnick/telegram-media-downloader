@@ -1160,14 +1160,26 @@ export class DownloadManager extends EventEmitter {
                 // Match on hash AND size — size match guards against the
                 // (vanishingly improbable) SHA-256 collision and rejects rows
                 // with a NULL/zero size from older downloader versions.
-                const dup = getDb()
-                    .prepare(`
+                let dup;
+                if (gocoreClient.isAvailable('db')) {
+                    try {
+                        dup =
+                            (await gocoreClient.fileHashCandidates({ hash: fileHash, size }))
+                                .rows[0] || null;
+                    } catch {
+                        /* old core or a transient read error — use the local query */
+                    }
+                }
+                if (dup === undefined) {
+                    dup = getDb()
+                        .prepare(`
             SELECT id, file_path, file_size FROM downloads
              WHERE file_hash = ? AND file_size = ?
              ORDER BY id ASC
              LIMIT 1
         `)
-                    .get(fileHash, size);
+                        .get(fileHash, size);
+                }
                 if (dup && dup.file_path) {
                     // Confirm the existing pointer still resolves before we
                     // unlink the freshly downloaded copy — otherwise we'd end

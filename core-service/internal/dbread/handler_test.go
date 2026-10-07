@@ -453,6 +453,35 @@ func TestTelegramMediaCandidates(t *testing.T) {
 	}
 }
 
+func TestFileHashCandidates(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	db, err := sql.Open("sqlite", h.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`UPDATE downloads SET file_hash='hash-2' WHERE id=2`)
+	_ = db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body := call(t, http.HandlerFunc(h.FileHashCandidates), map[string]any{
+		"hash": "hash-2", "size": 20,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["file_path"] != "G/videos/b.mp4" {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	status, body = call(t, http.HandlerFunc(h.FileHashCandidates), map[string]any{
+		"hash": "hash-2", "size": 99,
+	})
+	if status != http.StatusOK || len(body["rows"].([]any)) != 0 {
+		t.Fatalf("mismatch status=%d body=%v", status, body)
+	}
+}
+
 func TestShareLinks(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.ShareLinks), map[string]any{

@@ -1467,6 +1467,28 @@ export async function telegramMediaCandidates(
     return body;
 }
 
+/** Read the first content-hash dedup candidate through tgdl-core. */
+export async function fileHashCandidates(
+    { hash, size } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/file-hash-candidates',
+        { hash: String(hash || ''), size },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validFileHashRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed file hash candidates response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 function validTelegramMediaRows(body) {
     return (
         body &&
@@ -1487,6 +1509,21 @@ function validTelegramMediaRows(body) {
                 (row.telegram_media_kind == null || typeof row.telegram_media_kind === 'string') &&
                 (row.telegram_media_id == null || typeof row.telegram_media_id === 'string') &&
                 (row.telegram_media_size == null || Number.isSafeInteger(row.telegram_media_size)),
+        )
+    );
+}
+
+function validFileHashRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.file_path == null || typeof row.file_path === 'string') &&
+                (row.file_size == null || Number.isSafeInteger(row.file_size)),
         )
     );
 }

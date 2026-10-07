@@ -269,6 +269,15 @@ describe('snapshot backups through tgdl-core', () => {
         ).resolves.toMatchObject({
             rows: [expect.objectContaining({ id, telegram_media_id: 'doc-cached' })],
         });
+        dbMod
+            .getDb()
+            .prepare('UPDATE downloads SET file_hash = ? WHERE id = ?')
+            .run('hash-cached', id);
+        await expect(
+            gocoreClient.fileHashCandidates({ hash: 'hash-cached', size: 6 }),
+        ).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id, file_path: expect.any(String) })],
+        });
         await expect(
             gocoreClient.clusterSearch({ query: 'cached', limit: 10 }),
         ).resolves.toMatchObject({
