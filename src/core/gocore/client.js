@@ -759,6 +759,38 @@ export async function groupFiles(
     return body;
 }
 
+/** Read a keyset page of download ids for a large group cleanup. */
+export async function groupDownloadIds(
+    { groupId, beforeId = Number.MAX_SAFE_INTEGER, limit = 500 },
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/group-download-ids',
+        { groupId: String(groupId), beforeId, limit },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    let previousId = beforeId > 0 ? beforeId : Infinity;
+    if (
+        !body ||
+        !Array.isArray(body.rows) ||
+        body.rows.length > (limit > 0 ? Math.min(limit, 500) : 500) ||
+        !body.rows.every((row) => {
+            if (!row || !Number.isSafeInteger(row.id) || row.id <= 0 || row.id >= previousId) return false;
+            previousId = row.id;
+            return true;
+        })
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed group download ids response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read a local all-media gallery page through tgdl-core's DB pool. */
 export async function allDownloads(
     { limit = 50, offset = 0, type = 'all', pinnedOnly = false, pinnedFirst = false } = {},
@@ -826,15 +858,18 @@ export async function downloadsByIds(
     { timeoutMs = 10_000, readyWaitMs, signal } = {},
 ) {
     const feature = 'db';
+    const requestedIds = Array.isArray(ids)
+        ? ids.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0)
+        : [];
     const { status, body } = await _call(
         feature,
         'POST',
         '/v1/db/downloads/by-ids',
-        { ids: Array.isArray(ids) ? ids : [] },
+        { ids: requestedIds },
         { timeoutMs, readyWaitMs, signal },
     );
     if (status !== 200) throw _errorFor(feature, status, body);
-    if (!validDownloadsByIdsRows(body)) {
+    if (!validDownloadsByIdsRows(body, requestedIds)) {
         _count(feature, 'error');
         throw new GoCoreError('protocol', 'malformed downloads-by-ids response', { status });
     }
@@ -1946,22 +1981,31 @@ function validDedupFileRows(body) {
     );
 }
 
-function validDownloadsByIdsRows(body) {
+function validDownloadsByIdsRows(body, ids) {
+    const requested = new Set(Array.isArray(ids) ? ids : []);
+    let previousId = 0;
     return (
         body &&
         Array.isArray(body.rows) &&
-        body.rows.every(
-            (row) =>
+        body.rows.length <= 500 &&
+        body.rows.every((row) => {
+            const valid =
                 row &&
                 Number.isSafeInteger(row.id) &&
-                row.id > 0 &&
+                row.id > previousId &&
+                requested.has(row.id) &&
+                ['group_id', 'group_name', 'file_name', 'file_size', 'file_type', 'file_path'].every(
+                    (key) => Object.hasOwn(row, key),
+                ) &&
                 (row.group_id == null || typeof row.group_id === 'string') &&
                 (row.group_name == null || typeof row.group_name === 'string') &&
                 (row.file_name == null || typeof row.file_name === 'string') &&
                 (row.file_size == null || Number.isSafeInteger(row.file_size)) &&
                 (row.file_type == null || typeof row.file_type === 'string') &&
-                (row.file_path == null || typeof row.file_path === 'string'),
-        )
+                (row.file_path == null || typeof row.file_path === 'string');
+            if (valid) previousId = row.id;
+            return valid;
+        })
     );
 }
 

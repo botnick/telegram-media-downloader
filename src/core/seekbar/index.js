@@ -34,7 +34,7 @@ import {
     getSpritePath,
 } from './generator.js';
 import { buildAllSeekbar, purgeAllSeekbar } from './scan-runner.js';
-import * as gocoreClient from '../gocore/client.js';
+import { readDownloadRowsByIds } from '../gocore/downloads.js';
 
 export {
     buildAllSeekbar,
@@ -89,7 +89,9 @@ export function pregenerateSeekbar(downloadId, opts = {}) {
         if (_inFlight.has(id)) return;
         if (_bgQueueRealtime.includes(id) || _bgQueueBackfill.includes(id)) return;
         queue.push(id);
-        _drainBg();
+        _drainBg().catch((error) => {
+            console.warn('[seekbar-pregenerate] catalog read failed:', error?.message || error);
+        });
     });
 }
 
@@ -103,11 +105,10 @@ function _allQueuesEmpty() {
     return _bgQueueRealtime.length === 0 && _bgQueueBackfill.length === 0;
 }
 
-async function _processOne(id, rowsById, lookupRow, cfg) {
-    _inFlight.add(id);
+async function _processOne(id, rowsById, cfg) {
     _bgParallelCount++;
     try {
-        const row = rowsById ? rowsById.get(Number(id)) : lookupRow.get(Number(id));
+        const row = rowsById.get(Number(id));
         if (!row || row.file_type !== 'video') return;
         try {
             const meta = await generateForDownload(row, cfg, { overwrite: 'if-changed' });
@@ -134,9 +135,6 @@ async function _drainBg() {
     if (_bgRunning) return;
     _bgRunning = true;
     try {
-        const { getDb } = await import('../db.js');
-        const db = getDb();
-        const lookupRow = db.prepare('SELECT id, file_path, file_type FROM downloads WHERE id = ?');
         while (!_allQueuesEmpty()) {
             const cfg = getSeekbarConfig();
             if (cfg.enabled !== true || cfg.autoOnDownload !== true) {
@@ -144,7 +142,7 @@ async function _drainBg() {
                 _bgQueueBackfill.length = 0;
                 break;
             }
-            const concurrency = Math.max(1, Number(cfg.concurrency) || 2);
+            const concurrency = Math.max(1, Math.min(_BG_QUEUE_CAP, Math.trunc(Number(cfg.concurrency)) || 2));
             // Collect a batch of IDs up to the concurrency limit, skipping
             // anything already in-flight from a previous iteration.
             const batch = [];
@@ -152,27 +150,18 @@ async function _drainBg() {
                 const id = _nextQueuedId();
                 if (id === undefined) break;
                 if (_inFlight.has(id)) continue;
+                _inFlight.add(id); // Reserve before the async catalog read.
                 batch.push(id);
             }
             if (!batch.length) break;
-            // Read the whole batch through Go's query-only pool when
-            // available. A failed/old core falls back to the prepared local
-            // statement for this batch; generation and all writes stay in
-            // Node. The Go sidecar handles its own worker pool, so this keeps
-            // the Node event loop free without multiplying requests.
-            let rowsById = null;
-            if (gocoreClient.isAvailable('db')) {
-                try {
-                    const result = await gocoreClient.downloadsByIds(
-                        { ids: batch },
-                        { timeoutMs: 5000 },
-                    );
-                    rowsById = new Map(result.rows.map((row) => [Number(row.id), row]));
-                } catch {
-                    /* older/restarting cores use the local statement */
-                }
+            try {
+                const rows = await readDownloadRowsByIds(batch);
+                const rowsById = new Map(rows.map((row) => [row.id, row]));
+                await Promise.all(batch.map((id) => _processOne(id, rowsById, cfg)));
+            } finally {
+                // A failed catalog request must not permanently suppress IDs.
+                for (const id of batch) _inFlight.delete(id);
             }
-            await Promise.all(batch.map((id) => _processOne(id, rowsById, lookupRow, cfg)));
             // Yield after every parallel batch so realtime downloads and DB
             // writes can interleave between rounds of pregenerate work.
             await new Promise((r) => setImmediate(r));

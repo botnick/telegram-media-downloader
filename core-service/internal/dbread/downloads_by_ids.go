@@ -36,6 +36,10 @@ func (h *Handler) DownloadsByIDs(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(w, r, &req); err != nil {
 		return
 	}
+	if len(req.IDs) > 500 {
+		hash.WriteError(w, http.StatusBadRequest, "EINVAL", "ids must contain at most 500 items")
+		return
+	}
 	ids := make([]int64, 0, len(req.IDs))
 	seen := make(map[int64]struct{}, len(req.IDs))
 	for _, id := range req.IDs {
@@ -47,9 +51,6 @@ func (h *Handler) DownloadsByIDs(w http.ResponseWriter, r *http.Request) {
 		}
 		seen[id] = struct{}{}
 		ids = append(ids, id)
-		if len(ids) == 500 {
-			break
-		}
 	}
 	out := downloadsByIDsResponse{Rows: make([]downloadsByIDsRow, 0, len(ids))}
 	if len(ids) == 0 {

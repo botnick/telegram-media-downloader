@@ -235,6 +235,25 @@ func TestDownloadsByIDs(t *testing.T) {
 	}
 }
 
+func TestGroupDownloadIDs(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.GroupDownloadIDs), map[string]any{
+		"groupId":  "-1",
+		"beforeId": 3,
+		"limit":    1,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	if rows[0].(map[string]any)["id"] != float64(2) {
+		t.Fatalf("rows=%v", rows)
+	}
+}
+
 func TestNsfwCandidates(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.NsfwCandidates), map[string]any{

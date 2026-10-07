@@ -350,6 +350,23 @@ describe('answers from a (fake) tgdl-core', () => {
         await expect(client.groupFiles({ groupId: '-1' })).resolves.toMatchObject({ total: 1 });
     });
 
+    it('reads keyset-paged group download ids through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/group-download-ids': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { rows: [{ id: 2 }] });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.groupDownloadIds({ groupId: '-1', beforeId: 3, limit: 1 })).resolves.toEqual({
+            rows: [{ id: 2 }],
+        });
+        expect(request).toEqual({ groupId: '-1', beforeId: 3, limit: 1 });
+    });
+
     it('reads the local all-media page through the Go DB projection', async () => {
         await fakeCore(
             {
@@ -406,7 +423,7 @@ describe('answers from a (fake) tgdl-core', () => {
         await expect(client.downloadsByIds({ ids: [2, 2, -1] })).resolves.toMatchObject({
             rows: [expect.objectContaining({ id: 2, file_path: 'G/videos/b.mp4' })],
         });
-        expect(request).toEqual({ ids: [2, 2, -1] });
+        expect(request).toEqual({ ids: [2, 2] });
     });
 
     it('reads a local search page through the Go DB projection', async () => {

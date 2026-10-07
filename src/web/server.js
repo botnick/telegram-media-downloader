@@ -145,6 +145,7 @@ import {
 } from '../core/seekbar/client.js';
 import { diskUsage as coreDiskUsage } from '../core/gocore/fs.js';
 import * as gocoreClient from '../core/gocore/client.js';
+import { readDownloadRowsByIds, readGroupDownloadIds } from '../core/gocore/downloads.js';
 import {
     getCoreBanner,
     getGoCoreStatus,
@@ -434,50 +435,6 @@ sharp.cache(false);
 
 const app = express();
 
-// Bulk delete/ZIP both need the same bounded catalog projection before they
-// touch the filesystem. Keep that read off better-sqlite3's synchronous
-// connection when the optional Go DB pool is available; a single failed or
-// older core call falls back to the exact local query for the whole request.
-async function readDownloadRowsByIds(ids) {
-    const normalized = [...new Set(
-        (Array.isArray(ids) ? ids : [])
-            .map(Number)
-            .filter((id) => Number.isSafeInteger(id) && id > 0),
-    )];
-    if (!normalized.length) return [];
-
-    const local = () => {
-        const db = getDb();
-        const rows = [];
-        for (let i = 0; i < normalized.length; i += 500) {
-            const chunk = normalized.slice(i, i + 500);
-            rows.push(
-                ...db
-                    .prepare(
-                        `SELECT id, group_id, group_name, file_name, file_type, file_size, file_path
-                           FROM downloads WHERE id IN (${chunk.map(() => '?').join(',')})`,
-                    )
-                    .all(...chunk),
-            );
-        }
-        return rows;
-    };
-
-    if (!gocoreClient.isAvailable('db')) return local();
-    try {
-        const rows = [];
-        for (let i = 0; i < normalized.length; i += 500) {
-            const result = await gocoreClient.downloadsByIds(
-                { ids: normalized.slice(i, i + 500) },
-                { timeoutMs: 10_000 },
-            );
-            rows.push(...result.rows);
-        }
-        return rows;
-    } catch {
-        return local();
-    }
-}
 const server = createServer(app);
 // Cloudflare's idle/origin window is ~100 s; nginx default proxy_read_timeout
 // is 60 s. Setting our own timeouts slightly above keepAliveTimeout avoids
@@ -6469,10 +6426,7 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
         }
 
         // 2. Collect download IDs before wiping rows so we can purge per-file caches.
-        const downloadIds = getDb()
-            .prepare('SELECT id FROM downloads WHERE group_id = ?')
-            .all(String(groupId))
-            .map((r) => r.id);
+        const downloadIds = await readGroupDownloadIds(groupId);
 
         const seekbarMap = collectSeekbarPaths(downloadIds);
 
@@ -6614,10 +6568,7 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
             });
         }
         // Collect IDs + seekbar paths before wiping rows so we can purge per-file caches.
-        const downloadIds = getDb()
-            .prepare('SELECT id FROM downloads WHERE group_id = ?')
-            .all(String(groupId))
-            .map((r) => r.id);
+        const downloadIds = await readGroupDownloadIds(groupId);
         const seekbarMap = collectSeekbarPaths(downloadIds);
 
         onProgress({ stage: 'deleting_rows', groupId });

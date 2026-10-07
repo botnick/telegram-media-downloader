@@ -20,6 +20,8 @@
 //	POST /v1/db/stats       read-only SQLite total file/byte counts
 //	POST /v1/db/group-stats read-only per-group counts and timestamps
 //	POST /v1/db/group-files read-only paginated per-group file rows
+//	POST /v1/db/group-download-ids
+//	                         read-only keyset-paged ids for group cleanup
 //	POST /v1/db/nsfw-candidates
 //	                         read-only bounded unscanned NSFW queue
 //	POST /v1/db/downloads/all
@@ -158,6 +160,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/stats", s.dbRead.Stats)
 		private.HandleFunc("POST /v1/db/group-stats", s.dbRead.GroupStats)
 		private.HandleFunc("POST /v1/db/group-files", s.dbRead.GroupFiles)
+		private.HandleFunc("POST /v1/db/group-download-ids", s.dbRead.GroupDownloadIDs)
 		private.HandleFunc("POST /v1/db/downloads/all", s.dbRead.AllDownloads)
 		private.HandleFunc("POST /v1/db/downloads/group", s.dbRead.DownloadsGroup)
 		private.HandleFunc("POST /v1/db/downloads/by-ids", s.dbRead.DownloadsByIDs)
