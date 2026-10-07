@@ -538,7 +538,17 @@ export async function optimizeAll(opts = {}) {
     // download manager, kv flush timer, AI pregenerate — with
     // "This database connection is busy executing a query".
     const db = getDb();
-    const total = db
+    let total;
+    if (gocoreClient.isAvailable('db')) {
+        try {
+            total = (
+                await gocoreClient.faststartStats({ timeoutMs: 5000, signal })
+            ).total;
+        } catch {
+            // Older cores and transient restarts use the local query.
+        }
+    }
+    total ??= db
         .prepare(`
         SELECT COUNT(*) AS n FROM downloads
          WHERE file_type = 'video' AND file_path IS NOT NULL

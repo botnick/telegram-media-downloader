@@ -44,7 +44,7 @@ Node's single thread:
 | AI maintenance counters | `/api/ai/status` counts | `POST /v1/db/ai-counts` (optional feature) |
 | AI indexing queue | face scan and AI auto-scan unindexed rows | `POST /v1/db/ai-candidates` (optional feature) |
 | Seekbar build queue | seekbar maintenance sweep's missing-video page | `POST /v1/db/seekbar-candidates` (optional feature) |
-| Faststart build queue | video optimization maintenance sweep's catalog page | `POST /v1/db/faststart-candidates` (optional feature) |
+| Faststart build queue | video optimization maintenance sweep's catalog page/count | `POST /v1/db/faststart-candidates`, `POST /v1/db/faststart-stats` (optional feature) |
 | Integrity sweep queue | boot/hourly file verification catalog page | `POST /v1/db/integrity-candidates` (optional feature) |
 | Dedup hash queue | maintenance hash catch-up page | `POST /v1/db/dedup-candidates` (optional feature) |
 | Dedup hash groups | maintenance duplicate grouping page | `POST /v1/db/dedup-groups`, `/v1/db/dedup-files` (optional feature) |

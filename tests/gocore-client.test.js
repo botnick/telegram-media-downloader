@@ -767,6 +767,21 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ beforeId: 99, limit: 10 });
     });
 
+    it('reads faststart maintenance totals through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/faststart-stats': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { total: 12 });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.faststartStats()).resolves.toEqual({ total: 12 });
+        expect(request).toEqual({});
+    });
+
     it('reads integrity candidates through the Go DB projection', async () => {
         let request;
         await fakeCore(

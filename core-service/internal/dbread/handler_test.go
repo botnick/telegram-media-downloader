@@ -254,6 +254,14 @@ func TestGroupDownloadIDs(t *testing.T) {
 	}
 }
 
+func TestFaststartStats(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.FaststartStats), map[string]any{})
+	if status != http.StatusOK || body["total"] != float64(1) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+}
+
 func TestNsfwCandidates(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.NsfwCandidates), map[string]any{

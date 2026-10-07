@@ -1435,6 +1435,25 @@ export async function faststartCandidates(
     return body;
 }
 
+/** Read the eligible faststart video count through tgdl-core. */
+export async function faststartStats({ timeoutMs = 10_000, readyWaitMs, signal } = {}) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/faststart-stats',
+        {},
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!body || !Number.isSafeInteger(body.total) || body.total < 0) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed faststart stats response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read a keyset page of local files for the integrity sweep. */
 export async function integrityCandidates(
     { beforeId = Number.MAX_SAFE_INTEGER, limit = 64 } = {},
