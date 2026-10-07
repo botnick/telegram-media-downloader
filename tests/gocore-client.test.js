@@ -466,6 +466,44 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ fileTypes: ['photo'], bins: 4 });
     });
 
+    it('reads the paginated NSFW review list through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/nsfw-list': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [{ id: 1, file_name: 'a.jpg', nsfw_score: 0.2 }],
+                        total: 1,
+                        page: 2,
+                        totalPages: 2,
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.nsfwList({
+                tier: 'def_not',
+                fileTypes: ['photo'],
+                groupId: '-1',
+                includeWhitelisted: true,
+                page: 2,
+                limit: 1,
+                fileKind: 'photo',
+            }),
+        ).resolves.toMatchObject({ total: 1, page: 2 });
+        expect(request).toMatchObject({
+            tier: 'def_not',
+            fileTypes: ['photo'],
+            groupId: '-1',
+            includeWhitelisted: true,
+            page: 2,
+            limit: 1,
+            fileKind: 'photo',
+        });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

@@ -8532,7 +8532,7 @@ app.get('/api/maintenance/nsfw/v2/histogram', async (req, res) => {
 app.get('/api/maintenance/nsfw/v2/list', async (req, res) => {
     try {
         const cfg = _nsfwCfg();
-        const list = getNsfwListByTier({
+        const listOpts = {
             tier: req.query.tier || null,
             fileTypes: cfg.fileTypes,
             groupId: req.query.group || null,
@@ -8540,7 +8540,14 @@ app.get('/api/maintenance/nsfw/v2/list', async (req, res) => {
             page: Number(req.query.page) || 1,
             limit: Number(req.query.limit) || 50,
             fileKind: req.query.kind || null,
-        });
+        };
+        let list;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                list = await gocoreClient.nsfwList(listOpts);
+            } catch {}
+        }
+        list ||= getNsfwListByTier(listOpts);
         res.json(list);
     } catch (e) {
         log({ source: 'nsfw', level: 'error', msg: `nsfw/v2/list failed: ${e?.message || e}` });

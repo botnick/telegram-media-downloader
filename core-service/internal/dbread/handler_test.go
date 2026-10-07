@@ -271,3 +271,24 @@ func TestNsfwHistogram(t *testing.T) {
 		t.Fatalf("counts=%v", body["counts"])
 	}
 }
+
+func TestNsfwList(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.NsfwList), map[string]any{
+		"tier": "def_not", "fileTypes": []string{"photo", "video"}, "groupId": "-1",
+		"includeWhitelisted": false, "page": 1, "limit": 1, "fileKind": "photo",
+	})
+	if status != http.StatusOK || body["total"] != float64(1) || body["page"] != float64(1) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["file_name"] != "a.jpg" {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	status, body = call(t, http.HandlerFunc(h.NsfwList), map[string]any{
+		"fileTypes": []string{"photo", "video"}, "includeWhitelisted": true, "page": 1, "limit": 20,
+	})
+	if status != http.StatusOK || body["total"] != float64(2) {
+		t.Fatalf("include whitelist status=%d body=%v", status, body)
+	}
+}

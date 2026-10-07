@@ -946,6 +946,53 @@ export async function nsfwHistogram(
     return body;
 }
 
+/** Read a paginated NSFW review list through tgdl-core's DB pool. */
+export async function nsfwList(
+    {
+        tier = null,
+        fileTypes = ['photo'],
+        groupId = null,
+        includeWhitelisted = false,
+        page = 1,
+        limit = 50,
+        fileKind = null,
+    } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/nsfw-list',
+        {
+            ...(tier ? { tier: String(tier) } : {}),
+            fileTypes: Array.isArray(fileTypes) ? fileTypes : ['photo'],
+            ...(groupId ? { groupId: String(groupId) } : {}),
+            includeWhitelisted: !!includeWhitelisted,
+            page,
+            limit,
+            ...(fileKind ? { fileKind: String(fileKind) } : {}),
+        },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (
+        !body ||
+        !Array.isArray(body.rows) ||
+        !Number.isSafeInteger(body.total) ||
+        body.total < 0 ||
+        !Number.isSafeInteger(body.page) ||
+        body.page < 1 ||
+        !Number.isSafeInteger(body.totalPages) ||
+        body.totalPages < 1
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed nsfw list response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;
