@@ -20,6 +20,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import readline from 'readline';
+import { PassThrough } from 'stream';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { requireCoreBin } from './helpers/gocore-raw.js';
@@ -108,6 +109,26 @@ afterAll(async () => {
 });
 
 describe('answers from a (fake) tgdl-core', () => {
+    it('pipes a ZIP response without buffering it in the client', async () => {
+        const wire = Buffer.from('fake-zip-wire');
+        await fakeCore(
+            {
+                '/v1/zip': (req, raw, res) => {
+                    res.writeHead(200, { 'content-type': 'application/zip' });
+                    res.end(wire);
+                },
+            },
+            { features: ['zip'] },
+        );
+        const out = new PassThrough();
+        out.setHeader = () => {};
+        out.headersSent = false;
+        const chunks = [];
+        out.on('data', (chunk) => chunks.push(chunk));
+        await client.pipeZip(out, [{ path: FILE, name: 'sample.bin' }]);
+        expect(Buffer.concat(chunks)).toEqual(wire);
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

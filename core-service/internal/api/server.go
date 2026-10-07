@@ -6,6 +6,7 @@
 //	POST /v1/fs/stat-batch   {"paths": [...]} -> fs.stat per path, Node's error codes
 //	POST /v1/fs/walk         recursive fs.readdir (+ fs.stat), NDJSON stream
 //	POST /v1/dbscan          face-embedding DBSCAN, NDJSON progress + result
+//	POST /v1/zip             STORE-mode ZIP stream from allow-root files
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -25,6 +26,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/fsx"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/hash"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/zipstream"
 )
 
 // TokenHeader carries the shared secret (same header as the other sidecars).
@@ -65,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	private.Handle("POST /v1/fs/stat-batch", &fsx.StatBatchHandler{Roots: s.roots, Stats: s.fsStats, Log: s.log})
 	private.Handle("POST /v1/fs/walk", &fsx.WalkHandler{Roots: s.roots, Stats: s.fsStats, Log: s.log})
 	private.Handle("POST /v1/dbscan", &dbscan.Handler{Log: s.log})
+	private.Handle("POST /v1/zip", &zipstream.Handler{Roots: s.roots, Log: s.log})
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		hash.WriteError(w, http.StatusNotFound, "ENOTFOUND", "no such route")

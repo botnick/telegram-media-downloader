@@ -354,6 +354,138 @@ async function _request(method, pathname, body, opts) {
     }
 }
 
+// Stream a large response without buffering it in Node. The caller owns the
+// public response; this helper only keeps the local Go request alive and
+// forwards the bytes. Non-200 answers are buffered as the small JSON error
+// envelope so callers can still decide whether to fall back.
+function _pipeOnce(out, pathname, body, { timeoutMs, signal }) {
+    return new Promise((resolve, reject) => {
+        if (!_base) {
+            reject(new GoCoreError('unavailable', _statusProvider().message));
+            return;
+        }
+        const data = Buffer.from(JSON.stringify(body));
+        let settled = false;
+        let req = null;
+        let upstream = null;
+        let closeHandler = null;
+        const timer = setTimeout(
+            () => fail(new GoCoreError('timeout', `tgdl-core did not answer within ${timeoutMs} ms`)),
+            timeoutMs,
+        );
+        timer.unref?.();
+        const cleanup = () => {
+            clearTimeout(timer);
+            signal?.removeEventListener?.('abort', onAbort);
+            if (closeHandler) out.removeListener('close', closeHandler);
+        };
+        const finish = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            fn(value);
+        };
+        const fail = (err) => {
+            finish(reject, err);
+            req?.destroy(err);
+            upstream?.destroy(err);
+        };
+        const onAbort = () => fail(new GoCoreError('aborted', 'aborted'));
+        if (signal) {
+            if (signal.aborted) {
+                onAbort();
+                return;
+            }
+            signal.addEventListener('abort', onAbort, { once: true });
+        }
+        req = http.request(
+            {
+                host: _host,
+                port: _port,
+                method: 'POST',
+                path: pathname,
+                headers: {
+                    accept: 'application/zip, application/json',
+                    'content-type': 'application/json',
+                    'content-length': String(data.length),
+                    ...authHeaders(_token),
+                },
+                agent: _agent,
+            },
+            (incoming) => {
+                upstream = incoming;
+                if (incoming.statusCode !== 200) {
+                    const chunks = [];
+                    let size = 0;
+                    incoming.setEncoding('utf8');
+                    incoming.on('data', (chunk) => {
+                        size += chunk.length;
+                        if (size <= MAX_JSON_BYTES) chunks.push(chunk);
+                        else fail(new GoCoreError('protocol', 'error response too large'));
+                    });
+                    incoming.on('error', (e) =>
+                        fail(new GoCoreError('transport', e.message, { cause: e })),
+                    );
+                    incoming.on('end', () => {
+                        if (settled) return;
+                        let bodyObj = null;
+                        try {
+                            bodyObj = chunks.length ? JSON.parse(chunks.join('')) : null;
+                        } catch {
+                            fail(
+                                new GoCoreError('protocol', `non-JSON response (${incoming.statusCode})`, {
+                                    status: incoming.statusCode,
+                                }),
+                            );
+                            return;
+                        }
+                        fail(_errorFor('zip', incoming.statusCode, bodyObj));
+                    });
+                    return;
+                }
+                for (const name of ['content-type', 'cache-control', 'transfer-encoding']) {
+                    const value = incoming.headers[name];
+                    if (value !== undefined && !out.headersSent) out.setHeader(name, value);
+                }
+                closeHandler = () => {
+                    if (!out.writableFinished) fail(new GoCoreError('transport', 'response closed'));
+                };
+                out.once('close', closeHandler);
+                incoming.on('error', (e) => fail(new GoCoreError('transport', e.message, { cause: e })));
+                out.once('finish', () => finish(resolve));
+                incoming.pipe(out);
+            },
+        );
+        req.on('error', (e) => {
+            if (e instanceof GoCoreError) return fail(e);
+            const err = new GoCoreError('transport', e?.message || String(e), {
+                code: e?.code || null,
+                cause: e,
+            });
+            err.staleSocket = req.reusedSocket && (e?.code === 'ECONNRESET' || e?.code === 'EPIPE');
+            fail(err);
+        });
+        req.end(data);
+    });
+}
+
+/** Stream a STORE-mode ZIP from tgdl-core into an Express response. */
+export async function pipeZip(out, entries, { timeoutMs = 30 * 60_000, signal, readyWaitMs } = {}) {
+    const feature = 'zip';
+    await ensureReady(feature, { waitMs: readyWaitMs, signal });
+    try {
+        await _pipeOnce(out, '/v1/zip', { entries }, { timeoutMs, signal });
+        _count(feature, 'ok');
+    } catch (e) {
+        // _errorFor already counted an HTTP error; transport/deadline errors
+        // are counted here, matching _call's accounting for the JSON APIs.
+        if (!['outside', 'file', 'server', 'busy', 'auth'].includes(e?.kind)) {
+            _count(feature, e?.kind === 'timeout' ? 'timeout' : 'error');
+        }
+        throw e;
+    }
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

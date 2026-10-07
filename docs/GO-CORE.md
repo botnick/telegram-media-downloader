@@ -17,6 +17,7 @@ Node's single thread:
 | `fs.stat` of many files | Verify files, the boot and hourly integrity sweep | `POST /v1/fs/stat-batch` |
 | recursive `fs.readdir` + `fs.stat` | Re-index from disk, the disk-usage figure while the library is empty | `POST /v1/fs/walk` |
 | DBSCAN over face embeddings | face scan, Re-cluster | `POST /v1/dbscan` |
+| STORE-mode bulk ZIP streaming | bulk downloads | `POST /v1/zip` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 It is the **only** implementation of these. The Node code it replaced (the

@@ -11,6 +11,7 @@ it for:
 | `stat` | `POST /v1/fs/stat-batch` | the integrity sweep (Verify files, boot + hourly) |
 | `walk` | `POST /v1/fs/walk` | Re-index from disk, the disk-usage fallback of `/api/stats` |
 | `dbscan` | `POST /v1/dbscan` | face clustering (scan runner Phase B) |
+| `zip` | `POST /v1/zip` | STORE-mode bulk ZIP streaming (optional; old binaries fall back to Node) |
 
 A second process of the same binary, `tgdl-core front`, serves the app's
 `PORT` ([Front server](#front-server-front)).
@@ -83,11 +84,12 @@ Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 
 | Route | Auth | |
 |---|---|---|
-| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
+| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan","zip"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
 | `POST /v1/hash` | token | Body `{"path":"/abs/file"}` → `{"sha256","size","mtimeMs"}` |
 | `POST /v1/fs/stat-batch` | token | Body `{"paths":["/abs/a", …]}` (≤ 1000) → `{"results":[…]}`, see below |
 | `POST /v1/fs/walk` | token | Body `{"root","maxDepth","stat","entries"}` → NDJSON stream, see below |
 | `POST /v1/dbscan` | token | Query `n, dim, eps, minPts, weights=0|1`, binary body → NDJSON stream, see below |
+| `POST /v1/zip` | token | JSON `{entries:[{path,name}]}` → streamed STORE-mode ZIP; paths are rechecked against allow-roots |
 | `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
 ### `/v1/hash`

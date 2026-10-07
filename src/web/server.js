@@ -144,6 +144,7 @@ import {
     probeHwaccel as probeSeekbarHwaccel,
 } from '../core/seekbar/client.js';
 import { diskUsage as coreDiskUsage } from '../core/gocore/fs.js';
+import * as gocoreClient from '../core/gocore/client.js';
 import {
     getCoreBanner,
     getGoCoreStatus,
@@ -5977,6 +5978,35 @@ app.post('/api/downloads/bulk-zip', async (req, res) => {
         // try to cache a multi-GB blob keyed on the POST body.
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('Transfer-Encoding', 'chunked');
+
+        // tgdl-core owns the file stream and CRC work when the running binary
+        // advertises ZIP support. This keeps multi-gigabyte archives off the
+        // Node event loop and preserves the existing JS writer as a fallback
+        // for an older installed core during an in-place upgrade.
+        if (gocoreClient.isAvailable('zip')) {
+            try {
+                await gocoreClient.pipeZip(
+                    res,
+                    entries.map((e) => ({ path: e.absPath, name: e.archiveName })),
+                    {
+                        timeoutMs: 30_000 + Math.ceil(totalBytes / (8 * 1024 * 1024)) * 1000,
+                    },
+                );
+                return;
+            } catch (err) {
+                if (res.headersSent) {
+                    res.destroy(err);
+                    return;
+                }
+                // A core that disappears during an upgrade can still be
+                // served by the already-tested JS stream. Validation errors
+                // stay errors and are never silently broadened.
+                if (!['unavailable', 'transport', 'timeout'].includes(err?.kind)) {
+                    res.status(err?.status || 500).json({ error: err?.message || 'ZIP failed' });
+                    return;
+                }
+            }
+        }
 
         const zip = new ZipStream();
         zip.pipe(res);
