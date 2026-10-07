@@ -1213,13 +1213,29 @@ export async function buildAllThumbnails(opts = {}) {
     let beforeId = Number.MAX_SAFE_INTEGER;
     while (true) {
         if (signal?.aborted) break;
-        const page = pageStmt.all(...typeArgs, beforeId, PAGE_SIZE);
+        let page = null;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                page = (
+                    await gocoreClient.thumbsList({
+                        limit: PAGE_SIZE,
+                        cursor: beforeId < Number.MAX_SAFE_INTEGER ? beforeId : null,
+                        kind,
+                        cachedOnly: false,
+                        cacheRoot: THUMBS_DIR,
+                    })
+                ).rows;
+            } catch {
+                // Older cores and transient restarts use the local query.
+            }
+        }
+        page ||= pageStmt.all(...typeArgs, beforeId, PAGE_SIZE);
         if (!page.length) break;
         for (const r of page) {
             if (signal?.aborted) break;
             processed++;
             const cacheAbs = _cachePath(r.id, DEFAULT_WIDTH);
-            if (existsSync(cacheAbs)) {
+            if (r.cached === true || (r.cached == null && existsSync(cacheAbs))) {
                 skipped++;
                 if (processed % 25 === 0 || processed === total) tick();
                 continue;
