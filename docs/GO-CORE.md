@@ -20,6 +20,7 @@ Node's single thread:
 | STORE-mode bulk ZIP streaming | bulk downloads | `POST /v1/zip` (optional feature) |
 | MP4 faststart remux | automatic video optimization and maintenance sweep | `POST /v1/faststart` (optional feature) |
 | Media thumbnail decode/scale/WebP encode | gallery and thumbnail maintenance jobs | `POST /v1/thumb/{video,image,audio}` (optional feature) |
+| Video seekbar sprite decode/scale/tile/encode | seekbar maintenance and auto-generation | `POST /v1/seekbar` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 For the required features it is the **only** implementation. Optional
@@ -47,7 +48,7 @@ walks, the DBSCAN worker) is removed; Node keeps thin client calls.
    reports an offline network share as "does not exist" where Node says
    `UNKNOWN`).
 4. **Only the app's media folders.** The app passes its download folders and
-   thumbnail cache as `TGDL_CORE_ALLOW_ROOTS`; a path outside them (as written
+   thumbnail and seekbar caches as `TGDL_CORE_ALLOW_ROOTS`; a path outside them (as written
    or after resolving links) gets `EOUTSIDE` and Node answers that one path
    with plain `fs` — so the result is still exactly what `fs` says. The Go
    thumbnail route may write only its requested temporary output beneath the
@@ -122,7 +123,7 @@ the log if set).
 - `GET /api/monitor/status` → `core`: `{state, fix}` while someone needs to
   act (drives the banner; no local paths).
 - `/metrics`: `tgdl_gocore_calls_total{feature,result}` — `feature` is
-  `hash` / `stat` / `walk` / `dbscan` / `zip` / `faststart` / `thumb`, `result` is `ok`, `file_error`,
+  `hash` / `stat` / `walk` / `dbscan` / `zip` / `faststart` / `thumb` / `seekbar`, `result` is `ok`, `file_error`,
   `outside`, `timeout` or `error`.
 
 ## Parity

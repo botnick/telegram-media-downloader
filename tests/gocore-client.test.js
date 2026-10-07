@@ -220,6 +220,27 @@ describe('answers from a (fake) tgdl-core', () => {
         ).resolves.toEqual({ status: 'ok', size: 234 });
     });
 
+    it('writes a seekbar sprite through the Go core client', async () => {
+        await fakeCore(
+            {
+                '/v1/seekbar': (req, raw, res) =>
+                    json(res, 200, { status: 'ok', size: 789 }),
+            },
+            { features: ['seekbar'] },
+        );
+        await expect(
+            client.generateSeekbarSprite(FILE, path.join(DOWNLOADS, 'sprite.webp.tmp'), {
+                frames: 12,
+                intervalSec: 1.5,
+                cols: 4,
+                rows: 3,
+                tileWidth: 160,
+                format: 'webp',
+                quality: 75,
+            }),
+        ).resolves.toEqual({ status: 'ok', size: 789 });
+    });
+
     it('a file error (422) becomes the error fs would throw', async () => {
         const missing = path.join(DOWNLOADS, 'nope.bin');
         await fakeCore({

@@ -538,6 +538,7 @@ const PASSTHROUGH_ENV = [
     'FASTSTART_CONCURRENCY',
     'THUMBS_IMG_CONCURRENCY',
     'THUMBS_VID_CONCURRENCY',
+    'SEEKBAR_CONCURRENCY',
     'FFMPEG_PATH',
     'TGDL_CORE_LOG_LEVEL',
 ];
@@ -557,8 +558,8 @@ function _safeConfig() {
  *     what integrity / re-index / the disk-usage scan walk;
  *   - <data dir>/downloads: nsfw.js resolves relative rows there, even
  *     when TGDL_DOWNLOADS_DIR points elsewhere;
- *   - <data dir>/thumbs: the optional Go video-thumbnail encoder's temp
- *     output;
+ *   - <data dir>/thumbs and <data dir>/seekbar: optional Go media encoder
+ *     temporary output;
  *   - config.download.path when it is custom (resolved like the
  *     downloader does, relative to the working directory);
  *   - extra roots from this process's own TGDL_CORE_ALLOW_ROOTS.
@@ -579,6 +580,7 @@ export function allowRoots(config = _safeConfig()) {
     add(getDownloadsDir());
     add(path.join(getDataDir(), 'downloads'));
     add(path.join(getDataDir(), 'thumbs'));
+    add(path.join(getDataDir(), 'seekbar'));
     const custom = config?.download?.path;
     if (typeof custom === 'string' && custom.trim()) add(resolveConfigDownloadPath(custom));
     for (const p of String(process.env.TGDL_CORE_ALLOW_ROOTS || '').split(path.delimiter)) add(p);

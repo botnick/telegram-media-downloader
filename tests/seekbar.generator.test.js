@@ -15,6 +15,8 @@ const mock = vi.hoisted(() => ({
     poll: null,
     submits: [],
     cancels: [],
+    goAvailable: false,
+    goCalls: [],
 }));
 
 vi.mock('child_process', async (importOriginal) => {
@@ -41,6 +43,7 @@ vi.mock('../src/core/thumbs.js', async () => {
         hasFfmpeg: () => true,
         ffmpegHasLibwebp: () => true,
         hwaccelUploadPipeline: () => ({ inputArgs: [], scaleVf: null }),
+        resolveFfmpegBin: () => 'ffmpeg',
         resolveFfprobeBin: () => 'ffprobe',
         runFfmpegArgs: async (args, opts) => {
             mock.localRuns.push({ args, opts });
@@ -48,6 +51,15 @@ vi.mock('../src/core/thumbs.js', async () => {
         },
     };
 });
+
+vi.mock('../src/core/gocore/client.js', () => ({
+    isAvailable: () => mock.goAvailable,
+    generateSeekbarSprite: async (src, output, opts) => {
+        mock.goCalls.push({ src, output, opts });
+        fs.writeFileSync(output, Buffer.alloc(72, 7));
+        return { status: 'ok', size: 72 };
+    },
+}));
 
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-seekbar-'));
 const CFG = {
@@ -146,6 +158,8 @@ beforeEach(() => {
     mock.localRuns.length = 0;
     mock.submits.length = 0;
     mock.cancels.length = 0;
+    mock.goCalls.length = 0;
+    mock.goAvailable = false;
     mock.duration = 600;
     client.setSidecarUrl(sidecarUrl);
 });
@@ -162,6 +176,21 @@ afterAll(async () => {
 });
 
 describe('seekbar generator with the sidecar', () => {
+    it('uses the Go core for local sprites and publishes atomically', async () => {
+        client.setSidecarUrl('');
+        mock.goAvailable = true;
+        const row = addVideo();
+        const meta = await generator.generateForDownload(row, CFG);
+        expect(mock.goCalls).toHaveLength(1);
+        expect(mock.goCalls[0].output).toMatch(/\.go-tmp-[a-f0-9]+$/);
+        expect(mock.localRuns).toHaveLength(0);
+        expect(meta.bytes).toBe(72);
+        expect(fs.readFileSync(generator.getSpritePath(row.id))).toHaveLength(72);
+        expect(fs.readdirSync(path.dirname(generator.getSpritePath(row.id)))).not.toContain(
+            expect.stringMatching(/\.go-tmp-/),
+        );
+    });
+
     it('submits async, polls until done, never runs local ffmpeg', async () => {
         let polls = 0;
         mock.poll = (job) => {

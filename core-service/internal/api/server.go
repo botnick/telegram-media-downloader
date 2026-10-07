@@ -10,6 +10,7 @@
 //	POST /v1/faststart       move an MP4 moov atom with bounded ffmpeg workers
 //	POST /v1/thumb/{video,image,audio}
 //	                          decode, scale and encode a WebP thumbnail
+//	POST /v1/seekbar         decode, sample, tile and encode a video sprite
 //	GET  /v1/stats           counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -29,6 +30,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/faststart"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/fsx"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/hash"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/seekbar"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/thumbs"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/zipstream"
@@ -77,6 +79,7 @@ func (s *Server) Handler() http.Handler {
 	private.Handle("POST /v1/thumb/video", &thumbs.Handler{Roots: s.roots, Log: s.log})
 	private.Handle("POST /v1/thumb/image", &thumbs.Handler{Roots: s.roots, Log: s.log, Kind: "image"})
 	private.Handle("POST /v1/thumb/audio", &thumbs.Handler{Roots: s.roots, Log: s.log, Kind: "audio"})
+	private.Handle("POST /v1/seekbar", &seekbar.Handler{Roots: s.roots, Log: s.log})
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		hash.WriteError(w, http.StatusNotFound, "ENOTFOUND", "no such route")

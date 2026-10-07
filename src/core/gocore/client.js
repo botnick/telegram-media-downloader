@@ -17,7 +17,7 @@
  *                with plain fs itself — see hash.js / fs.js.
  *   timeout / transport / auth / server / protocol / busy / aborted
  *
- * Optional media helpers (`thumb` and `faststart`) keep a Node fallback for
+ * Optional media helpers (`thumb`, `seekbar` and `faststart`) keep a Node fallback for
  * older binaries; the required filesystem and clustering calls do not.
  *
  * Every call has a deadline; on expiry (or an AbortSignal) the socket is
@@ -567,6 +567,41 @@ export function generateImageThumb(absPath, outputPath, width, opts) {
 
 export function generateAudioThumb(absPath, outputPath, width, opts) {
     return _generateThumb('audio', absPath, outputPath, width, opts);
+}
+
+/** Generate a tiled seekbar sprite through the Go core. */
+export async function generateSeekbarSprite(
+    absPath,
+    outputPath,
+    { frames, intervalSec, cols, rows, tileWidth, format = 'webp', quality = 75, timeoutMs = 60 * 60_000, signal, readyWaitMs, ffmpegPath, hwaccel } = {},
+) {
+    const feature = 'seekbar';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/seekbar',
+        {
+            path: absPath,
+            output: outputPath,
+            frames,
+            intervalSec,
+            cols,
+            rows,
+            tileWidth,
+            format,
+            quality,
+            ...(ffmpegPath ? { ffmpeg: ffmpegPath } : {}),
+            ...(hwaccel ? { hwaccel } : {}),
+        },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (body?.status !== 'ok' || !Number.isSafeInteger(body.size) || body.size <= 0) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed seekbar response', { status });
+    }
+    _count(feature, 'ok');
+    return { status: 'ok', size: body.size };
 }
 
 /** Map a non-200 JSON answer to a GoCoreError. */

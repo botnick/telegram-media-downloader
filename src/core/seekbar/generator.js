@@ -29,6 +29,7 @@ import {
     ffmpegHasLibwebp,
     hasFfmpeg,
     hwaccelUploadPipeline,
+    resolveFfmpegBin,
     resolveFfprobeBin,
     runFfmpegArgs,
 } from '../thumbs.js';
@@ -47,6 +48,7 @@ import {
 } from './client.js';
 import { resetNsfwVideoResult } from '../db.js';
 import { getDataDir, getDownloadsDir } from '../paths.js';
+import * as gocoreClient from '../gocore/client.js';
 
 const DATA_DIR = getDataDir();
 const SEEKBAR_DIR = path.join(DATA_DIR, 'seekbar');
@@ -655,18 +657,51 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
     }
 
     const timeoutMs = spriteBudgetMs(duration);
-    let lastErr = null;
-    for (let attempt = 0; attempt < Math.max(1, Number(conf.maxRetries) || 1) + 1; attempt++) {
+    let renderedByGo = false;
+    if (gocoreClient.isAvailable('seekbar')) {
+        const goTmp = `${dstAbs}.go-tmp-${crypto.randomBytes(4).toString('hex')}`;
         try {
-            await _runSpriteFfmpeg({ srcAbs, dstAbs, plan, cfg: conf, timeoutMs });
-            lastErr = null;
-            break;
+            await gocoreClient.generateSeekbarSprite(srcAbs, goTmp, {
+                frames: plan.frames,
+                intervalSec: plan.intervalSec,
+                cols: plan.cols,
+                rows: plan.rows,
+                tileWidth: plan.tileW,
+                format,
+                quality: Math.max(1, Math.min(100, Number(conf.quality) || 70)),
+                timeoutMs,
+                ffmpegPath: resolveFfmpegBin(),
+                hwaccel: conf.hwaccel ?? null,
+                signal: opts.signal,
+            });
+            await fs.rename(goTmp, dstAbs);
+            renderedByGo = true;
         } catch (e) {
-            lastErr = e;
-            // Neither a bad file nor a clip too long for the budget gets
-            // better by running it again right away.
-            if (isPermanentSeekbarError(e?.message) || e?.timedOut) break;
-            await new Promise((r) => setTimeout(r, 50 + attempt * 100));
+            if (opts.signal?.aborted) return null;
+            console.warn(
+                '[seekbar-generator] Go sprite failed, falling back to local ffmpeg:',
+                String(e?.message || e).slice(0, 160),
+            );
+        } finally {
+            try {
+                await fs.unlink(goTmp);
+            } catch {}
+        }
+    }
+    let lastErr = null;
+    if (!renderedByGo) {
+        for (let attempt = 0; attempt < Math.max(1, Number(conf.maxRetries) || 1) + 1; attempt++) {
+            try {
+                await _runSpriteFfmpeg({ srcAbs, dstAbs, plan, cfg: conf, timeoutMs });
+                lastErr = null;
+                break;
+            } catch (e) {
+                lastErr = e;
+                // Neither a bad file nor a clip too long for the budget gets
+                // better by running it again right away.
+                if (isPermanentSeekbarError(e?.message) || e?.timedOut) break;
+                await new Promise((r) => setTimeout(r, 50 + attempt * 100));
+            }
         }
     }
     if (lastErr) throw lastErr;

@@ -245,7 +245,8 @@ browser ──► Go front server ──┬─► Go handlers (domains already m
   Node).
 - NSFW only through `nsfw-service` (the in-process
   `@huggingface/transformers` path goes); faces stay on `faces-service`;
-  seekbar stays on `seekbar-service` (already Go).
+  the local Go core owns seekbar sprite decode/scale/tile/encode, while
+  `seekbar-service` remains a supported remote worker when configured.
 - The CLI (`src/index.js`: menu, monitor, history, auth, doctor, …) in Go,
   same subcommands and flags.
 - One binary with the SPA embedded (`embed.FS` of `src/web/public`; the
