@@ -717,7 +717,21 @@ export class DownloadManager extends EventEmitter {
 
     async _findReusableTelegramMedia(identity) {
         if (!identity) return null;
-        const rows = findDownloadCandidatesByTelegramMedia(identity);
+        let rows;
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                rows = (
+                    await gocoreClient.telegramMediaCandidates({
+                        kind: identity.kind,
+                        id: identity.id,
+                        size: identity.size,
+                    })
+                ).rows;
+            } catch {
+                /* old core or a transient read error — use the local query */
+            }
+        }
+        rows ||= findDownloadCandidatesByTelegramMedia(identity);
         const candidates = [];
         for (const row of rows) {
             for (const filePath of this._reusableTelegramCandidates(row)) {
@@ -1138,88 +1152,88 @@ export class DownloadManager extends EventEmitter {
         let storedName = path.basename(storedPath);
         if (options.reused) {
             fileHash = options.existingRow?.file_hash || null;
-        } else try {
-            // tgdl-core hashes it, so the main event loop stays free
-            // during multi-GB post-write hashing.
-            fileHash = await sha256OfFile(filePath);
-            // Match on hash AND size — size match guards against the
-            // (vanishingly improbable) SHA-256 collision and rejects rows
-            // with a NULL/zero size from older downloader versions.
-            const dup = getDb()
-                .prepare(`
+        } else
+            try {
+                // tgdl-core hashes it, so the main event loop stays free
+                // during multi-GB post-write hashing.
+                fileHash = await sha256OfFile(filePath);
+                // Match on hash AND size — size match guards against the
+                // (vanishingly improbable) SHA-256 collision and rejects rows
+                // with a NULL/zero size from older downloader versions.
+                const dup = getDb()
+                    .prepare(`
             SELECT id, file_path, file_size FROM downloads
              WHERE file_hash = ? AND file_size = ?
              ORDER BY id ASC
              LIMIT 1
         `)
-                .get(fileHash, size);
-            if (dup && dup.file_path) {
-                // Confirm the existing pointer still resolves before we
-                // unlink the freshly downloaded copy — otherwise we'd end
-                // up with TWO DB rows pointing at a missing file.
-                const dupAbs = path.isAbsolute(dup.file_path)
-                    ? dup.file_path
-                    : path.resolve(DOWNLOADS_DIR, dup.file_path);
-                if (existsSync(dupAbs)) {
-                    try {
-                        await fs.unlink(filePath);
-                    } catch {
-                        /* leave stale; integrity sweep handles it */
-                    }
-                    storedPath = dupAbs; // share the existing on-disk file
-                    bytesAddedToDisk = 0; // no new bytes written
-                    storedSize = dup.file_size; // exactly equal to `size` here
-                    dedupReason = 'content_hash';
-                }
-            } else {
-                // No local match — try the cluster catalog. If a paired peer
-                // already holds this hash, drop the local bytes and store a
-                // synthetic `_clusterref/<peerId>/<remoteId>` path. The
-                // /files bridge resolves it transparently to a remote stream.
-                try {
-                    const { findHashAcrossCluster, clusterRefPath, recordDedupHit } = await import(
-                        './cluster/dedup.js'
-                    ).catch(() => ({}));
-                    if (typeof findHashAcrossCluster === 'function') {
-                        const hits = findHashAcrossCluster(fileHash, size);
-                        const winner = hits.find((h) => h.peerStatus !== 'offline') || hits[0];
-                        if (winner) {
-                            try {
-                                await fs.unlink(filePath);
-                            } catch {
-                                /* leave stale; integrity sweep handles it */
-                            }
-                            // Encode the synthetic path. `path.relative` later
-                            // would break it, so override storedPath to a marker
-                            // and let the insert receive the synthetic value.
-                            storedPath = path.join(
-                                DOWNLOADS_DIR,
-                                clusterRefPath(winner.peerId, winner.remoteId),
-                            );
-                            bytesAddedToDisk = 0;
-                            storedSize = winner.fileSize || size;
-                            dedupReason = 'cluster_hash';
-                            recordDedupHit({
-                                peerId: winner.peerId,
-                                fileHash,
-                                fileSize: storedSize,
-                                remoteId: winner.remoteId,
-                            });
+                    .get(fileHash, size);
+                if (dup && dup.file_path) {
+                    // Confirm the existing pointer still resolves before we
+                    // unlink the freshly downloaded copy — otherwise we'd end
+                    // up with TWO DB rows pointing at a missing file.
+                    const dupAbs = path.isAbsolute(dup.file_path)
+                        ? dup.file_path
+                        : path.resolve(DOWNLOADS_DIR, dup.file_path);
+                    if (existsSync(dupAbs)) {
+                        try {
+                            await fs.unlink(filePath);
+                        } catch {
+                            /* leave stale; integrity sweep handles it */
                         }
+                        storedPath = dupAbs; // share the existing on-disk file
+                        bytesAddedToDisk = 0; // no new bytes written
+                        storedSize = dup.file_size; // exactly equal to `size` here
+                        dedupReason = 'content_hash';
                     }
-                } catch {
-                    /* cluster module not loaded — single-peer mode, no-op */
+                } else {
+                    // No local match — try the cluster catalog. If a paired peer
+                    // already holds this hash, drop the local bytes and store a
+                    // synthetic `_clusterref/<peerId>/<remoteId>` path. The
+                    // /files bridge resolves it transparently to a remote stream.
+                    try {
+                        const { findHashAcrossCluster, clusterRefPath, recordDedupHit } =
+                            await import('./cluster/dedup.js').catch(() => ({}));
+                        if (typeof findHashAcrossCluster === 'function') {
+                            const hits = findHashAcrossCluster(fileHash, size);
+                            const winner = hits.find((h) => h.peerStatus !== 'offline') || hits[0];
+                            if (winner) {
+                                try {
+                                    await fs.unlink(filePath);
+                                } catch {
+                                    /* leave stale; integrity sweep handles it */
+                                }
+                                // Encode the synthetic path. `path.relative` later
+                                // would break it, so override storedPath to a marker
+                                // and let the insert receive the synthetic value.
+                                storedPath = path.join(
+                                    DOWNLOADS_DIR,
+                                    clusterRefPath(winner.peerId, winner.remoteId),
+                                );
+                                bytesAddedToDisk = 0;
+                                storedSize = winner.fileSize || size;
+                                dedupReason = 'cluster_hash';
+                                recordDedupHit({
+                                    peerId: winner.peerId,
+                                    fileHash,
+                                    fileSize: storedSize,
+                                    remoteId: winner.remoteId,
+                                });
+                            }
+                        }
+                    } catch {
+                        /* cluster module not loaded — single-peer mode, no-op */
+                    }
+                }
+            } catch (e) {
+                // Hash failed (very rare — file disappeared between rename and
+                // open — or tgdl-core isn't running, which the [go-core] log and
+                // the dashboard banner already report). Fall through and store
+                // the row with the new file path.
+                if (e?.kind !== 'unavailable') {
+                    console.warn('[downloader] dedup hash failed:', e?.message || e);
                 }
             }
-        } catch (e) {
-            // Hash failed (very rare — file disappeared between rename and
-            // open — or tgdl-core isn't running, which the [go-core] log and
-            // the dashboard banner already report). Fall through and store
-            // the row with the new file path.
-            if (e?.kind !== 'unavailable') {
-                console.warn('[downloader] dedup hash failed:', e?.message || e);
-            }
-        }
 
         // Fallback dedup: same filename + size in the same group catches
         // re-posts/forwards whose earlier row has file_hash = NULL (downloaded

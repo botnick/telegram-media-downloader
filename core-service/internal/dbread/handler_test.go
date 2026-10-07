@@ -28,6 +28,7 @@ func makeDB(t *testing.T) string {
 		group_id TEXT, group_name TEXT, file_size INTEGER,
 		message_id INTEGER, file_type TEXT, file_name TEXT, file_path TEXT,
 		status TEXT, file_hash TEXT,
+		telegram_media_kind TEXT, telegram_media_id TEXT, telegram_media_size INTEGER,
 		created_at TEXT, nsfw_score REAL, nsfw_checked_at INTEGER,
 		nsfw_whitelist INTEGER DEFAULT 0, pending_until INTEGER,
 		rescued_at INTEGER, pinned INTEGER DEFAULT 0
@@ -418,6 +419,37 @@ func TestClusterCatalogReads(t *testing.T) {
 	rows, _ = body["rows"].([]any)
 	if len(rows) != 1 || rows[0].(map[string]any)["file_name"] != "b.mp4" {
 		t.Fatalf("search rows=%v", body["rows"])
+	}
+}
+
+func TestTelegramMediaCandidates(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	db, err := sql.Open("sqlite", h.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`UPDATE downloads
+		SET telegram_media_kind='document', telegram_media_id='doc-2', telegram_media_size=20
+		WHERE id=2`)
+	_ = db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body := call(t, http.HandlerFunc(h.TelegramMediaCandidates), map[string]any{
+		"kind": "document", "id": "doc-2", "size": 20,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["file_name"] != "b.mp4" {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	status, body = call(t, http.HandlerFunc(h.TelegramMediaCandidates), map[string]any{
+		"kind": "document", "id": "doc-2", "size": 99,
+	})
+	if status != http.StatusOK || len(body["rows"].([]any)) != 0 {
+		t.Fatalf("mismatch status=%d body=%v", status, body)
 	}
 }
 

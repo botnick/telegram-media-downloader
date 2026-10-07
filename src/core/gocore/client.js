@@ -1443,6 +1443,54 @@ export async function clusterDownloads(
     return body;
 }
 
+/** Read bounded Telegram media identity candidates through tgdl-core. */
+export async function telegramMediaCandidates(
+    { kind, id, size = null } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/telegram-media-candidates',
+        { kind: String(kind || ''), id: String(id || ''), size },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validTelegramMediaRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed Telegram media candidates response', {
+            status,
+        });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
+function validTelegramMediaRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.group_id == null || typeof row.group_id === 'string') &&
+                (row.group_name == null || typeof row.group_name === 'string') &&
+                (row.message_id == null || Number.isSafeInteger(row.message_id)) &&
+                (row.file_name == null || typeof row.file_name === 'string') &&
+                (row.file_size == null || Number.isSafeInteger(row.file_size)) &&
+                (row.file_type == null || typeof row.file_type === 'string') &&
+                (row.file_path == null || typeof row.file_path === 'string') &&
+                (row.file_hash == null || typeof row.file_hash === 'string') &&
+                (row.telegram_media_kind == null || typeof row.telegram_media_kind === 'string') &&
+                (row.telegram_media_id == null || typeof row.telegram_media_id === 'string') &&
+                (row.telegram_media_size == null || Number.isSafeInteger(row.telegram_media_size)),
+        )
+    );
+}
+
 /** Map a non-200 JSON answer to a GoCoreError. */
 function _errorFor(feature, status, body) {
     const code = body?.error?.code || null;

@@ -258,6 +258,17 @@ describe('snapshot backups through tgdl-core', () => {
                 expect.objectContaining({ id, file_name: 'cached.jpg' }),
             ]),
         });
+        dbMod
+            .getDb()
+            .prepare(
+                'UPDATE downloads SET telegram_media_kind = ?, telegram_media_id = ?, telegram_media_size = ? WHERE id = ?',
+            )
+            .run('document', 'doc-cached', 6, id);
+        await expect(
+            gocoreClient.telegramMediaCandidates({ kind: 'document', id: 'doc-cached', size: 6 }),
+        ).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id, telegram_media_id: 'doc-cached' })],
+        });
         await expect(
             gocoreClient.clusterSearch({ query: 'cached', limit: 10 }),
         ).resolves.toMatchObject({

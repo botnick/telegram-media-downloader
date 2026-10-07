@@ -43,6 +43,7 @@ Node's single thread:
 | Cluster catalog delta | `/api/cluster/downloads/since` local rows | `POST /v1/db/cluster-downloads-since` (optional feature) |
 | Cluster catalog page | `/api/cluster/downloads` local rows | `POST /v1/db/cluster-downloads` (optional feature) |
 | Cluster catalog search | `/api/cluster/search` and `/api/cluster/search/peer` local rows | `POST /v1/db/cluster-search` (optional feature) |
+| Telegram media identity lookup | downloader pre-download dedup candidate rows | `POST /v1/db/telegram-media-candidates` (optional feature) |
 | the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 For the required features it is the **only** implementation. Optional

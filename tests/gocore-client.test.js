@@ -821,6 +821,42 @@ describe('answers from a (fake) tgdl-core', () => {
         ]);
     });
 
+    it('reads Telegram media dedup candidates through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/telegram-media-candidates': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        rows: [
+                            {
+                                id: 2,
+                                group_id: '-1',
+                                group_name: 'Cool Channel',
+                                message_id: 11,
+                                file_name: 'b.mp4',
+                                file_size: 20,
+                                file_type: 'video',
+                                file_path: 'G/videos/b.mp4',
+                                file_hash: null,
+                                telegram_media_kind: 'document',
+                                telegram_media_id: 'doc-2',
+                                telegram_media_size: 20,
+                            },
+                        ],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.telegramMediaCandidates({ kind: 'document', id: 'doc-2', size: 20 }),
+        ).resolves.toMatchObject({
+            rows: [expect.objectContaining({ id: 2, telegram_media_id: 'doc-2' })],
+        });
+        expect(request).toEqual({ kind: 'document', id: 'doc-2', size: 20 });
+    });
+
     it('hashes a bounded batch and preserves per-file errors', async () => {
         let request;
         await fakeCore(
