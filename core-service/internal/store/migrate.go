@@ -14,7 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed schema.sql
+//go:embed schema.sql engine_schema.sql
 var schemaFS embed.FS
 
 const schemaVersion = 1
@@ -114,6 +114,13 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_message_generations (
       group_id TEXT NOT NULL,message_id INTEGER NOT NULL,generation INTEGER NOT NULL,PRIMARY KEY(group_id,message_id))`); err != nil {
 		return 0, err
+	}
+	engineSchema, err := schemaFS.ReadFile("engine_schema.sql")
+	if err != nil {
+		return 0, err
+	}
+	if _, err = db.ExecContext(ctx, string(engineSchema)); err != nil {
+		return 0, fmt.Errorf("create engine schema: %w", err)
 	}
 	var version int
 	if err := db.QueryRowContext(ctx, `SELECT version FROM tgdl_schema_meta LIMIT 1`).Scan(&version); err != nil {

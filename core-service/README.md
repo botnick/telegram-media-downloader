@@ -2,7 +2,7 @@
 
 `cmd/tgdl-server` is the Go backend under development. It serves the embedded
 SPA and implemented HTTP/WebSocket routes directly. Packaging selects it,
-but account/download lifecycle and public API parity remain incomplete.
+but login/history workflows and public API parity remain incomplete.
 See [verified coverage and remaining release work](../docs/GO-MIGRATION-STATUS.md).
 The executable does not start or proxy to a Node server.
 
@@ -66,16 +66,36 @@ connects that metadata to the durable library, existing gallery files and
 WebSocket events. Integration tests use a fixture byte transport. The adapter
 does not dial during construction; network activity starts from `Run`.
 
-Account ownership, login, update recovery, durable work queues and monitor
-lifecycle still need to call this boundary. The server does not yet start a
-working Telegram monitor. See the [migration status](../docs/GO-MIGRATION-STATUS.md)
-for the remaining release gates and reproducible ingestion benchmark.
+Monitor start/stop/restart now owns native gotd account connections and a durable
+SQLite work queue. Existing encrypted sessions are imported into a separate
+native directory; duplicate authentication keys and simultaneous servers using
+the same data directory are refused. Workers use their source account, refresh
+expired references, recheck filters and publish through the ingestion library.
+The queue snapshot reports actual byte progress and persists recent outcomes.
+SIGINT/SIGTERM stops HTTP acceptance, joins workers and closes browser sockets.
+
+Telegram cursors are stored per account/user/channel. Difference payloads are
+durably accepted before gotd can advance a cursor; persistence failures latch
+account shutdown. Oversized update gaps preserve a history-recovery marker and
+prevent restart until repaired. Automatic history repair, login, full queue
+controls, account routing/proxies and live Telegram E2E remain release work.
+Tests use injected accounts and actual gotd update processing with fake RPCs.
+See the [migration status](../docs/GO-MIGRATION-STATUS.md) for remaining gates.
+
+Transfer attempts have a deadline of two minutes plus one second per 16 KiB,
+capped at 24 hours, so internal RPC retries cannot occupy a worker forever.
+Shutdown/edit cancellation returns work to pending without spending a retry;
+a transfer deadline consumes one of the configured attempts. Queued Telegram
+payloads stay private: the dashboard receives a bounded field projection.
+Set `TGDL_SECURE_COOKIES=1` when serving behind HTTPS.
 
 References:
 
 - [gotd introduction](https://gotd.dev/docs/intro/)
 - [gotd first client](https://gotd.dev/docs/getting-started/first-client/)
 - [Telegram API](https://core.telegram.org/api)
+- [Telegram update sequence and differences](https://core.telegram.org/api/updates)
+- [Pinned gotd update manager](https://github.com/gotd/td/tree/v0.115.0/telegram/updates)
 - [Go net/http](https://pkg.go.dev/net/http)
 - [modernc SQLite](https://pkg.go.dev/modernc.org/sqlite)
 

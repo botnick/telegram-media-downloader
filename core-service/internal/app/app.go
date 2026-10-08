@@ -22,6 +22,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/cluster"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/dbread"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/download"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/jobs"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/store"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
@@ -30,15 +31,25 @@ import (
 )
 
 type Config struct {
-	DataDir       string
-	Port          int
-	Static        fs.FS
-	CookieName    string
-	SessionTTL    time.Duration
-	SecureCookies bool
-	Output        io.Writer
+	AccountFactory engine.Factory
+	DataDir        string
+	Port           int
+	Static         fs.FS
+	CookieName     string
+	SessionTTL     time.Duration
+	SecureCookies  bool
+	Output         io.Writer
 }
 type App struct {
+	monitor          *engine.Controller
+	monitorOp        sync.Mutex
+	ctx              context.Context
+	cancel           context.CancelFunc
+	bootWG           sync.WaitGroup
+	releaseOwnership func()
+	closeOnce        sync.Once
+	closeErr         error
+
 	db            *store.DB
 	library       *download.Library
 	sessions      *auth.SessionStore
@@ -72,8 +83,13 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 func New(ctx context.Context, cfg Config) (*App, error) {
+	release, err := engine.AcquireServerOwnership(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	db, err := store.Open(ctx, cfg.DataDir)
 	if err != nil {
+		release()
 		return nil, err
 	}
 	cookie := cfg.CookieName
@@ -86,7 +102,9 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	}
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
 	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute), loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time)}
-	a.library, err = download.NewLibrary(db.Writer, db.Reader, filepath.Join(cfg.DataDir, "downloads"), 4)
+	a.ctx, a.cancel = context.WithCancel(ctx)
+	a.releaseOwnership = release
+	a.library, err = download.NewLibrary(db.Writer, db.Reader, filepath.Join(cfg.DataDir, "downloads"), 64)
 	if err != nil {
 		a.Close()
 		return nil, err
@@ -98,6 +116,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	if err := a.drainFileCleanup(ctx); err != nil && cfg.Output != nil {
 		fmt.Fprintf(cfg.Output, "Media cleanup remains pending: %v\n", err)
 	}
+	a.monitor = engine.New(db.Writer, db.Reader, cfg.DataDir, cfg.AccountFactory, a.monitorFilter, a.ingestWork, a.monitorEvent)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -118,6 +137,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("POST /api/jobs/{id}/cancel", a.requireAdmin(http.HandlerFunc(a.handleJobCancel)))
 	mux.Handle("POST /api/maintenance/db/backup", a.requireAdmin(http.HandlerFunc(a.handleBackup)))
 	mux.Handle("POST /api/cluster/pairing-code", a.requireAdmin(http.HandlerFunc(a.handlePairingCode)))
+	registerMonitorRoutes(mux, a)
 	registerGalleryRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
@@ -130,6 +150,22 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	})
 
 	a.handler = securityHeaders(a.gateway(mux))
+	stored, err := a.config.Load(ctx)
+	if err != nil {
+		a.Close()
+		return nil, err
+	}
+	if monitor, ok := stored["monitor"].(map[string]any); ok && monitor["autoStart"] == true {
+		a.bootWG.Add(1)
+		go func() {
+			defer a.bootWG.Done()
+			a.monitorOp.Lock()
+			defer a.monitorOp.Unlock()
+			if err := a.startMonitor(a.ctx); err != nil && a.ctx.Err() == nil && a.output != nil {
+				fmt.Fprintf(a.output, "Monitor auto-start failed: %v\n", err)
+			}
+		}()
+	}
 	return a, nil
 }
 
@@ -381,16 +417,36 @@ func boolInt(value bool) int {
 
 func (a *App) Handler() http.Handler { return a.handler }
 func (a *App) Close() error {
-	if a == nil || a.db == nil {
+	if a == nil {
 		return nil
 	}
-	if a.db.Reader != nil {
-		_ = a.db.Reader.Close()
-	}
-	if a.read != nil {
-		a.read.Close()
-	}
-	return a.db.Writer.Close()
+	a.closeOnce.Do(func() {
+		if a.cancel != nil {
+			a.cancel()
+		}
+		a.bootWG.Wait()
+		a.monitorOp.Lock()
+		defer a.monitorOp.Unlock()
+		if a.monitor != nil {
+			a.closeErr = a.monitor.Stop(context.Background())
+		}
+		if a.hub != nil {
+			a.hub.Close()
+		}
+		if a.read != nil {
+			a.read.Close()
+		}
+		if a.db != nil {
+			if a.db.Reader != nil {
+				a.db.Reader.Close()
+			}
+			a.closeErr = errors.Join(a.closeErr, a.db.Writer.Close())
+		}
+		if a.releaseOwnership != nil {
+			a.releaseOwnership()
+		}
+	})
+	return a.closeErr
 }
 
 func registerReadRoutes(mux *http.ServeMux, read *dbread.Handler, guard func(http.Handler) http.Handler) {

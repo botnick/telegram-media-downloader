@@ -38,3 +38,19 @@ func TestHubBroadcastDoesNotBlockAndHonorsRole(t *testing.T) {
 	h.Remove(admin)
 	h.Remove(guest)
 }
+
+func TestHubCloseAlsoRejectsNewSubscribers(t *testing.T) {
+	h := NewHub(1)
+	c := h.Add("admin")
+	h.Close()
+	h.Close()
+	h.Remove(c)
+	if _, ok := <-c.Events(); ok {
+		t.Fatal("subscriber not closed")
+	}
+	c = h.Add("guest")
+	if _, ok := <-c.Events(); ok {
+		t.Fatal("subscriber added after shutdown")
+	}
+	h.Broadcast(Event{Type: "ignored"})
+}

@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/app"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/config"
@@ -42,16 +46,40 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	a, err := app.New(context.Background(), app.Config{DataDir: cfg.DataDir, Port: cfg.Port, Static: static, CookieName: cfg.CookieName, SessionTTL: cfg.SessionTTL, Output: stdout, SecureCookies: os.Getenv("TGDL_SECURE_COOKIES") == "1" || os.Getenv("NODE_ENV") == "production"})
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	a, err := app.New(ctx, app.Config{DataDir: cfg.DataDir, Port: cfg.Port, Static: static, CookieName: cfg.CookieName, SessionTTL: cfg.SessionTTL, Output: stdout, SecureCookies: os.Getenv("TGDL_SECURE_COOKIES") == "1"})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 	defer a.Close()
 	log.Printf("tgdl-server listening on :%d", cfg.Port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Port), a.Handler()); err != nil {
+	server := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 1 << 20}
+	if err := serve(ctx, server); err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
 	return 0
+}
+
+func serve(ctx context.Context, server *http.Server) error {
+	done := make(chan error, 1)
+	go func() { done <- server.ListenAndServe() }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		shutdown, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		err := server.Shutdown(shutdown)
+		if err != nil {
+			_ = server.Close()
+		}
+		listenErr := <-done
+		if errors.Is(listenErr, http.ErrServerClosed) {
+			listenErr = nil
+		}
+		return errors.Join(err, listenErr)
+	}
 }

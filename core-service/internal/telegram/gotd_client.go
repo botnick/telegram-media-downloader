@@ -21,6 +21,7 @@ type GotdConfig struct {
 	// the file is converted once into SessionPath without being rewritten.
 	EncryptedSessionPath string
 	SessionSecret        string
+	UpdateHandler        gotd.UpdateHandler
 }
 
 // GotdClient owns one Telegram account connection. Run is the only method
@@ -49,7 +50,7 @@ func NewGotdClient(cfg GotdConfig) (*GotdClient, error) {
 	if err := ensureConvertedSession(cfg, storage); err != nil {
 		return nil, err
 	}
-	return &GotdClient{client: gotd.NewClient(cfg.AppID, cfg.AppHash, gotd.Options{SessionStorage: storage})}, nil
+	return &GotdClient{client: gotd.NewClient(cfg.AppID, cfg.AppHash, gotd.Options{SessionStorage: storage, UpdateHandler: cfg.UpdateHandler})}, nil
 }
 
 func ensureConvertedSession(cfg GotdConfig, storage session.Storage) error {

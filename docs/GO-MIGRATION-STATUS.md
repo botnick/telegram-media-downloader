@@ -37,13 +37,35 @@ functionality. Do not deploy this branch over a working library yet.
   thumbnails/seekbar files through a durable cleanup queue.
 - A publication journal recovers a completed file when catalog registration
   failed. Message generations prevent an older journal entry from reverting a
-  newer edit. This is process-interruption recovery; unfinished transfer retries
-  still require the pending account/queue engine.
+  newer edit. Interrupted claims return to the durable pending queue; starting
+  the monitor resumes them with their original account.
 - A Go integration test exercises raw MTProto metadata through application
   ingestion, WebSocket notification, authenticated HTTP range serving, deletion
   of one shared-file reference and restart. Its Telegram byte transport is a
   fixture. The native gotd media transport compiles but has not been exercised
   against Telegram's network.
+
+- Native monitor start/stop/restart and auto-start now feed real account updates
+  through durable SQLite claims into ingestion. Injected-account HTTP integration
+  covers update → queued work → actual file, duplicate replay without a second
+  transfer, active byte progress, shutdown during transfer and restart recovery.
+- Account fingerprints and OS locks prevent duplicate authentication-key owners
+  and concurrent servers recovering the same library. Stop cancels account startup
+  promptly and joins account/worker lifetimes before closing SQLite.
+- Telegram cursors and channel access hashes persist by account/user. A regression
+  using the real gotd update Manager and fake RPCs verifies that channel difference
+  edits commit before cursor advancement. Oversized gaps cannot advance the old
+  cursor; unresolved durable recovery markers prevent restart.
+- Equal-second edits use Telegram ordering (channel PTS across accounts; global
+  PTS within one account). Newer observations of unchanged media update ordering
+  without requeueing. Refresh preserves user/chat entities and rechecks filters;
+  a rejected replacement is durably skipped. Deadlines bound transfer attempts.
+- Linux process smoke check: HTTP health → SIGTERM exit 0 → reopen the same data
+  directory → SIGTERM exit 0. Linux, Windows amd64 and macOS arm64 server builds
+  pass; Windows/macOS binaries were not run natively.
+- The two basic monitor control contract cases matched their frozen responses.
+  The partial contract command still exits nonzero because the harness requires
+  all history/maintenance entries; **the complete monitor suite has not passed**.
 
 The contract runner still uses development-time JavaScript dependencies to
 compare the Go server with frozen responses. It does not launch a Node server
@@ -52,13 +74,14 @@ migration; the current source tree is not yet free of Node dependencies.
 
 ## Required before release
 
-- Wire actual account/session ownership, Telegram login and updates, downloads,
-  history, queue cancellation/recovery and monitor lifecycle into the app.
-  The current monitor endpoint reports stopped; the adapter alone does not
-  start a downloader.
-- Connect the application ingestion boundary to durable queue ownership, live
-  account updates and history jobs; add cancellation/retry and cross-account E2E.
-  The new boundary is not yet called by a running monitor.
+- Complete native Telegram login/account management, dialogs, history/URL jobs,
+  automatic oversized-gap repair, account routing/proxies, stories and forwarding.
+  The monitor now runs saved accounts, but a recorded gap intentionally prevents
+  restart until history recovery is implemented; it must never be cleared merely
+  to make startup succeed.
+- Complete durable queue pause/resume/cancel/retry controls, rate limiting,
+  priority/TTL handling, old queue-history import and full browser interaction.
+  The actual queue snapshot alone does not establish complete queue API parity.
 - Complete gallery/media/config/group/delete/purge contracts, maintenance jobs,
   archives, AI/NSFW services, backups and cluster management. A low-level Go
   projection or helper is not a replacement for the public workflow.
@@ -86,7 +109,12 @@ Go CI workflows use the same toolchain. Other API references:
 [net/http](https://pkg.go.dev/net/http),
 [SQLite driver](https://pkg.go.dev/modernc.org/sqlite),
 [gotd](https://gotd.dev/docs/intro/),
-[Telegram API](https://core.telegram.org/api).
+[Telegram API](https://core.telegram.org/api),
+[update ordering and differences](https://core.telegram.org/api/updates).
+The adapter targets [gotd v0.115.0 update internals](https://github.com/gotd/td/tree/v0.115.0/telegram/updates):
+`state_channel.go` asynchronously dispatches difference edits before saving PTS,
+so a handler-only persistence latch is insufficient. `update_api.go` commits
+all difference payloads before returning them to that manager.
 
 Exclusive media publication uses Linux `renameat2(RENAME_NOREPLACE)`, macOS
 `renameatx_np(RENAME_EXCL)` and Windows `NtSetInformationFile` with

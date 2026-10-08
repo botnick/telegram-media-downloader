@@ -2,6 +2,7 @@ package app
 
 import (
 	"database/sql"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,17 +37,12 @@ func (a *App) handleAPIMonitorStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 500, "config read failed")
 		return
 	}
-	entries, err := os.ReadDir(filepath.Join(a.dataDir, "sessions"))
-	if err != nil && !os.IsNotExist(err) {
+	saved, err := telegram.SavedSessions(a.dataDir)
+	if err != nil {
 		writeJSONError(w, 500, "account directory read failed")
 		return
 	}
-	accounts := 0
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".enc") {
-			accounts++
-		}
-	}
+	accounts := len(saved)
 	telegram, _ := config["telegram"].(map[string]any)
 	var hint any
 	switch {
@@ -63,12 +59,25 @@ func (a *App) handleAPIMonitorStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	// No account runner is started by App yet; expose the actual idle state.
-	writeJSON(w, http.StatusOK, map[string]any{"state": "stopped", "error": nil, "startedAt": nil, "uptimeMs": 0, "stats": nil, "queue": 0, "active": 0, "workers": 0, "accounts": accounts, "hint": hint})
+	status, err := a.monitor.Status(r.Context())
+	if err != nil {
+		writeJSONError(w, 500, err.Error())
+		return
+	}
+	status["hint"] = hint
+	if status["accounts"] == 0 {
+		status["accounts"] = accounts
+	}
+	writeJSON(w, 200, status)
 }
 
-func (a *App) handleAPIQueueSnapshot(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"items": []any{}, "active": 0, "pending": 0, "completed": 0, "failed": 0})
+func (a *App) handleAPIQueueSnapshot(w http.ResponseWriter, r *http.Request) {
+	snapshot, err := a.monitor.Snapshot(r.Context())
+	if err != nil {
+		writeJSONError(w, 500, "queue read failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, snapshot)
 }
 
 func (a *App) handleAPIStats(w http.ResponseWriter, r *http.Request) {

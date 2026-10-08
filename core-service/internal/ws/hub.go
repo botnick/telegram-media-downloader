@@ -41,6 +41,7 @@ type Hub struct {
 	mu      sync.RWMutex
 	cap     int
 	clients map[*Client]struct{}
+	closed  bool
 }
 
 func NewHub(capacity int) *Hub {
@@ -52,9 +53,23 @@ func NewHub(capacity int) *Hub {
 func (h *Hub) Add(role string) *Client {
 	c := &Client{role: role, events: make(chan Event, h.cap)}
 	h.mu.Lock()
-	h.clients[c] = struct{}{}
+	if h.closed {
+		close(c.events)
+	} else {
+		h.clients[c] = struct{}{}
+	}
 	h.mu.Unlock()
 	return c
+}
+
+func (h *Hub) Close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.closed = true
+	for c := range h.clients {
+		close(c.events)
+		delete(h.clients, c)
+	}
 }
 func (h *Hub) Remove(c *Client) {
 	if c == nil {
