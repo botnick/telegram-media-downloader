@@ -84,12 +84,12 @@ func (a *App) handleAPIQueueSnapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleAPIStats(w http.ResponseWriter, r *http.Request) {
-	var totalFiles, totalSize int64
-	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM downloads`).Scan(&totalFiles, &totalSize); err != nil {
+	stats, ok := a.statsPayload(r.Context())
+	if !ok {
 		writeJSONError(w, http.StatusInternalServerError, "database stats query failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"totalFiles": totalFiles, "totalSize": totalSize, "diskUsage": totalSize})
+	writeJSON(w, http.StatusOK, stats)
 }
 
 func (a *App) handleAPIDownloads(w http.ResponseWriter, r *http.Request) {

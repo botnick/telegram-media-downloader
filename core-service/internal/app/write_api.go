@@ -1,15 +1,21 @@
 package app
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 )
 
 func registerConfigWriteRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("GET /api/config", a.requireSession(http.HandlerFunc(a.handleAPIConfigGet)))
+	mux.Handle("GET /api/maintenance/config/raw", a.requireAdmin(http.HandlerFunc(a.handleAPIRawConfig)))
 	mux.Handle("POST /api/config", a.requireAdmin(http.HandlerFunc(a.handleAPIConfigSave)))
 	mux.Handle("PUT /api/groups/{id}", a.requireAdmin(http.HandlerFunc(a.handleAPIGroupSave)))
 	mux.Handle("POST /api/downloads/bulk-delete", a.requireAdmin(http.HandlerFunc(a.handleAPIBulkDelete)))
@@ -20,17 +26,26 @@ func registerConfigWriteRoutes(mux *http.ServeMux, a *App) {
 }
 
 func (a *App) handleAPIConfigGet(w http.ResponseWriter, r *http.Request) {
-	config, err := a.config.Load(r.Context())
+	raw, err := a.config.Load(r.Context())
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "config read failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, redactConfig(config))
+	writeJSON(w, http.StatusOK, redactConfig(effectiveConfig(raw)))
+}
+
+func (a *App) handleAPIRawConfig(w http.ResponseWriter, r *http.Request) {
+	raw, err := a.config.Load(r.Context())
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "config read failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, rawRedactedConfig(effectiveConfig(raw)))
 }
 
 func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 	var patch map[string]any
-	if err := decodeBody(w, r, &patch); err != nil {
+	if err := decodeConfigPatch(w, r, &patch); err != nil {
 		return
 	}
 	if patch == nil {
@@ -50,20 +65,65 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if raw, ok := patch["download"].(map[string]any); ok {
+		if value, present := raw["concurrent"]; present {
+			n := number(value, -1)
+			if n < 1 || n > 50 {
+				writeJSONError(w, http.StatusBadRequest, "download.concurrent must be 1-50")
+				return
+			}
+		}
+		if value, present := raw["retries"]; present {
+			n := number(value, -1)
+			if n < 0 || n > 50 {
+				writeJSONError(w, http.StatusBadRequest, "download.retries must be 0-50")
+				return
+			}
+		}
+	}
+	if value, present := patch["pollingInterval"]; present && number(value, 0) < 1 {
+		writeJSONError(w, http.StatusBadRequest, "pollingInterval must be >= 1 (seconds)")
+		return
+	}
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
-	config, err := a.config.Load(r.Context())
+	rawConfig, err := a.config.Load(r.Context())
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "config read failed")
 		return
 	}
+	config := effectiveConfig(rawConfig)
 	mergeConfig(config, patch)
+	if advanced, ok := config["advanced"].(map[string]any); ok && patch["advanced"] != nil {
+		sanitizeAdvancedConfig(advanced)
+		delete(advanced, "goCore")
+	}
 	stripPresenceFlags(config)
 	if err := a.config.Save(r.Context(), config); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "config write failed")
 		return
 	}
+	if advancedPatch, ok := patch["advanced"].(map[string]any); ok {
+		if _, changed := advancedPatch["ai"]; changed {
+			a.hub.Broadcast(ws.Event{Type: "ai_config_changed", Flat: true})
+		}
+		if _, changed := advancedPatch["seekbar"]; changed {
+			a.hub.Broadcast(ws.Event{Type: "seekbar_config_changed", Flat: true})
+			if advanced, ok := config["advanced"].(map[string]any); ok {
+				if seekbar, ok := advanced["seekbar"].(map[string]any); ok {
+					url := stringOr(seekbar["sidecarUrl"], "")
+					if url != "" {
+						a.hub.Broadcast(ws.Event{Type: "seekbar_sidecar_status", Flat: true, Payload: map[string]any{
+							"checkedAt": time.Now().UnixMilli(), "error": "fetch failed", "mode": "remote", "ok": false, "pid": nil,
+							"sources": map[string]any{"pathMap": nil, "token": "config", "url": "config"}, "url": url,
+						}})
+					}
+				}
+			}
+		}
+	}
 	a.hub.Broadcast(ws.Event{Type: "config_updated"})
+	a.broadcastStatsUpdate(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
@@ -185,7 +245,51 @@ func (a *App) handleAPIGroupSave(w http.ResponseWriter, r *http.Request) {
 }
 
 func newGroupFilters() map[string]any {
-	return map[string]any{"photos": true, "videos": true, "files": true, "links": true, "voice": false, "gifs": false, "stickers": false}
+	return map[string]any{"photos": true, "videos": true, "files": true, "links": false, "urls": true, "audio": false, "voice": false, "gifs": false, "stickers": false}
+}
+
+// decodeConfigPatch follows express.json's contract for this endpoint. The
+// dashboard sends JSON; other content types are intentionally treated as an
+// empty patch so a text/plain probe cannot overwrite settings.
+func decodeConfigPatch(w http.ResponseWriter, r *http.Request, dst *map[string]any) error {
+	contentType := strings.TrimSpace(strings.ToLower(r.Header.Get("Content-Type")))
+	if contentType != "" && !strings.Contains(contentType, "application/json") {
+		*dst = map[string]any{}
+		return nil
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 2<<20))
+	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "Request body too large")
+		} else {
+			writeJSONError(w, http.StatusBadRequest, "Malformed JSON body")
+		}
+		return err
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "Malformed JSON body")
+		return errors.New("empty config body")
+	}
+	var value any
+	if err := json.Unmarshal(body, &value); err != nil || value == nil {
+		writeJSONError(w, http.StatusBadRequest, "Malformed JSON body")
+		return errors.New("malformed config body")
+	}
+	if object, ok := value.(map[string]any); ok {
+		*dst = object
+		return nil
+	}
+	if array, ok := value.([]any); ok {
+		object := make(map[string]any, len(array))
+		for i, item := range array {
+			object[strconv.Itoa(i)] = item
+		}
+		*dst = object
+		return nil
+	}
+	writeJSONError(w, http.StatusBadRequest, "Malformed JSON body")
+	return errors.New("config body must be object or array")
 }
 
 func normalizedTopics(value any) map[string]any {
