@@ -1609,6 +1609,28 @@ export async function aiCandidates(
     return body;
 }
 
+/** Read the bounded AI quality-backfill queue through tgdl-core. */
+export async function qualityCandidates(
+    { afterId = 0, limit = 100, includeTotal = false } = {},
+    { timeoutMs = 10_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/quality-candidates',
+        { afterId, limit, includeTotal: includeTotal === true },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!validQualityCandidateRows(body)) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed quality candidates response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read grouped recovery counters through tgdl-core. */
 export async function recoveryStats(
     _request = {},
@@ -1954,6 +1976,32 @@ function validAiCandidateRows(body) {
                 (row.file_type == null || typeof row.file_type === 'string') &&
                 (row.file_size == null || Number.isSafeInteger(row.file_size)) &&
                 (row.created_at == null || typeof row.created_at === 'string'),
+        )
+    );
+}
+
+function validQualityCandidateRows(body) {
+    return (
+        body &&
+        Array.isArray(body.rows) &&
+        (body.total == null || (Number.isSafeInteger(body.total) && body.total >= 0)) &&
+        (body.nextId == null || (Number.isSafeInteger(body.nextId) && body.nextId > 0)) &&
+        body.rows.every(
+            (row) =>
+                row &&
+                Number.isSafeInteger(row.id) &&
+                row.id > 0 &&
+                (row.file_path == null || typeof row.file_path === 'string') &&
+                Array.isArray(row.faces) &&
+                row.faces.every(
+                    (face) =>
+                        face &&
+                        Number.isSafeInteger(face.id) &&
+                        face.id > 0 &&
+                        [face.x, face.y, face.w, face.h].every(
+                            (value) => typeof value === 'number' && Number.isFinite(value),
+                        ),
+                ),
         )
     );
 }

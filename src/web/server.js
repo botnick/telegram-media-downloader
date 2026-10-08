@@ -9944,32 +9944,26 @@ app.post('/api/ai/backfill-quality', async (req, res) => {
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         const db = aiGetDb();
         const { detectFacesBatch } = await import('../core/ai/faces-client.js');
-
-        const downloadIds = db
-            .prepare(
-                'SELECT DISTINCT f.download_id FROM faces f WHERE f.quality_score IS NULL ORDER BY f.download_id',
-            )
-            .all();
-
+        const PAGE_SIZE = 100;
         let processed = 0;
         let updated = 0;
         let errors = 0;
-        const total = downloadIds.length;
+        let total = 0;
 
-        for (const { download_id } of downloadIds) {
-            if (signal.aborted) break;
-
-            const dl = db.prepare('SELECT file_path FROM downloads WHERE id = ?').get(download_id);
-            if (!dl?.file_path) {
+        const processCandidate = async (candidate, localFallback = false) => {
+            if (signal.aborted) return;
+            const downloadId = Number(candidate.id ?? candidate.download_id);
+            const filePath = candidate.file_path || null;
+            if (!filePath) {
                 processed++;
-                continue;
+                return;
             }
 
-            const resolved = await safeResolveDownload(dl.file_path);
+            const resolved = await safeResolveDownload(filePath);
             if (!resolved?.ok) {
                 processed++;
                 errors++;
-                continue;
+                return;
             }
 
             let detected;
@@ -9981,11 +9975,14 @@ app.post('/api/ai/backfill-quality', async (req, res) => {
             }
 
             if (Array.isArray(detected) && detected.length) {
-                const storedFaces = db
-                    .prepare(
-                        'SELECT id, x, y, w, h FROM faces WHERE download_id = ? AND quality_score IS NULL',
-                    )
-                    .all(download_id);
+                const storedFaces =
+                    Array.isArray(candidate.faces) && !localFallback
+                        ? candidate.faces
+                        : db
+                              .prepare(
+                                  'SELECT id, x, y, w, h FROM faces WHERE download_id = ? AND quality_score IS NULL',
+                              )
+                              .all(downloadId);
 
                 for (const sf of storedFaces) {
                     let bestIoU = 0;
@@ -10020,6 +10017,61 @@ app.post('/api/ai/backfill-quality', async (req, res) => {
             if (processed % 20 === 0 || processed === total) {
                 onProgress({ processed, total, updated, errors });
                 await new Promise((r) => setImmediate(r));
+            }
+        };
+
+        const runGoQueue = async () => {
+            if (!gocoreClient.isAvailable('db')) return false;
+            let afterId = 0;
+            let includeTotal = true;
+            try {
+                while (!signal.aborted) {
+                    const page = await gocoreClient.qualityCandidates(
+                        { afterId, limit: PAGE_SIZE, includeTotal },
+                        { timeoutMs: 10_000, signal },
+                    );
+                    if (includeTotal) {
+                        total = Number.isSafeInteger(page.total) ? page.total : page.rows.length;
+                        includeTotal = false;
+                    }
+                    if (!page.rows.length) break;
+                    for (const row of page.rows) {
+                        await processCandidate(row);
+                        if (signal.aborted) break;
+                    }
+                    if (signal.aborted || page.rows.length < PAGE_SIZE) break;
+                    afterId = page.nextId || page.rows[page.rows.length - 1].id;
+                    await new Promise((r) => setImmediate(r));
+                }
+                return true;
+            } catch (e) {
+                if (signal.aborted) return true;
+                return false;
+            }
+        };
+
+        if (!(await runGoQueue())) {
+            // Old cores and transient restarts use one complete local snapshot.
+            // Reset counters because any rows processed before a transport
+            // failure are re-evaluated by the compatibility path.
+            processed = 0;
+            updated = 0;
+            errors = 0;
+            const downloadIds = db
+                .prepare(
+                    'SELECT DISTINCT f.download_id FROM faces f WHERE f.quality_score IS NULL ORDER BY f.download_id',
+                )
+                .all();
+            total = downloadIds.length;
+            for (const { download_id } of downloadIds) {
+                if (signal.aborted) break;
+                const dl = db
+                    .prepare('SELECT file_path FROM downloads WHERE id = ?')
+                    .get(download_id);
+                await processCandidate(
+                    { id: download_id, file_path: dl?.file_path || null },
+                    true,
+                );
             }
         }
         return { processed, total, updated, errors };

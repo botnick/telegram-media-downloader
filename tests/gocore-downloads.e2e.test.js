@@ -147,3 +147,25 @@ it('reads keyset face embeddings from the real Go core without a Node query', as
     expect(tail.json.rows[0].id).toBe(501);
     expect(tail.json.rows[2].id).toBe(503);
 });
+
+it('reads pending AI quality rows and face boxes from the real Go core', async () => {
+    vi.spyOn(db, 'prepare').mockImplementation(() => { throw new Error('unexpected Node query'); });
+    const first = await core.post('/v1/db/quality-candidates', {
+        afterId: 0,
+        limit: 1,
+        includeTotal: true,
+    });
+    expect(first.status).toBe(200);
+    expect(first.json.total).toBe(1);
+    expect(first.json.nextId).toBe(1);
+    expect(first.json.rows).toEqual([
+        {
+            id: 1,
+            file_path: 'G/images/ภาพ 1.jpg',
+            faces: [{ id: 1, x: 0.1, y: 0.2, w: 0.3, h: 0.4 }],
+        },
+    ]);
+    const tail = await core.post('/v1/db/quality-candidates', { afterId: 1, limit: 10 });
+    expect(tail.status).toBe(200);
+    expect(tail.json.rows).toEqual([]);
+});

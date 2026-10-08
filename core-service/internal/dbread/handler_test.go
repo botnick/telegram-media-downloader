@@ -213,6 +213,57 @@ func TestAICandidates(t *testing.T) {
 	}
 }
 
+func TestQualityCandidates(t *testing.T) {
+	path := makeDB(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE faces SET quality_score = NULL WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO faces(download_id,x,y,w,h,embedding,quality_score)
+		VALUES (2,0.4,0.5,0.6,0.7,X'14',NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(path, nil)
+	status, body := call(t, http.HandlerFunc(h.QualityCandidates), map[string]any{
+		"afterId":     0,
+		"limit":       1,
+		"includeTotal": true,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	if body["total"] != float64(2) || body["nextId"] != float64(1) {
+		t.Fatalf("page metadata=%v", body)
+	}
+	rows, ok := body["rows"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows=%v", body["rows"])
+	}
+	row := rows[0].(map[string]any)
+	if row["id"] != float64(1) || row["file_path"] != "G/images/a.jpg" {
+		t.Fatalf("row=%v", row)
+	}
+	faces := row["faces"].([]any)
+	if len(faces) != 1 || faces[0].(map[string]any)["id"] != float64(1) {
+		t.Fatalf("faces=%v", faces)
+	}
+	status, body = call(t, http.HandlerFunc(h.QualityCandidates), map[string]any{
+		"afterId": 1,
+		"limit":   10,
+	})
+	if status != http.StatusOK {
+		t.Fatalf("continuation status=%d body=%v", status, body)
+	}
+	rows = body["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["id"] != float64(2) {
+		t.Fatalf("continuation rows=%v", rows)
+	}
+}
+
 func TestDownloadsByIDs(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.DownloadsByIDs), map[string]any{

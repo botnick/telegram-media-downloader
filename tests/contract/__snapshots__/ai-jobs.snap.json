@@ -51,6 +51,7 @@
             "indexed": 6,
             "noiseFaces": 2,
             "peopleCount": 3,
+            "qualityPending": 1,
             "totalEligible": 13,
             "totalFaces": 7,
             "unindexed": 7,
@@ -1428,6 +1429,7 @@
             "indexed": 0,
             "noiseFaces": 0,
             "peopleCount": 0,
+            "qualityPending": 0,
             "totalEligible": 13,
             "totalFaces": 0,
             "unindexed": 13,
@@ -1452,7 +1454,7 @@
               "version": "0.5.0"
             }
           },
-          "qualityBackfillPending": 1,
+          "qualityBackfillPending": 0,
           "scans": {
             "faces": {
               "clusterProgress": 0,
@@ -1758,6 +1760,7 @@
             "indexed": 6,
             "noiseFaces": 2,
             "peopleCount": 3,
+            "qualityPending": 0,
             "totalEligible": 12,
             "totalFaces": 7,
             "unindexed": 6,
@@ -2409,6 +2412,7 @@
             "indexed": 6,
             "noiseFaces": 2,
             "peopleCount": 3,
+            "qualityPending": 0,
             "totalEligible": 12,
             "totalFaces": 7,
             "unindexed": 6,

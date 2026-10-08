@@ -1004,6 +1004,41 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ fileTypes: ['photo', 'video'], limit: 12 });
     });
 
+    it('reads bounded AI quality candidates with their pending face boxes', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/quality-candidates': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, {
+                        total: 2,
+                        nextId: 7,
+                        rows: [
+                            {
+                                id: 7,
+                                file_path: 'G/images/a.jpg',
+                                faces: [{ id: 11, x: 0.1, y: 0.2, w: 0.3, h: 0.4 }],
+                            },
+                        ],
+                    });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(
+            client.qualityCandidates({ afterId: 0, limit: 10, includeTotal: true }),
+        ).resolves.toMatchObject({
+            total: 2,
+            rows: [
+                expect.objectContaining({
+                    id: 7,
+                    faces: [expect.objectContaining({ id: 11 })],
+                }),
+            ],
+        });
+        expect(request).toEqual({ afterId: 0, limit: 10, includeTotal: true });
+    });
+
     it('reads grouped recovery counters through the Go DB projection', async () => {
         let request;
         await fakeCore(
