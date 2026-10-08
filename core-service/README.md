@@ -2,6 +2,21 @@
 
 The Go engine of
 [telegram-media-downloader](https://github.com/botnick/telegram-media-downloader).
+
+## Pure-Go server
+
+`cmd/tgdl-server` is the production application entry point for the pure-Go
+cutover. It owns the HTTP handler, session store, SQLite schema, and WebSocket
+hub in one process. Start it with `TGDL_DATA_DIR=/path/to/data PORT=3000`.
+The process fails fast when its required configuration or database cannot be
+opened; it does not spawn Node, proxy to another runtime, or fall back to a
+second implementation. The browser bundle remains a client asset and is served
+by the Go handler in the final cutover.
+
+The lower-level `tgdl-core` commands below document the legacy engine surface
+while the remaining API and Telegram slices are moved into the same Go
+application. They are not a runtime fallback for `tgdl-server`.
+
 The Node app spawns it, talks to it over HTTP on `127.0.0.1`, and relies on
 it for:
 
