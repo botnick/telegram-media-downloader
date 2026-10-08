@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -20,6 +21,17 @@ type Account interface {
 	RefreshMessage(context.Context, *tg.Message) (*telegram.RefreshedMessage, error)
 }
 type historyRecoverable interface{ SupportsHistoryRecovery() bool }
+
+type Dialog struct {
+	ID, Name, Username, Type string
+	Archived                 bool
+	Members                  *int
+	AccountIDs               []string
+}
+
+type dialogSource interface {
+	Dialogs(context.Context, int, bool) ([]telegram.Dialog, error)
+}
 type AccountConfig struct {
 	ID, Name string
 	Telegram telegram.GotdConfig
@@ -75,6 +87,74 @@ func (c *Controller) setState(state string, cause error) {
 	if c.notify != nil {
 		c.notify(state, cause)
 	}
+}
+
+func (c *Controller) Dialogs(ctx context.Context, limit int) ([]Dialog, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	c.mu.Lock()
+	run := c.run
+	accounts := make(map[string]Account)
+	var accountIDs []string
+	if run != nil {
+		accountIDs = append(accountIDs, run.ids...)
+		for _, id := range accountIDs {
+			if account := run.accounts[id]; account != nil {
+				accounts[id] = account
+			}
+		}
+	}
+	c.mu.Unlock()
+	if len(accounts) == 0 {
+		return nil, errors.New("Telegram monitor is not running")
+	}
+	merged := map[string]Dialog{}
+	order := make([]string, 0)
+	accountSets := map[string]map[string]bool{}
+	var firstErr error
+	for _, id := range accountIDs {
+		account := accounts[id]
+		source, ok := account.(dialogSource)
+		if !ok {
+			continue
+		}
+		for _, archived := range []bool{false, true} {
+			items, err := source.Dialogs(ctx, limit, archived)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			for _, item := range items {
+				current, found := merged[item.ID]
+				if !found {
+					merged[item.ID] = Dialog{ID: item.ID, Name: item.Name, Username: item.Username, Type: item.Type, Archived: item.Archived, Members: item.Members}
+					order = append(order, item.ID)
+				} else if current.Archived && !item.Archived {
+					merged[item.ID] = Dialog{ID: item.ID, Name: item.Name, Username: item.Username, Type: item.Type, Archived: item.Archived, Members: item.Members}
+				}
+				if accountSets[item.ID] == nil {
+					accountSets[item.ID] = map[string]bool{}
+				}
+				accountSets[item.ID][id] = true
+			}
+		}
+	}
+	if len(merged) == 0 && firstErr != nil {
+		return nil, firstErr
+	}
+	out := make([]Dialog, 0, len(order))
+	for _, id := range order {
+		item := merged[id]
+		for accountID := range accountSets[id] {
+			item.AccountIDs = append(item.AccountIDs, accountID)
+		}
+		sort.Strings(item.AccountIDs)
+		out = append(out, item)
+	}
+	return out, nil
 }
 func (c *Controller) Start(request, parent context.Context, accounts []AccountConfig, workers, maxAttempts int) error {
 	c.opMu.Lock()
@@ -134,11 +214,13 @@ func (c *Controller) Start(request, parent context.Context, accounts []AccountCo
 		gap := func(channelID int64) {
 			gapCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
 			defer stop()
-			_, err := c.writer.ExecContext(gapCtx, `INSERT INTO tgdl_update_recovery(account_id,channel_id,reason,created_at) VALUES(?,?,'channel gap exceeds Telegram update retention',?) ON CONFLICT(account_id,channel_id) DO NOTHING`, config.ID, channelID, time.Now().UnixMilli())
+			err := state.RecordRecovery(gapCtx, 0, channelID, 0)
 			if err != nil {
-				cancel(err)
+				cancel(fmt.Errorf("account %s recovery marker: %w", config.ID, err))
 			} else {
-				cancel(fmt.Errorf("account %s channel %d requires history recovery", config.ID, channelID))
+				recoveryErr := fmt.Errorf("account %s channel %d requires history recovery", config.ID, channelID)
+				_ = state.Latch(gapCtx, recoveryErr)
+				cancel(recoveryErr)
 			}
 		}
 		account, err := c.factory(config, state, handler, gap)

@@ -84,6 +84,13 @@ one durable completion step. Missing access hashes, incomplete markers and
 global account-wide `updates.getDifferenceTooLong` still stop startup with the
 marker intact; they are not silently treated as healthy.
 
+The native `/api/dialogs` endpoint now fans out `messages.getDialogs` across
+every running Go account, reads active and archived folders, merges duplicate
+marked peer IDs, preserves configured filters/forwarding defaults and exposes
+the durable chat-access registry. The projection is covered by fixture tests;
+live Telegram dialog ordering and access failures still need an authorized
+network E2E run.
+
 The contract runner still uses development-time JavaScript dependencies to
 compare the Go server with frozen responses. It does not launch a Node server
 for these Go-target tests. Removing this test tooling remains part of the
@@ -91,10 +98,10 @@ migration; the current source tree is not yet free of Node dependencies.
 
 ## Required before release
 
-- Complete native Telegram login/account management, dialogs, history/URL jobs,
-  automatic oversized-gap repair, account routing/proxies, stories and forwarding.
-  The monitor now runs saved accounts, but a recorded gap intentionally prevents
-  restart until history recovery is implemented; it must never be cleared merely
+- Complete native Telegram login/account management, history/URL jobs,
+  account-wide oversized-gap repair, account routing/proxies, stories and
+  forwarding. Channel history gaps are repaired natively; an unresolved global
+  or incomplete marker still prevents restart and must never be cleared merely
   to make startup succeed.
 - Complete durable queue pause/resume/cancel/retry controls, rate limiting,
   priority/TTL handling, old queue-history import and full browser interaction.

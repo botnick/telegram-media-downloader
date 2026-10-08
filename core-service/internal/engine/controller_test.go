@@ -23,6 +23,34 @@ func (a *connectingAccount) RefreshMessage(_ context.Context, m *tg.Message) (*t
 func (a *connectingAccount) DownloadMedia(context.Context, telegram.Attachment, io.Writer) error {
 	return nil
 }
+
+type dialogTestAccount struct {
+	connectingAccount
+	active, archived []telegram.Dialog
+}
+
+func (a *dialogTestAccount) Dialogs(_ context.Context, _ int, archived bool) ([]telegram.Dialog, error) {
+	if archived {
+		return a.archived, nil
+	}
+	return a.active, nil
+}
+
+func TestDialogsMergeAccountsAndPreferActiveEntries(t *testing.T) {
+	accountOne := &dialogTestAccount{active: []telegram.Dialog{{ID: "-1000000000042", Name: "Fresh", Type: "channel"}}, archived: []telegram.Dialog{{ID: "-1000000000042", Name: "Old", Type: "channel", Archived: true}}}
+	accountTwo := &dialogTestAccount{active: []telegram.Dialog{{ID: "-1000000000042", Name: "Fresh", Type: "channel"}, {ID: "-9", Name: "Group", Type: "group"}}}
+	c := &Controller{run: &running{accounts: map[string]Account{"one": accountOne, "two": accountTwo}, ids: []string{"one", "two"}}}
+	items, err := c.Dialogs(context.Background(), 500)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("dialogs=%+v err=%v", items, err)
+	}
+	if items[0].ID != "-1000000000042" || items[0].Name != "Fresh" || items[0].Archived || len(items[0].AccountIDs) != 2 || items[0].AccountIDs[0] != "one" || items[0].AccountIDs[1] != "two" {
+		t.Fatalf("merged channel=%+v", items[0])
+	}
+	if items[1].ID != "-9" || items[1].AccountIDs[0] != "two" {
+		t.Fatalf("second dialog=%+v", items[1])
+	}
+}
 func TestStopCancelsAccountStartupPromptly(t *testing.T) {
 	s := testStore(t)
 	entered := make(chan struct{})

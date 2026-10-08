@@ -51,6 +51,12 @@ func (s *UpdateState) GuardHandler(handle func(context.Context, tg.UpdatesClass)
 		return s.guard(ctx, func() error { return handle(ctx, u) })
 	}
 }
+
+// Latch prevents gotd from advancing a cursor after an update path has
+// persisted a recovery marker outside the guarded handler callback.
+func (s *UpdateState) Latch(ctx context.Context, err error) error {
+	return s.guard(ctx, func() error { return err })
+}
 func (s *UpdateState) GetState(ctx context.Context, userID int64) (updates.State, bool, error) {
 	var state updates.State
 	err := s.Reader.QueryRowContext(ctx, `SELECT pts,qts,date,seq FROM tgdl_update_state WHERE account_id=? AND user_id=?`, s.AccountID, userID).Scan(&state.Pts, &state.Qts, &state.Date, &state.Seq)
@@ -157,18 +163,20 @@ func (s *UpdateState) RecordRecovery(ctx context.Context, userID, channelID int6
 	if channelID < 0 || pts < 0 {
 		return errors.New("invalid Telegram recovery cursor")
 	}
-	tx, err := s.Writer.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO tgdl_update_recovery(account_id,channel_id,reason,created_at) VALUES(?,?,?,?) ON CONFLICT(account_id,channel_id) DO UPDATE SET reason=excluded.reason,created_at=excluded.created_at`, s.AccountID, channelID, "Telegram update difference exceeded retention", time.Now().UnixMilli()); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO tgdl_update_recovery_state(account_id,channel_id,user_id,pts) VALUES(?,?,?,?) ON CONFLICT(account_id,channel_id) DO UPDATE SET user_id=excluded.user_id,pts=excluded.pts`, s.AccountID, channelID, userID, pts); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return s.guard(ctx, func() error {
+		tx, err := s.Writer.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err = tx.ExecContext(ctx, `INSERT INTO tgdl_update_recovery(account_id,channel_id,reason,created_at) VALUES(?,?,?,?) ON CONFLICT(account_id,channel_id) DO UPDATE SET reason=excluded.reason,created_at=excluded.created_at`, s.AccountID, channelID, "Telegram update difference exceeded retention", time.Now().UnixMilli()); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO tgdl_update_recovery_state(account_id,channel_id,user_id,pts) VALUES(?,?,?,?) ON CONFLICT(account_id,channel_id) DO UPDATE SET user_id=CASE WHEN excluded.user_id<>0 THEN excluded.user_id ELSE tgdl_update_recovery_state.user_id END,pts=CASE WHEN excluded.pts>0 THEN excluded.pts ELSE tgdl_update_recovery_state.pts END`, s.AccountID, channelID, userID, pts); err != nil {
+			return err
+		}
+		return tx.Commit()
+	})
 }
 
 func (s *UpdateState) PendingRecovery(ctx context.Context) ([]RecoveryRecord, error) {

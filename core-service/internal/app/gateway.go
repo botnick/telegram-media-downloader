@@ -107,7 +107,7 @@ func guestAllowed(r *http.Request) bool {
 	if r.Method != "GET" {
 		return false
 	}
-	for _, pre := range []string{"/api/auth_check", "/api/me", "/api/version", "/api/downloads", "/api/groups", "/api/stats", "/api/thumbs", "/api/seekbar/sprite", "/api/seekbar/meta", "/api/monitor/status", "/api/files/token"} {
+	for _, pre := range []string{"/api/auth_check", "/api/me", "/api/version", "/api/downloads", "/api/groups", "/api/dialogs", "/api/stats", "/api/thumbs", "/api/seekbar/sprite", "/api/seekbar/meta", "/api/monitor/status", "/api/files/token"} {
 		if r.URL.Path == pre || strings.HasPrefix(r.URL.Path, pre+"/") {
 			return true
 		}

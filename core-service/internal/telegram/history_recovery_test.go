@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/store"
@@ -37,6 +38,90 @@ func TestRecoverChannelHistoryPaginatesAndPreservesEntities(t *testing.T) {
 	}
 }
 
+type serviceHistoryFixture struct {
+	calls int
+}
+
+func (f *serviceHistoryFixture) MessagesGetHistory(_ context.Context, request *tg.MessagesGetHistoryRequest) (tg.MessagesMessagesClass, error) {
+	f.calls++
+	if request.OffsetID != 0 {
+		return &tg.MessagesMessages{Messages: nil}, nil
+	}
+	return &tg.MessagesMessages{Messages: []tg.MessageClass{
+		&tg.MessageService{ID: 8, PeerID: &tg.PeerChannel{ChannelID: 42}},
+		&tg.MessageEmpty{ID: 7, PeerID: &tg.PeerChannel{ChannelID: 42}},
+	}}, nil
+}
+
+func TestRecoverChannelHistoryAdvancesPastServiceMessages(t *testing.T) {
+	f := new(serviceHistoryFixture)
+	handled := false
+	err := recoverChannelHistory(context.Background(), f, func(context.Context, tg.UpdatesClass) error {
+		handled = true
+		return nil
+	}, 42, 99)
+	if err != nil || f.calls != 1 || handled {
+		t.Fatalf("service-only recovery calls=%d handled=%v err=%v", f.calls, handled, err)
+	}
+}
+
+type differenceFixture struct {
+	calls []int
+}
+
+func (f *differenceFixture) UpdatesGetChannelDifference(_ context.Context, request *tg.UpdatesGetChannelDifferenceRequest) (tg.UpdatesChannelDifferenceClass, error) {
+	if request.Limit != recoveryDifferenceLimit {
+		return nil, fmt.Errorf("limit=%d", request.Limit)
+	}
+	f.calls = append(f.calls, request.Pts)
+	if len(f.calls) == 1 {
+		return &tg.UpdatesChannelDifference{Pts: 20, Final: false}, nil
+	}
+	return &tg.UpdatesChannelDifference{Pts: 30, Final: true}, nil
+}
+
+func TestResolveRecoveryPtsWaitsForFinalDifference(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Reader.Close()
+	defer db.Writer.Close()
+	state := &UpdateState{Writer: db.Writer, Reader: db.Reader, AccountID: "one"}
+	if err = state.SetChannelPts(ctx, 7, 42, 10); err != nil {
+		t.Fatal(err)
+	}
+	fixture := new(differenceFixture)
+	pts, err := resolveRecoveryPts(ctx, fixture, 7, 42, 99, state)
+	if err != nil || pts != 30 {
+		t.Fatalf("resolved pts=%d calls=%v err=%v", pts, fixture.calls, err)
+	}
+	if len(fixture.calls) != 2 || fixture.calls[0] != 10 || fixture.calls[1] != 20 {
+		t.Fatalf("difference cursors=%v", fixture.calls)
+	}
+}
+
+type zeroDifferenceFixture struct{}
+
+func (zeroDifferenceFixture) UpdatesGetChannelDifference(context.Context, *tg.UpdatesGetChannelDifferenceRequest) (tg.UpdatesChannelDifferenceClass, error) {
+	return &tg.UpdatesChannelDifference{Final: true}, nil
+}
+
+func TestResolveRecoveryPtsRejectsZero(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Reader.Close()
+	defer db.Writer.Close()
+	state := &UpdateState{Writer: db.Writer, Reader: db.Reader, AccountID: "one"}
+	if _, err = resolveRecoveryPts(ctx, zeroDifferenceFixture{}, 7, 42, 99, state); err == nil {
+		t.Fatal("zero recovery cursor was accepted")
+	}
+}
+
 func TestRecoveryMarkerCompletesOnlyAfterHistorySink(t *testing.T) {
 	ctx := context.Background()
 	db, err := store.Open(ctx, t.TempDir())
@@ -50,6 +135,9 @@ func TestRecoveryMarkerCompletesOnlyAfterHistorySink(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = state.RecordRecovery(ctx, 7, 42, 20); err != nil {
+		t.Fatal(err)
+	}
+	if err = state.RecordRecovery(ctx, 0, 42, 0); err != nil {
 		t.Fatal(err)
 	}
 	records, err := state.PendingRecovery(ctx)

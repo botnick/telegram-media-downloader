@@ -150,6 +150,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("POST /api/cluster/pairing-code", a.requireAdmin(http.HandlerFunc(a.handlePairingCode)))
 	registerMonitorRoutes(mux, a)
 	registerAccountRoutes(mux, a)
+	registerDialogRoutes(mux, a)
 	registerGalleryRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
