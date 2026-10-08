@@ -282,3 +282,29 @@ func TestJobStatusAndCancelRoutes(t *testing.T) {
 	}
 	<-job.Done
 }
+
+func TestBackupAndPairingRoutes(t *testing.T) {
+	a, err := New(context.Background(), Config{DataDir: t.TempDir(), Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupReq := httptest.NewRequest(http.MethodPost, "/api/maintenance/db/backup", bytes.NewReader([]byte(`{}`)))
+	backupReq.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	backup := httptest.NewRecorder()
+	a.Handler().ServeHTTP(backup, backupReq)
+	if backup.Code != http.StatusOK {
+		t.Fatalf("backup status = %d body=%s", backup.Code, backup.Body.String())
+	}
+	pairReq := httptest.NewRequest(http.MethodPost, "/api/cluster/pairing-code", bytes.NewReader([]byte(`{}`)))
+	pairReq.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	pair := httptest.NewRecorder()
+	a.Handler().ServeHTTP(pair, pairReq)
+	if pair.Code != http.StatusOK || !strings.Contains(pair.Body.String(), `"code"`) {
+		t.Fatalf("pairing status = %d body=%s", pair.Code, pair.Body.String())
+	}
+}

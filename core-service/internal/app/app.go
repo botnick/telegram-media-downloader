@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/auth"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/backup"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/cluster"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/dbread"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/jobs"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/store"
@@ -38,6 +40,8 @@ type App struct {
 	read     *dbread.Handler
 	config   auth.ConfigStore
 	jobs     *jobs.Tracker
+	dataDir  string
+	pairing  *cluster.PairingStore
 	handler  http.Handler
 }
 
@@ -68,7 +72,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		ttl = 30 * 24 * time.Hour
 	}
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
-	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker()}
+	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -97,6 +101,8 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("GET /api/jobs", a.requireSession(http.HandlerFunc(a.handleJobs)))
 	mux.Handle("GET /api/jobs/{id}", a.requireSession(http.HandlerFunc(a.handleJob)))
 	mux.Handle("POST /api/jobs/{id}/cancel", a.requireAdmin(http.HandlerFunc(a.handleJobCancel)))
+	mux.Handle("POST /api/maintenance/db/backup", a.requireAdmin(http.HandlerFunc(a.handleBackup)))
+	mux.Handle("POST /api/cluster/pairing-code", a.requireAdmin(http.HandlerFunc(a.handlePairingCode)))
 	registerReadRoutes(mux, read, a.requireSession)
 	mux.HandleFunc("GET /ws", a.handleWebSocket)
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -372,6 +378,24 @@ func (a *App) handleJobCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "cancelled": true})
+}
+
+func (a *App) handleBackup(w http.ResponseWriter, r *http.Request) {
+	result, err := backup.Snapshot(r.Context(), a.db.Writer, filepath.Join(a.dataDir, "backups"), "manual")
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "backup": result})
+}
+
+func (a *App) handlePairingCode(w http.ResponseWriter, _ *http.Request) {
+	code, err := a.pairing.Issue("local")
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": code, "expiresInSec": 600})
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any) error {
