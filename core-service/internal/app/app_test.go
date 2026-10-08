@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -146,4 +147,138 @@ func TestEveryReadRouteIsSessionGated(t *testing.T) {
 			t.Errorf("%s status = %d, want %d", path, rr.Code, http.StatusUnauthorized)
 		}
 	}
+}
+
+func TestAuthSetupLoginAndLogout(t *testing.T) {
+	a, err := New(context.Background(), Config{DataDir: t.TempDir(), Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	setupBody, _ := json.Marshal(map[string]string{"password": "correct horse"})
+	setupReq := httptest.NewRequest(http.MethodPost, "/api/auth/setup", bytes.NewReader(setupBody))
+	setupReq.RemoteAddr = "127.0.0.1:1234"
+	setup := httptest.NewRecorder()
+	a.Handler().ServeHTTP(setup, setupReq)
+	if setup.Code != http.StatusOK {
+		t.Fatalf("setup status = %d body=%s", setup.Code, setup.Body.String())
+	}
+	cookie := setup.Result().Cookies()[0]
+	check := httptest.NewRequest(http.MethodGet, "/api/auth_check", nil)
+	check.AddCookie(cookie)
+	checked := httptest.NewRecorder()
+	a.Handler().ServeHTTP(checked, check)
+	if checked.Code != http.StatusOK || !strings.Contains(checked.Body.String(), `"role":"admin"`) {
+		t.Fatalf("auth check = %d %s", checked.Code, checked.Body.String())
+	}
+	logout := httptest.NewRequest(http.MethodPost, "/api/logout", nil)
+	logout.AddCookie(cookie)
+	loggedOut := httptest.NewRecorder()
+	a.Handler().ServeHTTP(loggedOut, logout)
+	if loggedOut.Code != http.StatusOK {
+		t.Fatalf("logout status = %d", loggedOut.Code)
+	}
+	loginBody, _ := json.Marshal(map[string]string{"password": "correct horse"})
+	login := httptest.NewRecorder()
+	a.Handler().ServeHTTP(login, httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewReader(loginBody)))
+	if login.Code != http.StatusOK {
+		t.Fatalf("login status = %d body=%s", login.Code, login.Body.String())
+	}
+}
+
+func TestPinMutationRunsThroughWriterAndBroadcasts(t *testing.T) {
+	a, err := New(context.Background(), Config{DataDir: t.TempDir(), Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if _, err := a.db.Writer.Exec(`INSERT INTO downloads(group_id, message_id, file_name, pinned) VALUES ('-1', 1, 'a.jpg', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wsClient := a.hub.Add("admin")
+	defer a.hub.Remove(wsClient)
+	body, _ := json.Marshal(map[string]any{"pinned": true})
+	req := httptest.NewRequest(http.MethodPost, "/api/downloads/1/pin", bytes.NewReader(body))
+	req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	rr := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("pin status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var pinned int
+	if err := a.db.Writer.QueryRow(`SELECT pinned FROM downloads WHERE id=1`).Scan(&pinned); err != nil {
+		t.Fatal(err)
+	}
+	if pinned != 1 {
+		t.Fatalf("pinned value = %d", pinned)
+	}
+	select {
+	case event := <-wsClient.Events():
+		if event.Type != "download_pinned" {
+			t.Fatalf("event type = %q", event.Type)
+		}
+	default:
+		t.Fatal("pin event was not broadcast")
+	}
+}
+
+func TestGuestCannotPin(t *testing.T) {
+	a, err := New(context.Background(), Config{DataDir: t.TempDir(), Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if _, err := a.db.Writer.Exec(`INSERT INTO downloads(group_id, message_id) VALUES ('-1', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	token, err := a.sessions.Create(context.Background(), "guest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := bytes.NewBufferString(`{"pinned":true}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/downloads/1/pin", body)
+	req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	rr := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("guest pin status = %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestJobStatusAndCancelRoutes(t *testing.T) {
+	a, err := New(context.Background(), Config{DataDir: t.TempDir(), Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := a.jobs.Start(context.Background(), "maintenance", 1, func(ctx context.Context, _ func(int, string)) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/"+job.ID, nil)
+	req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	rr := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("job status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	cancel := httptest.NewRequest(http.MethodPost, "/api/jobs/"+job.ID+"/cancel", nil)
+	cancel.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	cr := httptest.NewRecorder()
+	a.Handler().ServeHTTP(cr, cancel)
+	if cr.Code != http.StatusOK {
+		t.Fatalf("job cancel = %d body=%s", cr.Code, cr.Body.String())
+	}
+	<-job.Done
 }

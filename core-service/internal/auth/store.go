@@ -58,6 +58,20 @@ func (s *SessionStore) Validate(ctx context.Context, token string) (Session, err
 }
 
 func (s *SessionStore) CookieName() string { return s.cookieName }
+
+func (s *SessionStore) Revoke(ctx context.Context, token string) error {
+	if strings.TrimSpace(token) == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM web_sessions WHERE token = ?`, token)
+	return err
+}
+
+func (s *SessionStore) RevokeAll(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM web_sessions`)
+	return err
+}
+
 func (s *SessionStore) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie(s.cookieName)
