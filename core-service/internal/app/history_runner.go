@@ -52,12 +52,13 @@ func (a *App) historyCopy(id string) (historyJob, error) {
 }
 
 func (a *App) runHistory(ctx context.Context, id string) error {
-	j, err := a.historyCopy(id)
-	if err != nil {
-		return err
-	}
 	a.monitorOp.Lock()
-	err = a.startTelegramEngine(ctx, false)
+	// A purge can remove an uninitialized job while this worker waits for
+	// monitorOp. Revalidate before opening any account clients.
+	j, err := a.historyCopy(id)
+	if err == nil {
+		err = a.startTelegramEngine(ctx, false)
+	}
 	var session *engine.MessageSession
 	if err == nil {
 		session, err = a.monitor.OpenHistory(ctx, j.accountID)
@@ -212,7 +213,7 @@ func (a *App) initializeHistory(ctx context.Context, id, accountID string, dialo
 	}
 	added := false
 	if group == nil {
-		group = map[string]any{"id": dialog.ID, "name": dialog.Name, "enabled": false, "filters": map[string]any{"photos": true, "videos": true, "files": true, "links": true, "voice": false, "gifs": false, "stickers": false}, "autoForward": map[string]any{"enabled": false, "destination": nil, "deleteAfterForward": false}, "trackUsers": map[string]any{"enabled": false, "users": []any{}}, "topics": map[string]any{"enabled": false, "ids": []any{}}}
+		group = manualGroup(dialog)
 		groups, _ := cfg["groups"].([]any)
 		cfg["groups"] = append(groups, group)
 		j.GroupID = dialog.ID
@@ -426,12 +427,12 @@ func (a *App) startHistoryDrain(restart bool) {
 			if a.ctx.Err() != nil {
 				return
 			}
-			pending, err := a.monitor.PendingManual(a.ctx)
-			if err != nil {
-				return
-			}
 			a.monitorOp.Lock()
-			if pending > 0 && (restart || a.monitor.RequireRunning() != nil) {
+			// Purge/account changes hold monitorOp while deleting queued work.
+			// Read after acquiring it; an older snapshot can reopen accounts
+			// after a successful purge has removed the last manual job.
+			pending, err := a.monitor.PendingManual(a.ctx)
+			if err == nil && pending > 0 && (restart || a.monitor.RequireRunning() != nil) {
 				err = a.startTelegramEngine(a.ctx, false)
 				restart = false
 			}

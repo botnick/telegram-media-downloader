@@ -81,17 +81,20 @@ func enqueueWork(ctx context.Context, db queueWriter, accountID string, target T
 	err = db.QueryRowContext(ctx, `INSERT INTO tgdl_work(account_id,group_id,group_name,message_id,version,source_pts,identity,media_type,file_name,file_size,body,created_at,updated_at,origin)
  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(group_id,message_id) DO UPDATE SET
- account_id=excluded.account_id,group_name=excluded.group_name,version=excluded.version,source_pts=excluded.source_pts,identity=excluded.identity,
+ account_id=excluded.account_id,group_name=excluded.group_name,version=excluded.version,
+ source_pts=CASE WHEN excluded.version=tgdl_work.version AND excluded.identity=tgdl_work.identity AND (? OR excluded.account_id=tgdl_work.account_id)
+ THEN MAX(tgdl_work.source_pts,excluded.source_pts) ELSE excluded.source_pts END,identity=excluded.identity,
  media_type=excluded.media_type,file_name=excluded.file_name,file_size=excluded.file_size,body=excluded.body,
  generation=tgdl_work.generation+1,attempts=0,retry_at=0,error=NULL,refresh_required=0,updated_at=excluded.updated_at,
- origin=CASE WHEN tgdl_work.origin<>'live' THEN tgdl_work.origin ELSE excluded.origin END,
+ origin=CASE WHEN excluded.origin='url' THEN 'url' WHEN tgdl_work.origin<>'live' THEN tgdl_work.origin ELSE excluded.origin END,
  status=CASE WHEN tgdl_work.status='processing' THEN 'processing' ELSE 'pending' END
  WHERE excluded.version>tgdl_work.version OR (excluded.version=tgdl_work.version AND excluded.identity<>tgdl_work.identity
  AND excluded.source_pts>tgdl_work.source_pts AND (? OR excluded.account_id=tgdl_work.account_id))
  OR (excluded.origin<>'live' AND excluded.version=tgdl_work.version AND excluded.identity=tgdl_work.identity
- AND tgdl_work.origin='live' AND tgdl_work.status='pending')
+ AND ((tgdl_work.origin='live' AND tgdl_work.status='pending')
+ OR (excluded.origin='url' AND tgdl_work.origin<>'url' AND tgdl_work.status IN ('pending','processing'))))
  OR (? AND excluded.version=tgdl_work.version AND excluded.identity=tgdl_work.identity AND tgdl_work.status IN ('completed','skipped','failed'))
- RETURNING id`, accountID, target.ID, target.Name, media.MessageID, version, pts, media.Identity.Key(), media.Type, media.Name, media.Identity.Size, buffer.Buf, now, now, origin, channel, verifyExisting).Scan(&id)
+ RETURNING id`, accountID, target.ID, target.Name, media.MessageID, version, pts, media.Identity.Key(), media.Type, media.Name, media.Identity.Size, buffer.Buf, now, now, origin, channel, channel, verifyExisting).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A repeated identity can still carry a newer ordering watermark. Keep
 		// it without requeueing, otherwise an intermediate delayed edit could

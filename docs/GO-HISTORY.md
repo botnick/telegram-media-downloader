@@ -89,7 +89,8 @@ Protocol references: [messages.getHistory](https://core.telegram.org/method/mess
 [Telegram pagination](https://core.telegram.org/api/offsets), and
 [gotd v0.115.0](https://github.com/gotd/td/tree/v0.115.0).
 
-The full frozen HTTP/WebSocket run now passes 213/324 cases (22/36 files).
+At the history checkpoint, the full frozen HTTP/WebSocket run passed 213/324
+cases (22/36 files); see [migration status](GO-MIGRATION-STATUS.md) for the latest run.
 The monitor file improves from 2/8 to 5/8; its remaining failures belong to
 resync/restart maintenance, not the three history contract cases. Full Go race
 tests and vet pass. Focused lifecycle regressions also pass after the final
@@ -106,7 +107,8 @@ measurement or comparison with the former runtime. Reproduce with:
 go test ./internal/engine -run '^$' -bench '^BenchmarkAtomicHistoryEnqueue$' -benchtime=1000x
 ```
 
-Still required: direct Telegram URL jobs, text-link extraction/export parity,
+Direct message links now use the same pool and queue; see [URL downloads](GO-URL-DOWNLOADS.md).
+Still required: text-link extraction/export parity,
 broader account routing/proxies, live Telegram/browser verification, and the
 remaining migration domains. History support alone does not make the Go server
 a complete replacement for the released application.

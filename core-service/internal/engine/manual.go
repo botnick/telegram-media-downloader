@@ -37,7 +37,8 @@ type MessageSession struct {
 	AccountID  string
 	controller *Controller
 	run        *running
-	source     historySource
+	source     recoverySource
+	origin     string
 	ctx        context.Context
 	cancel     context.CancelFunc
 	stop       func() bool
@@ -45,6 +46,18 @@ type MessageSession struct {
 }
 
 func (c *Controller) OpenHistory(ctx context.Context, accountID string) (*MessageSession, error) {
+	return c.openMessages(ctx, accountID, "history")
+}
+
+func (c *Controller) OpenURL(ctx context.Context, accountID string) (*MessageSession, error) {
+	return c.openMessages(ctx, accountID, "url")
+}
+
+type messageSource interface {
+	ReadMessage(context.Context, telegram.Dialog, int) (*telegram.RefreshedMessage, error)
+}
+
+func (c *Controller) openMessages(ctx context.Context, accountID, origin string) (*MessageSession, error) {
 	c.opMu.Lock()
 	defer c.opMu.Unlock()
 	run, err := c.queueRun()
@@ -62,12 +75,19 @@ func (c *Controller) OpenHistory(ctx context.Context, accountID string) (*Messag
 		}
 		accountID = ids[0]
 	}
-	source, ok := run.accounts[accountID].(historySource)
+	source, ok := run.accounts[accountID].(recoverySource)
 	if !ok {
-		return nil, fmt.Errorf("account %s cannot read Telegram history", accountID)
+		return nil, fmt.Errorf("account %s cannot resolve Telegram messages", accountID)
+	}
+	if origin == "history" {
+		if _, ok := source.(historySource); !ok {
+			return nil, fmt.Errorf("account %s cannot read Telegram history", accountID)
+		}
+	} else if _, ok := source.(messageSource); !ok {
+		return nil, fmt.Errorf("account %s cannot read Telegram messages", accountID)
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	s := &MessageSession{AccountID: accountID, controller: c, run: run, source: source, ctx: ctx, cancel: cancel, stop: context.AfterFunc(run.ctx, cancel)}
+	s := &MessageSession{AccountID: accountID, controller: c, run: run, source: source, origin: origin, ctx: ctx, cancel: cancel, stop: context.AfterFunc(run.ctx, cancel)}
 	run.jobUsers.Add(1)
 	return s, nil
 }
@@ -112,10 +132,26 @@ func (s *MessageSession) Page(dialog telegram.Dialog, request telegram.HistoryRe
 	}
 	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
 	defer cancel()
-	return s.source.HistoryPage(ctx, dialog, request)
+	source, ok := s.source.(historySource)
+	if !ok {
+		return telegram.HistoryPage{}, errors.New("account cannot read history")
+	}
+	return source.HistoryPage(ctx, dialog, request)
 }
 
-// QueueTx makes the caller's cursor checkpoint atomic with queue acceptance.
+func (s *MessageSession) Read(dialog telegram.Dialog, id int) (*telegram.RefreshedMessage, error) {
+	if err := s.ctx.Err(); err != nil {
+		return nil, err
+	}
+	source, ok := s.source.(messageSource)
+	if !ok {
+		return nil, errors.New("account cannot read messages")
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
+	return source.ReadMessage(ctx, dialog, id)
+}
+
 func (s *MessageSession) Filter(ctx context.Context, message *tg.Message, entities *tg.Updates) (Target, bool, error) {
 	if err := s.ctx.Err(); err != nil {
 		return Target{}, false, err
@@ -125,14 +161,19 @@ func (s *MessageSession) Filter(ctx context.Context, message *tg.Message, entiti
 	} else if err != nil {
 		return Target{}, false, err
 	}
-	return s.controller.filter(WithOrigin(ctx, "history"), s.AccountID, message, entities)
+	return s.controller.filter(WithOrigin(ctx, s.origin), s.AccountID, message, entities)
 }
 
-func (s *MessageSession) QueueTx(ctx context.Context, tx *sql.Tx, target Target, message *tg.Message, repair bool) (int64, bool, error) {
+// QueueTx makes the caller's config/cursor checkpoint atomic with acceptance.
+func (s *MessageSession) QueueTx(ctx context.Context, tx *sql.Tx, target Target, message *tg.Message, repair bool, pts ...int) (int64, bool, error) {
 	if err := s.ctx.Err(); err != nil {
 		return 0, false, err
 	}
-	return enqueueWork(ctx, tx, s.AccountID, target, message, 0, "history", repair)
+	watermark := 0
+	if len(pts) > 0 {
+		watermark = pts[0]
+	}
+	return enqueueWork(ctx, tx, s.AccountID, target, message, watermark, s.origin, repair)
 }
 
 func (s *MessageSession) Wake(id int64) {

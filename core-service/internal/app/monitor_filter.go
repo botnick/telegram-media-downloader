@@ -18,6 +18,10 @@ func (a *App) monitorFilter(ctx context.Context, accountID string, message *tg.M
 	if err != nil {
 		return engine.Target{}, false, err
 	}
+	return a.monitorFilterConfig(ctx, cfg, accountID, message, updates)
+}
+
+func (a *App) monitorFilterConfig(ctx context.Context, cfg map[string]any, accountID string, message *tg.Message, updates tg.UpdatesClass) (engine.Target, bool, error) {
 	media, err := telegram.MessageAttachment(message)
 	if err != nil {
 		return engine.Target{}, false, err
@@ -50,7 +54,7 @@ func (a *App) monitorFilter(ctx context.Context, accountID string, message *tg.M
 			}
 		}
 	}
-	if group == nil || (group["enabled"] != true && engine.Origin(ctx) != "history") || group["suspended"] == true {
+	if group == nil || (group["enabled"] != true && engine.Origin(ctx) != "history" && engine.Origin(ctx) != "url") || group["suspended"] == true {
 		return engine.Target{}, false, nil
 	}
 	if pin := toString(group["monitorAccount"]); pin != "" && pin != accountID {
@@ -71,6 +75,11 @@ func (a *App) monitorFilter(ctx context.Context, accountID string, message *tg.M
 		if self != peer {
 			return engine.Target{}, false, nil
 		}
+	}
+	// An explicit message link selects its media regardless of subscription
+	// filters. Account pinning, suspension and peer ownership still apply.
+	if engine.Origin(ctx) == "url" {
+		return engine.Target{ID: toString(group["id"]), Name: toString(group["name"])}, true, nil
 	}
 	filters, _ := group["filters"].(map[string]any)
 	key := media.FilterKey()

@@ -282,6 +282,9 @@ func (a *App) runPurge(ctx context.Context, p purgeRecord, recovering bool) (run
 }
 
 func (a *App) runPurgeLocked(ctx context.Context, p purgeRecord, recovering bool) (runErr error) {
+	a.purgeMu.Lock()
+	a.purgeEpoch++
+	a.purgeMu.Unlock()
 	if recovering {
 		p.Status["running"], p.Status["error"], p.Status["finishedAt"] = true, nil, 0
 	}

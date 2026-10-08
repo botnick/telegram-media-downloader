@@ -103,6 +103,43 @@ func TestManualQueueSharesDedupPriorityAndAtomicCheckpoints(t *testing.T) {
 func testMessage(id, edit int, media int64) *tg.Message {
 	return &tg.Message{ID: id, Date: 1, EditDate: edit, PeerID: &tg.PeerChannel{ChannelID: 42}, Media: &tg.MessageMediaDocument{Document: &tg.Document{ID: media, Size: 4, DCID: 2}}}
 }
+
+func TestURLPriorityPromotesHistoryAndPreservesOrderingWatermark(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for _, id := range []int{10, 11} {
+		if _, _, err := enqueueWork(ctx, s.writer, "one", Target{}, testMessage(id, 1, int64(id)), 99, "history"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, accepted, err := enqueueWork(ctx, s.writer, "two", Target{}, testMessage(11, 1, 11), 0, "url", true); err != nil || !accepted {
+		t.Fatalf("URL did not promote history: %t %v", accepted, err)
+	}
+	var pts int
+	if err := s.reader.QueryRow(`SELECT source_pts FROM tgdl_work WHERE message_id=11`).Scan(&pts); err != nil || pts != 99 {
+		t.Fatalf("promotion lost ordering watermark: %d %v", pts, err)
+	}
+	if _, accepted, err := enqueueWork(ctx, s.writer, "two", Target{}, testMessage(11, 1, 12), 98, "url", true); err != nil || accepted {
+		t.Fatalf("stale URL reverted media: %t %v", accepted, err)
+	}
+	if _, accepted, err := enqueueWork(ctx, s.writer, "two", Target{}, testMessage(11, 1, 13), 100, "url", true); err != nil || !accepted {
+		t.Fatalf("fresh same-second URL edit lost: %t %v", accepted, err)
+	}
+	w, err := s.Claim(ctx, []string{"one", "two"}, time.Now(), true)
+	if err != nil || w == nil || w.MessageID != 11 || w.Origin != "url" || w.AccountID != "two" {
+		t.Fatalf("URL priority/account lost: %+v %v", w, err)
+	}
+	if err = s.Finish(ctx, w, nil, false, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, accepted, err := enqueueWork(ctx, s.writer, "two", Target{}, testMessage(11, 1, 13), 100, "history", true); err != nil || !accepted {
+		t.Fatalf("rescan did not verify accepted URL: %t %v", accepted, err)
+	}
+	w, err = s.Claim(ctx, []string{"one", "two"}, time.Now(), true)
+	if err != nil || w == nil || w.MessageID != 11 || w.Origin != "url" {
+		t.Fatalf("rescan demoted explicit URL: %+v %v", w, err)
+	}
+}
 func TestWorkClaimsSurviveRestartAndKeepLatestEdit(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

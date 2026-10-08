@@ -76,6 +76,7 @@ type App struct {
 	dedupClosed        bool
 	mediaMu            sync.RWMutex
 	purgeMu            sync.Mutex
+	purgeEpoch         uint64 // guarded by purgeMu; invalidates unresolved URL requests
 	purgeWG            sync.WaitGroup
 	purgeClosed        bool
 	purgeResume        bool
@@ -196,6 +197,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("POST /api/cluster/pairing-code", a.requireAdmin(http.HandlerFunc(a.handlePairingCode)))
 	registerMonitorRoutes(mux, a)
 	registerHistoryRoutes(mux, a)
+	registerURLRoutes(mux, a)
 	registerQueueRoutes(mux, a)
 	registerAccountRoutes(mux, a)
 	registerDialogRoutes(mux, a)

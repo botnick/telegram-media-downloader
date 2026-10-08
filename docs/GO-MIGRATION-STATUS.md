@@ -11,8 +11,8 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the Go executable passes **213 of 324
-  tests**, with **22 of 36 files passing**. The remaining **111 failed cases in
+- The latest full black-box run against the Go executable passes **214 of 324
+  tests**, with **22 of 36 files passing**. The remaining **110 failed cases in
   14 files** are still release blockers, not waived expectations. These are
   fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
 - Passing domains include accounts, authentication, shares, queue controls,
@@ -89,9 +89,9 @@ functionality. Do not deploy this branch over a working library yet.
 - Linux process smoke check: HTTP health → SIGTERM exit 0 → reopen the same data
   directory → SIGTERM exit 0. Linux, Windows amd64 and macOS arm64 server builds
   pass; Windows/macOS binaries were not run natively.
-- The two basic monitor control contract cases matched their frozen responses.
-  The partial contract command still exits nonzero because the harness requires
-  all history/maintenance entries; **the complete monitor suite has not passed**.
+- The monitor contract file passes 5/8 cases, including all three history cases.
+  Resync/restart maintenance remains incomplete; **the complete monitor suite
+  has not passed**.
 
 Native account management now runs through Go: filesystem account discovery,
 encrypted phone/code/2FA login, bounded cancellation and expiry, durable add and
@@ -121,8 +121,18 @@ This repairs automatic channel-gap recovery. Public history start, status,
 cancellation, deletion and restart resumption now also run through the shared
 Go accounts and queue. Jobs-only runs do not enable live subscriptions; their
 cursor checkpoints commit with accepted work. Rescan verifies existing bytes
-and repairs missing files. Direct URL jobs and text-link extraction/export
-remain incomplete. See [history behavior and evidence](GO-HISTORY.md).
+and repairs missing files. Text-link extraction/export remains incomplete.
+See [history behavior and evidence](GO-HISTORY.md).
+
+Direct message URL downloads now resolve fresh messages through the shared Go
+account pool and commit explicit work into its durable queue. They work with
+live monitoring disabled, preserve account pins, check subscription-independent
+suspension/ownership rules, and reuse or repair existing bytes through the same
+dedup library. HTTP/SQLite/filesystem fixtures verify restart, rollback, purge
+cancellation and per-account transport. Strict message-link parsing corrects
+legacy private-ID conversion and rejects ambiguous message IDs. See [URL scope,
+protocol references and validation](GO-URL-DOWNLOADS.md). Album/comment expansion
+and live network/browser E2E remain outside the verified boundary.
 
 Media subscription filters now use the UI's `files` key and distinguish voice
 messages from music using Telegram's audio `voice` attribute. Both remain
@@ -189,7 +199,7 @@ migration; the current source tree is not yet free of Node dependencies.
 
 ## Required before release
 
-- Validate native Telegram login/account management and history on a real account; complete URL jobs,
+- Validate native Telegram login/account management, history and URL jobs on a real account; complete
   account-wide oversized-gap repair, account routing/proxies, stories and
   forwarding. Channel history gaps are repaired natively; an unresolved global
   or incomplete marker still prevents restart and must never be cleared merely

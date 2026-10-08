@@ -45,6 +45,9 @@ Useful commands:
 - `/api/history` runs native durable backfills using the shared account/queue
   engine, including jobs-only operation, cancellation and restart resumption.
   See [history limits, semantics and validation](../docs/GO-HISTORY.md).
+- `/api/download/url` reads fresh Telegram messages through the same account
+  pool and persists explicit URL work before acknowledgement, including when
+  live monitoring is off. See [link behavior and validation](../docs/GO-URL-DOWNLOADS.md).
 
 ## Data safety
 
@@ -80,8 +83,9 @@ SIGINT/SIGTERM stops HTTP acceptance, joins workers and closes browser sockets.
 Telegram cursors are stored per account/user/channel. Difference payloads are
 durably accepted before gotd can advance a cursor; persistence failures latch
 account shutdown. Oversized update gaps preserve a history-recovery marker and
-prevent restart until repaired. Automatic history repair, login, full queue
-controls, account routing/proxies and live Telegram E2E remain release work.
+prevent restart until repaired. Channel-gap repair, account login and durable
+queue controls are implemented. Global account-wide gap repair, complete queue
+policy, account routing/proxies and live Telegram E2E remain release work.
 Tests use injected accounts and actual gotd update processing with fake RPCs.
 See the [migration status](../docs/GO-MIGRATION-STATUS.md) for remaining gates.
 

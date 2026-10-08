@@ -16,6 +16,8 @@ type messageAPI interface {
 type RefreshedMessage struct {
 	Message  *tg.Message
 	Entities *tg.Updates
+	PTS      int
+	Dialog   *Dialog
 }
 
 func (a *Account) RefreshMessage(ctx context.Context, message *tg.Message) (*RefreshedMessage, error) {
