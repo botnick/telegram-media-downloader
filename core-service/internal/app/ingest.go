@@ -15,6 +15,11 @@ func (a *App) IngestTelegram(ctx context.Context, message *tg.Message, groupName
 	return a.ingestTelegram(ctx, message, "", groupName, "", transport)
 }
 func (a *App) ingestTelegram(ctx context.Context, message *tg.Message, groupID, groupName, accountID string, transport telegram.MediaDownloader) (download.Record, error) {
+	a.mediaMu.RLock()
+	defer a.mediaMu.RUnlock()
+	if err := a.mediaWritable(ctx); err != nil {
+		return download.Record{}, err
+	}
 	attachment, err := telegram.MessageAttachment(message)
 	if err != nil {
 		return download.Record{}, err

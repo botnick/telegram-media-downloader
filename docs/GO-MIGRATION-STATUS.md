@@ -11,8 +11,8 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the Go executable passes **197 of 324
-  tests**, with **22 of 36 files passing**. The remaining **127 failed cases in
+- The latest full black-box run against the Go executable passes **203 of 324
+  tests**, with **22 of 36 files passing**. The remaining **121 failed cases in
   14 files** are still release blockers, not waived expectations. These are
   fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
 - Passing domains include accounts, authentication, shares, queue controls,
@@ -36,6 +36,13 @@ functionality. Do not deploy this branch over a working library yet.
   retains progress/results and joins before database shutdown. Deletions reuse
   the ingestion outbox for durable thumbnail/seekbar cleanup. Cached seekbar
   metadata and sprites are served through directory-confined Go handlers.
+- Group/file purges and factory reset now have durable Go jobs with transactional
+  catalog/config/outbox changes, restart recovery and monitor/maintenance
+  coordination. Native tests cover rollback, shared files, symlinks, active
+  transfers and prevention of reindex resurrection. Two frozen purge scenarios
+  differ because the new implementation fixes orphaned files, incorrect file
+  counts and stale access records; the unchanged legacy suite passes 6/8.
+  See [native purge behavior and verification](GO-PURGE.md).
 - Native Telegram session storage uses authenticated encryption and atomic
   replacement. Tests cover reopening, wrong secrets, tampering, cancellation,
   private permissions, import preservation and corrupt-state rejection. This

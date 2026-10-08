@@ -118,6 +118,8 @@ func (a *App) handleFaststartStatus(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *App) handleFaststartScan(w http.ResponseWriter, r *http.Request) {
+	a.mediaMu.RLock()
+	defer a.mediaMu.RUnlock()
 	started := time.Now()
 	a.faststartMu.Lock()
 	previousAttempts, _ := a.faststartStatus["attempts"].(int)
@@ -130,7 +132,7 @@ func (a *App) handleFaststartScan(w http.ResponseWriter, r *http.Request) {
 	status["running"] = true
 	status["stage"] = "scanning"
 	status["startedAt"] = started.UnixMilli()
-	a.faststartStatus = status
+	a.faststartStatus = cloneConfigValue(status).(map[string]any)
 	a.faststartMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "faststart_progress", Flat: true, Payload: map[string]any{"total": len(rows)}})
 	roots, _ := hash.NewRoots([]string{filepath.Join(a.dataDir, "downloads")})
@@ -176,7 +178,7 @@ func (a *App) handleFaststartScan(w http.ResponseWriter, r *http.Request) {
 	status["total"] = len(rows)
 	status["progress"] = map[string]any{"already": already, "errored": errored, "optimized": optimized, "processed": len(rows), "skipped": skipped, "stage": "done", "total": len(rows)}
 	status["result"] = result
-	a.faststartStatus = status
+	a.faststartStatus = cloneConfigValue(status).(map[string]any)
 	a.faststartLastRun = map[string]any{"already": already, "errored": errored, "finishedAt": finished.UnixMilli(), "optimized": optimized, "scanned": len(rows), "skipped": skipped}
 	a.faststartMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "faststart_done", Flat: true, Payload: map[string]any{"already": already, "durationMs": finished.Sub(started).Milliseconds(), "errored": errored, "kind": "faststart", "optimized": optimized, "scanned": len(rows), "skipped": skipped}})

@@ -74,6 +74,8 @@ func (a *App) deleteRows(r *http.Request, ids []int64, paths []string) (int64, e
 }
 
 func (a *App) deleteByWhere(r *http.Request, where string, args ...any) (int64, error) {
+	a.mediaMu.RLock()
+	defer a.mediaMu.RUnlock()
 	tx, err := a.db.Writer.BeginTx(r.Context(), nil)
 	if err != nil {
 		return 0, err

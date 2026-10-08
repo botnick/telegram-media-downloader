@@ -53,3 +53,6 @@ CREATE TABLE IF NOT EXISTS tgdl_update_recovery_state (
 CREATE TABLE IF NOT EXISTS tgdl_account_ops (
  id TEXT PRIMARY KEY NOT NULL,payload TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tgdl_purge_jobs (
+ id TEXT PRIMARY KEY NOT NULL,payload TEXT NOT NULL
+);

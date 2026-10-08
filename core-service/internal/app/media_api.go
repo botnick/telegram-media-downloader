@@ -201,6 +201,12 @@ func (a *App) handleClusterFile(w http.ResponseWriter, r *http.Request, rel stri
 }
 
 func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
+	a.mediaMu.RLock()
+	defer a.mediaMu.RUnlock()
+	if err := a.mediaWritable(r.Context()); err != nil {
+		writeJSONError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	idText := strings.TrimSpace(r.PathValue("id"))
 	id, err := strconv.ParseInt(idText, 10, 64)
 	if err != nil || id <= 0 || idText == "" {

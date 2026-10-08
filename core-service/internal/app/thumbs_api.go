@@ -146,20 +146,30 @@ func (a *App) handleThumbBuild(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.thumbBuildCancel = cancel
+	a.thumbBuildStatus["running"] = true
 	a.thumbMu.Unlock()
-	go a.runThumbBuild(ctx, kind)
+	if !a.launchMaintenance(func() { a.runThumbBuild(ctx, kind) }) {
+		writeJSONError(w, http.StatusServiceUnavailable, "server is stopping")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "started": true, "kind": kind})
 }
 
 func (a *App) runThumbBuild(ctx context.Context, kind string) {
+	a.mediaMu.RLock()
+	defer a.mediaMu.RUnlock()
 	started := time.Now()
 	a.thumbMu.Lock()
 	previousAttempts, _ := a.thumbBuildStatus["attempts"].(int)
 	previousSuccesses, _ := a.thumbBuildStatus["successes"].(int)
 	status := thumbsIdleStatus("thumbsBuild")
 	status["attempts"], status["running"], status["stage"], status["startedAt"] = previousAttempts+1, true, "building", started.UnixMilli()
-	a.thumbBuildStatus = status
+	a.thumbBuildStatus = cloneConfigValue(status).(map[string]any)
 	a.thumbMu.Unlock()
+	if err := a.mediaWritable(ctx); err != nil {
+		a.finishThumbBuild(started, status, kind, previousSuccesses, 0, 0, 0, 0, err)
+		return
+	}
 	rows, err := a.thumbRows(ctx, kind)
 	if err != nil {
 		a.finishThumbBuild(started, status, kind, previousSuccesses, 0, 0, 0, 0, err)
@@ -167,7 +177,7 @@ func (a *App) runThumbBuild(ctx context.Context, kind string) {
 	}
 	a.thumbMu.Lock()
 	status["total"] = len(rows)
-	a.thumbBuildStatus = status
+	a.thumbBuildStatus = cloneConfigValue(status).(map[string]any)
 	a.thumbMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "thumbs_progress", Flat: true, Payload: map[string]any{"kind": kind, "processed": 0, "total": len(rows), "built": 0, "skipped": 0, "errored": 0, "stage": "building"}})
 	roots, _ := hash.NewRoots([]string{filepath.Join(a.dataDir, "downloads"), filepath.Join(a.dataDir, "thumbs")})
@@ -222,7 +232,7 @@ func (a *App) runThumbBuild(ctx context.Context, kind string) {
 			a.hub.Broadcast(ws.Event{Type: "thumbs_progress", Flat: true, Payload: map[string]any{"kind": kind, "processed": processed, "total": len(rows), "built": built, "skipped": skipped, "errored": errored, "stage": "building"}})
 		}
 	}
-	a.finishThumbBuild(started, status, kind, previousSuccesses, processed, built, skipped, errored, nil)
+	a.finishThumbBuild(started, status, kind, previousSuccesses, processed, built, skipped, errored, ctx.Err())
 }
 
 func (a *App) finishThumbBuild(started time.Time, status map[string]any, requestedKind string, previousSuccesses, processed, built, skipped, errored int, runErr error) {
@@ -234,14 +244,21 @@ func (a *App) finishThumbBuild(started time.Time, status map[string]any, request
 	}
 	status["running"], status["stage"], status["finishedAt"], status["durationMs"] = false, "done", finished.UnixMilli(), finished.Sub(started).Milliseconds()
 	status["successes"] = previousSuccesses + 1
+	if runErr != nil {
+		status["stage"], status["successes"] = "error", previousSuccesses
+	}
 	status["processed"], status["built"], status["skipped"], status["errored"], status["total"] = processed, built, skipped, errored, statusTotal(status, processed)
-	status["progress"] = map[string]any{"built": built, "errored": errored, "kind": requestedKind, "processed": processed, "skipped": skipped, "stage": "done", "total": statusTotal(status, processed)}
+	status["progress"] = map[string]any{"built": built, "errored": errored, "kind": requestedKind, "processed": processed, "skipped": skipped, "stage": status["stage"], "total": statusTotal(status, processed)}
 	status["result"] = result
 	a.thumbMu.Lock()
-	a.thumbBuildStatus = status
+	a.thumbBuildStatus = cloneConfigValue(status).(map[string]any)
 	a.thumbBuildLastRun = map[string]any{"finishedAt": finished.UnixMilli(), "kind": requestedKind, "built": built, "skipped": skipped, "errored": errored, "scanned": statusTotal(status, processed)}
 	a.thumbBuildCancel = nil
 	a.thumbMu.Unlock()
+	if runErr != nil {
+		a.hub.Broadcast(ws.Event{Type: "thumbs_done", Flat: true, Payload: map[string]any{"error": runErr.Error(), "durationMs": finished.Sub(started).Milliseconds(), "kind": "thumbsBuild"}})
+		return
+	}
 	a.hub.Broadcast(ws.Event{Type: "thumbs_done", Flat: true, Payload: map[string]any{"built": built, "durationMs": finished.Sub(started).Milliseconds(), "errored": errored, "kind": "thumbsBuild", "scanned": statusTotal(status, processed), "skipped": skipped}})
 }
 
@@ -276,13 +293,18 @@ func (a *App) handleThumbRebuild(w http.ResponseWriter, r *http.Request) {
 	previousSuccesses, _ := a.thumbRebuildStatus["successes"].(int)
 	status := thumbsIdleStatus("thumbsRebuild")
 	status["attempts"], status["successes"], status["running"], status["stage"], status["startedAt"] = previousAttempts+1, previousSuccesses, true, "rebuilding", time.Now().UnixMilli()
-	a.thumbRebuildStatus = status
+	a.thumbRebuildStatus = cloneConfigValue(status).(map[string]any)
 	a.thumbMu.Unlock()
-	go a.runThumbRebuild(kind, status, previousSuccesses)
+	if !a.launchMaintenance(func() { a.runThumbRebuild(kind, status, previousSuccesses) }) {
+		writeJSONError(w, http.StatusServiceUnavailable, "server is stopping")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "started": true, "kind": kind})
 }
 
 func (a *App) runThumbRebuild(kind string, status map[string]any, previousSuccesses int) {
+	a.mediaMu.RLock()
+	defer a.mediaMu.RUnlock()
 	started := time.Now()
 	removed := 0
 	root := filepath.Join(a.dataDir, "thumbs")
@@ -309,12 +331,18 @@ func (a *App) runThumbRebuild(kind string, status map[string]any, previousSucces
 	status["result"] = map[string]any{"kind": kind, "removed": removed}
 	status["progress"] = map[string]any{}
 	a.thumbMu.Lock()
-	a.thumbRebuildStatus = status
+	a.thumbRebuildStatus = cloneConfigValue(status).(map[string]any)
 	a.thumbMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "thumbs_rebuild_done", Flat: true, Payload: map[string]any{"durationMs": finished.Sub(started).Milliseconds(), "kind": "thumbsRebuild", "removed": removed}})
 }
 
 func (a *App) handleThumbRebuildOne(w http.ResponseWriter, r *http.Request) {
+	a.mediaMu.RLock()
+	defer a.mediaMu.RUnlock()
+	if err := a.mediaWritable(r.Context()); err != nil {
+		writeJSONError(w, http.StatusConflict, err.Error())
+		return
+	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
 		writeJSONError(w, http.StatusBadRequest, "Bad id")

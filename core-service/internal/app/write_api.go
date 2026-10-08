@@ -22,9 +22,6 @@ func registerConfigWriteRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("PUT /api/groups/{id}", a.requireAdmin(http.HandlerFunc(a.handleAPIGroupSave)))
 	mux.Handle("POST /api/downloads/bulk-delete", a.requireAdmin(http.HandlerFunc(a.handleAPIBulkDelete)))
 	mux.Handle("DELETE /api/file", a.requireAdmin(http.HandlerFunc(a.handleAPIFileDelete)))
-	mux.Handle("DELETE /api/groups/{id}/purge", a.requireAdmin(http.HandlerFunc(a.handleAPIPurgeGroup)))
-	mux.Handle("POST /api/groups/{id}/delete-files", a.requireAdmin(http.HandlerFunc(a.handleAPIPurgeGroup)))
-	mux.Handle("DELETE /api/purge/all", a.requireAdmin(http.HandlerFunc(a.handleAPIPurgeAll)))
 }
 
 func (a *App) handleAPIConfigGet(w http.ResponseWriter, r *http.Request) {
@@ -510,37 +507,4 @@ func (a *App) handleAPIFileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	a.hub.Broadcast(ws.Event{Type: "file_deleted", Flat: true, Payload: payload})
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
-}
-
-func (a *App) handleAPIPurgeGroup(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimSpace(r.PathValue("id"))
-	if id == "" {
-		writeJSONError(w, http.StatusBadRequest, "group id is required")
-		return
-	}
-	deleted, err := a.deleteByWhere(r, `group_id = ?`, id)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "purge failed")
-		return
-	}
-	a.hub.Broadcast(ws.Event{Type: "group_purged", Flat: true, Payload: map[string]any{"groupId": id, "deleted": deleted}})
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "deleted": deleted, "groupId": id})
-}
-
-func (a *App) handleAPIPurgeAll(w http.ResponseWriter, r *http.Request) {
-	body, ok := readAuthBody(w, r)
-	if !ok {
-		return
-	}
-	if body["confirm"] != "DELETE ALL" {
-		writeJSON(w, 400, map[string]any{"error": "Factory reset not confirmed: send {\"confirm\": \"DELETE ALL\"} in the request body. If you used the dashboard, reload the page and try again.", "code": "CONFIRM_REQUIRED"})
-		return
-	}
-	deleted, err := a.deleteByWhere(r, `1 = 1`)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "purge failed")
-		return
-	}
-	a.hub.Broadcast(ws.Event{Type: "purge_all", Flat: true, Payload: map[string]any{"deleted": deleted}})
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "deleted": deleted})
 }

@@ -56,9 +56,12 @@ func (a *App) handleDBIntegrity(w http.ResponseWriter, r *http.Request) {
 	status := maintenanceIdleStatus("dbIntegrity")
 	started := time.Now()
 	status["attempts"], status["running"], status["stage"], status["startedAt"] = attempts+1, true, "checking", started.UnixMilli()
-	a.dbIntegrityStatus = status
+	a.dbIntegrityStatus = cloneConfigValue(status).(map[string]any)
 	a.maintenanceMu.Unlock()
-	go a.runDBIntegrity(r.Context(), status, started, successes)
+	if !a.launchMaintenance(func() { a.runDBIntegrity(a.ctx, status, started, successes) }) {
+		writeJSONError(w, http.StatusServiceUnavailable, "server is stopping")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"started": true, "success": true})
 }
 
@@ -88,7 +91,7 @@ func (a *App) runDBIntegrity(_ context.Context, status map[string]any, started t
 		status["failures"] = 1
 	}
 	a.maintenanceMu.Lock()
-	a.dbIntegrityStatus = status
+	a.dbIntegrityStatus = cloneConfigValue(status).(map[string]any)
 	a.maintenanceMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "db_integrity_done", Flat: true, Payload: map[string]any{"durationMs": finished.Sub(started).Milliseconds(), "kind": "dbIntegrity", "messages": messages, "ok": ok}})
 }
@@ -128,9 +131,12 @@ func (a *App) handleFilesVerify(w http.ResponseWriter, r *http.Request) {
 	status := maintenanceIdleStatus("filesVerify")
 	started := time.Now()
 	status["attempts"], status["running"], status["stage"], status["startedAt"] = attempts+1, true, "scanning", started.UnixMilli()
-	a.filesVerifyStatus = status
+	a.filesVerifyStatus = cloneConfigValue(status).(map[string]any)
 	a.maintenanceMu.Unlock()
-	go a.runFilesVerify(status, started, successes)
+	if !a.launchMaintenance(func() { a.runFilesVerify(status, started, successes) }) {
+		writeJSONError(w, http.StatusServiceUnavailable, "server is stopping")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"started": true, "success": true})
 }
 
@@ -176,7 +182,7 @@ func (a *App) runFilesVerify(status map[string]any, started time.Time, previousS
 		status["failures"] = 1
 	}
 	a.maintenanceMu.Lock()
-	a.filesVerifyStatus = status
+	a.filesVerifyStatus = cloneConfigValue(status).(map[string]any)
 	// The old dashboard summary intentionally reports removed from its
 	// persisted result, while the live status exposes pruned.
 	a.filesVerifyLastRun = map[string]any{"finishedAt": finished.UnixMilli(), "removed": 0, "scanned": total}
@@ -203,6 +209,10 @@ func (a *App) handleReindexStats(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *App) handleReindex(w http.ResponseWriter, r *http.Request) {
+	if a.purgePending() {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": errPurgePending.Error(), "code": "PURGE_IN_PROGRESS"})
+		return
+	}
 	a.maintenanceMu.Lock()
 	if a.reindexStatus["running"] == true {
 		a.maintenanceMu.Unlock()
@@ -214,13 +224,28 @@ func (a *App) handleReindex(w http.ResponseWriter, r *http.Request) {
 	status := maintenanceIdleStatus("reindex")
 	started := time.Now()
 	status["attempts"], status["running"], status["stage"], status["startedAt"] = attempts+1, true, "walking", started.UnixMilli()
-	a.reindexStatus = status
+	a.reindexStatus = cloneConfigValue(status).(map[string]any)
 	a.maintenanceMu.Unlock()
-	go a.runReindex(a.ctx, status, started, successes)
+	if !a.launchMaintenance(func() { a.runReindex(a.ctx, status, started, successes) }) {
+		writeJSONError(w, http.StatusServiceUnavailable, "server is stopping")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "started": true})
 }
 
 func (a *App) runReindex(ctx context.Context, status map[string]any, started time.Time, previousSuccesses int) {
+	a.mediaMu.RLock()
+	defer a.mediaMu.RUnlock()
+	if err := a.mediaWritable(ctx); err != nil {
+		a.maintenanceMu.Lock()
+		status["running"], status["stage"], status["error"] = false, "error", err.Error()
+		status["finishedAt"], status["durationMs"] = time.Now().UnixMilli(), time.Since(started).Milliseconds()
+		status["failures"] = jobCount(status["failures"]) + 1
+		a.reindexStatus = cloneConfigValue(status).(map[string]any)
+		a.maintenanceMu.Unlock()
+		a.hub.Broadcast(ws.Event{Type: "reindex_done", Flat: true, Payload: map[string]any{"error": err.Error(), "kind": "reindex", "durationMs": time.Since(started).Milliseconds()}})
+		return
+	}
 	config, _ := a.config.Load(ctx)
 	groupNames := map[string]string{}
 	groupIDs := map[string]string{}
@@ -282,7 +307,7 @@ func (a *App) runReindex(ctx context.Context, status map[string]any, started tim
 	status["running"], status["stage"], status["finishedAt"], status["durationMs"], status["successes"], status["currentGroup"], status["result"] = false, "done", finished.UnixMilli(), finished.Sub(started).Milliseconds(), previousSuccesses+1, lastGroupName(status), result
 	status["progress"] = map[string]any{"added": added, "currentGroup": lastGroupName(status), "errors": errorsCount, "groups": totalGroups, "processed": processed, "scanned": scanned, "skipped": skipped, "startedAt": started.UnixMilli(), "total": totalGroups}
 	a.maintenanceMu.Lock()
-	a.reindexStatus = status
+	a.reindexStatus = cloneConfigValue(status).(map[string]any)
 	a.reindexLastRun = map[string]any{"added": added, "finishedAt": finished.UnixMilli(), "scanned": scanned}
 	a.maintenanceMu.Unlock()
 	// The disk walker emits its historical event, then the tracker emits the
@@ -387,9 +412,12 @@ func (a *App) handleDBVacuum(w http.ResponseWriter, r *http.Request) {
 	status := maintenanceIdleStatus("dbVacuum")
 	started := time.Now()
 	status["attempts"], status["running"], status["stage"], status["startedAt"] = attempts+1, true, "vacuuming", started.UnixMilli()
-	a.vacuumStatus = status
+	a.vacuumStatus = cloneConfigValue(status).(map[string]any)
 	a.maintenanceMu.Unlock()
-	go a.runDBVacuum(status, started, successes)
+	if !a.launchMaintenance(func() { a.runDBVacuum(status, started, successes) }) {
+		writeJSONError(w, http.StatusServiceUnavailable, "server is stopping")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"started": true, "success": true})
 }
 
@@ -407,7 +435,7 @@ func (a *App) runDBVacuum(status map[string]any, started time.Time, previousSucc
 	finished := time.Now()
 	status["running"], status["stage"], status["finishedAt"], status["durationMs"], status["successes"], status["result"] = false, "done", finished.UnixMilli(), finished.Sub(started).Milliseconds(), previousSuccesses+1, result
 	a.maintenanceMu.Lock()
-	a.vacuumStatus = status
+	a.vacuumStatus = cloneConfigValue(status).(map[string]any)
 	a.maintenanceMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "db_vacuum_done", Flat: true, Payload: map[string]any{"afterBytes": afterBytes, "beforeBytes": beforeBytes, "durationMs": finished.Sub(started).Milliseconds(), "kind": "dbVacuum", "reclaimedBytes": maxInt64(0, beforeBytes-afterBytes)}})
 }

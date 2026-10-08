@@ -70,6 +70,15 @@ type App struct {
 	dedupMu            sync.Mutex
 	dedupWG            sync.WaitGroup
 	dedupClosed        bool
+	mediaMu            sync.RWMutex
+	purgeMu            sync.Mutex
+	purgeWG            sync.WaitGroup
+	purgeClosed        bool
+	purgeResume        bool
+	purges             map[string]purgeRecord
+	maintenanceJobMu   sync.Mutex
+	maintenanceJobWG   sync.WaitGroup
+	maintenanceClosed  bool
 	dedupLastScan      map[string]any
 	dedupScanStatus    map[string]any
 	dedupDeleteStatus  map[string]any
@@ -191,6 +200,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerThumbRoutes(mux, a)
 	registerMaintenanceRoutes(mux, a)
 	registerSystemRoutes(mux, a)
+	registerPurgeRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
 	registerArchiveRoutes(mux, a)
@@ -201,6 +211,10 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerPublicAPIRoutes(mux, a)
 
 	a.handler = securityHeaders(a.gateway(mux))
+	if err := a.recoverPurges(ctx); err != nil {
+		a.Close()
+		return nil, fmt.Errorf("recover purge jobs: %w", err)
+	}
 	stored, err := a.config.Load(ctx)
 	if err != nil {
 		a.Close()
@@ -493,6 +507,12 @@ func (a *App) Close() error {
 		return nil
 	}
 	a.closeOnce.Do(func() {
+		a.maintenanceJobMu.Lock()
+		a.maintenanceClosed = true
+		a.maintenanceJobMu.Unlock()
+		a.purgeMu.Lock()
+		a.purgeClosed = true
+		a.purgeMu.Unlock()
 		a.dedupMu.Lock()
 		a.dedupClosed = true
 		a.dedupMu.Unlock()
@@ -509,6 +529,8 @@ func (a *App) Close() error {
 		a.groupRefreshWG.Wait()
 		a.bootWG.Wait()
 		a.dedupWG.Wait()
+		a.purgeWG.Wait()
+		a.maintenanceJobWG.Wait()
 		if a.accountWizard != nil {
 			a.closeErr = errors.Join(a.closeErr, a.accountWizard.Close())
 		}
