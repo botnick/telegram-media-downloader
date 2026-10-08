@@ -110,6 +110,30 @@ one durable completion step. Missing access hashes, incomplete markers and
 global account-wide `updates.getDifferenceTooLong` still stop startup with the
 marker intact; they are not silently treated as healthy.
 
+Channel history repair continues through short slice/channel responses instead
+of treating their length as proof of completion. Every RPC has a 30-second
+deadline. The pager validates the requested channel, skips overlapping message
+IDs, and rejects a nonadvancing cursor. Service messages and deleted-message
+placeholders advance pagination without entering the media queue. Native tests
+interrupt both a later RPC and the ingestion sink, reopen SQLite, and verify
+that the old cursor and recovery marker survive until all pages are accepted.
+This repairs automatic channel-gap recovery; the public manual history and URL
+job workflows are still incomplete.
+
+Media subscription filters now use the UI's `files` key and distinguish voice
+messages from music using Telegram's audio `voice` attribute. Both remain
+`audio` in the catalog. Images sent as documents use `photos`, GIFs use `gifs`,
+and video/animated stickers retain the opt-in `stickers` switch. A WebP without
+a sticker attribute is an image. Classification preserves the exact document
+identity and account-specific file location, including IDs above JavaScript's
+safe integer range. A native monitor integration test verifies that disabled
+files, voice messages and images never enter the queue or byte transport while
+enabled music downloads normally. These are fixture tests, not live Telegram
+or browser E2E evidence. The policy uses Telegram's
+[voice attribute](https://core.telegram.org/constructor/documentAttributeAudio)
+and [history pagination](https://core.telegram.org/api/offsets) definitions;
+see also [messages.getHistory](https://core.telegram.org/method/messages.getHistory).
+
 The native `/api/dialogs` endpoint now fans out `messages.getDialogs` across
 every running Go account, reads active and archived folders, merges duplicate
 marked peer IDs, preserves configured filters/forwarding defaults and exposes

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gotd/td/tg"
 )
@@ -19,6 +20,11 @@ type recoveryDifferenceAPI interface {
 	UpdatesGetChannelDifference(context.Context, *tg.UpdatesGetChannelDifferenceRequest) (tg.UpdatesChannelDifferenceClass, error)
 }
 
+type historyRecoveryAPI interface {
+	historyAPI
+	recoveryDifferenceAPI
+}
+
 const recoveryPageSize = 100
 const recoveryMaxPages = 1000
 const recoveryDifferenceLimit = 100
@@ -26,18 +32,22 @@ const recoveryDifferenceLimit = 100
 func (a *Account) SupportsHistoryRecovery() bool { return true }
 
 func (a *Account) recoverPending(ctx context.Context, userID int64) error {
-	records, err := a.state.PendingRecovery(ctx)
+	return recoverPendingHistory(ctx, a.API(), a.state, userID, a.handle)
+}
+
+func recoverPendingHistory(ctx context.Context, api historyRecoveryAPI, state *UpdateState, userID int64, handle func(context.Context, tg.UpdatesClass) error) error {
+	records, err := state.PendingRecovery(ctx)
 	if err != nil {
 		return err
 	}
 	for _, record := range records {
 		if record.ChannelID <= 0 {
-			return fmt.Errorf("account %s has incomplete recovery state for channel %d", a.state.AccountID, record.ChannelID)
+			return fmt.Errorf("account %s has incomplete recovery state for channel %d", state.AccountID, record.ChannelID)
 		}
 		if record.UserID != 0 && record.UserID != userID {
-			return fmt.Errorf("account %s recovery belongs to another Telegram user", a.state.AccountID)
+			return fmt.Errorf("account %s recovery belongs to another Telegram user", state.AccountID)
 		}
-		hash, found, err := a.state.GetChannelAccessHash(ctx, userID, record.ChannelID)
+		hash, found, err := state.GetChannelAccessHash(ctx, userID, record.ChannelID)
 		if err != nil {
 			return err
 		}
@@ -45,21 +55,21 @@ func (a *Account) recoverPending(ctx context.Context, userID int64) error {
 			return fmt.Errorf("channel %d access hash is missing for history recovery", record.ChannelID)
 		}
 		if record.Pts <= 0 {
-			record.Pts, err = resolveRecoveryPts(ctx, a.API(), userID, record.ChannelID, hash, a.state)
+			record.Pts, err = resolveRecoveryPts(ctx, api, userID, record.ChannelID, hash, state)
 			if err != nil {
 				return fmt.Errorf("resolve channel %d recovery cursor: %w", record.ChannelID, err)
 			}
 			if record.Pts <= 0 {
 				return fmt.Errorf("resolve channel %d recovery cursor returned %d", record.ChannelID, record.Pts)
 			}
-			if err = a.state.RecordRecovery(ctx, userID, record.ChannelID, record.Pts); err != nil {
+			if err = state.RecordRecovery(ctx, userID, record.ChannelID, record.Pts); err != nil {
 				return err
 			}
 		}
-		if err = recoverChannelHistory(ctx, a.API(), a.handle, record.ChannelID, hash); err != nil {
+		if err = recoverChannelHistory(ctx, api, handle, record.ChannelID, hash); err != nil {
 			return fmt.Errorf("recover channel %d history: %w", record.ChannelID, err)
 		}
-		if err = a.state.CompleteRecovery(ctx, RecoveryRecord{ChannelID: record.ChannelID, UserID: userID, Pts: record.Pts}); err != nil {
+		if err = state.CompleteRecovery(ctx, RecoveryRecord{ChannelID: record.ChannelID, UserID: userID, Pts: record.Pts}); err != nil {
 			return err
 		}
 	}
@@ -124,12 +134,20 @@ func recoverChannelHistory(ctx context.Context, api historyAPI, handle func(cont
 	}
 	offsetID := 0
 	for page := 0; page < recoveryMaxPages; page++ {
-		result, err := api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		result, err := api.MessagesGetHistory(callCtx, &tg.MessagesGetHistoryRequest{
 			Peer:     &tg.InputPeerChannel{ChannelID: channelID, AccessHash: accessHash},
 			OffsetID: offsetID,
 			Limit:    recoveryPageSize,
 		})
+		cancel()
 		if err != nil {
+			return err
+		}
+		if err = ctx.Err(); err != nil {
 			return err
 		}
 		messages, users, chats, err := historyMessages(result)
@@ -140,17 +158,33 @@ func recoverChannelHistory(ctx context.Context, api historyAPI, handle func(cont
 			return nil
 		}
 		minimumID := 0
+		// Validate the complete page before delivering it. A different peer or
+		// a stalled cursor must retain the recovery marker, not report success.
 		for _, raw := range messages {
 			if raw == nil || raw.GetID() <= 0 || !historyMessageBelongsToChannel(raw, channelID) {
-				continue
+				return errors.New("Telegram history response contained an invalid channel message")
 			}
 			if minimumID == 0 || raw.GetID() < minimumID {
 				minimumID = raw.GetID()
+			}
+		}
+		if offsetID > 0 && minimumID >= offsetID {
+			return fmt.Errorf("Telegram history cursor did not advance from %d", offsetID)
+		}
+		seen := make(map[int]bool, len(messages))
+		for _, raw := range messages {
+			if err = ctx.Err(); err != nil {
+				return err
+			}
+			id := raw.GetID()
+			if seen[id] || (offsetID > 0 && id >= offsetID) {
+				continue
 			}
 			message, ok := raw.(*tg.Message)
 			if !ok {
 				continue
 			}
+			seen[id] = true
 			if err = handle(ctx, &tg.Updates{
 				Updates: []tg.UpdateClass{&tg.UpdateNewChannelMessage{Message: message}},
 				Users:   users,
@@ -159,10 +193,13 @@ func recoverChannelHistory(ctx context.Context, api historyAPI, handle func(cont
 				return err
 			}
 		}
-		if minimumID == 0 {
-			return errors.New("Telegram history response contained no channel messages")
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		if len(messages) < recoveryPageSize || minimumID <= 1 || minimumID == offsetID {
+		// The complete constructor is terminal. Slice/channel responses can be
+		// short; keep paging until an empty response or the oldest possible ID.
+		_, complete := result.(*tg.MessagesMessages)
+		if complete || minimumID == 1 {
 			return nil
 		}
 		offsetID = minimumID
@@ -178,6 +215,11 @@ func historyMessageBelongsToChannel(raw tg.MessageClass, channelID int64) bool {
 	case *tg.MessageService:
 		peer = message.PeerID
 	case *tg.MessageEmpty:
+		// Empty placeholders can omit their peer. Their ID still moves the
+		// cursor within this account's explicitly requested channel.
+		if message.PeerID == nil {
+			return true
+		}
 		peer = message.PeerID
 	default:
 		return false

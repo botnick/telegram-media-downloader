@@ -73,8 +73,8 @@ func (a *App) monitorFilter(ctx context.Context, accountID string, message *tg.M
 		}
 	}
 	filters, _ := group["filters"].(map[string]any)
-	key := map[string]string{"photo": "photos", "video": "videos", "audio": "audio", "document": "documents", "sticker": "stickers", "gif": "gifs"}[media.Type]
-	if filters[key] == false || (media.Type == "sticker" && filters[key] != true) {
+	key := media.FilterKey()
+	if filters[key] == false || (key == "stickers" && filters[key] != true) {
 		return engine.Target{}, false, nil
 	}
 	users, _ := group["trackUsers"].(map[string]any)

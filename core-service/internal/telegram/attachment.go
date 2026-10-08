@@ -20,11 +20,34 @@ type Attachment struct {
 	GroupID    string
 	MessageID  int64
 	Name, Type string
+	Voice      bool
 	DC         int
 	Location   tg.InputFileLocationClass
 }
 
 var ErrNoMedia = errors.New("Telegram message has no downloadable photo or document")
+
+// FilterKey uses the public settings names. A voice message remains audio in
+// the library but has its own subscription switch; wire identity is unchanged.
+func (a Attachment) FilterKey() string {
+	switch a.Type {
+	case "photo":
+		return "photos"
+	case "video":
+		return "videos"
+	case "audio":
+		if a.Voice {
+			return "voice"
+		}
+		return "audio"
+	case "gif":
+		return "gifs"
+	case "sticker":
+		return "stickers"
+	default:
+		return "files"
+	}
+}
 
 func MessageAttachment(message *tg.Message) (Attachment, error) {
 	if message == nil || message.ID <= 0 {
@@ -59,31 +82,48 @@ func MessageAttachment(message *tg.Message) (Attachment, error) {
 		a.DC = doc.DCID
 		a.Location = doc.AsInputDocumentFileLocation()
 		a.Type = "document"
-		if strings.HasPrefix(doc.MimeType, "video/") {
+		mediaType := strings.ToLower(strings.TrimSpace(strings.SplitN(doc.MimeType, ";", 2)[0]))
+		switch {
+		case mediaType == "image/gif":
+			a.Type = "gif"
+		case mediaType == "application/x-tgsticker":
+			a.Type = "sticker"
+		case strings.HasPrefix(mediaType, "image/"):
+			a.Type = "photo"
+		case strings.HasPrefix(mediaType, "video/"):
 			a.Type = "video"
-		} else if strings.HasPrefix(doc.MimeType, "audio/") {
+		case strings.HasPrefix(mediaType, "audio/"):
 			a.Type = "audio"
 		}
-		animated, sticker := false, false
+		animated, sticker, video, audio, voice := false, false, false, false, false
 		for _, attr := range doc.Attributes {
 			switch v := attr.(type) {
 			case *tg.DocumentAttributeFilename:
 				a.Name = v.FileName
 			case *tg.DocumentAttributeVideo:
-				a.Type = "video"
+				video = true
 			case *tg.DocumentAttributeAudio:
-				a.Type = "audio"
+				audio = true
+				voice = voice || v.Voice
 			case *tg.DocumentAttributeAnimated:
 				animated = true
 			case *tg.DocumentAttributeSticker:
 				sticker = true
 			}
 		}
-		if animated {
-			a.Type = "gif"
-		}
-		if sticker {
+		// Attribute order must not change the policy. Video stickers and GIFs
+		// keep their dedicated switch even though their underlying file is video.
+		switch {
+		case sticker || a.Type == "sticker":
 			a.Type = "sticker"
+		case animated || a.Type == "gif":
+			a.Type = "gif"
+		case voice:
+			a.Type, a.Voice = "audio", true
+		case video:
+			a.Type = "video"
+		case audio:
+			a.Type = "audio"
 		}
 		if a.Name == "" {
 			ext := ".bin"
