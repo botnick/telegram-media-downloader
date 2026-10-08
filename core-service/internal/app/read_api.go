@@ -283,7 +283,7 @@ func (a *App) handleAPIGroupStats(w http.ResponseWriter, r *http.Request) {
 	var totalFiles, totalBytes int64
 	var first, last sql.NullInt64
 	var lastAt sql.NullString
-	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*), COALESCE(SUM(COALESCE(file_size,0)),0), MIN(message_id), MAX(message_id), MAX(CAST(created_at AS TEXT)) FROM downloads WHERE group_id = ?`, groupID).Scan(&totalFiles, &totalBytes, &first, &last, &lastAt); err != nil {
+	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*), COALESCE(SUM(COALESCE(file_size,0)),0), MIN(CASE WHEN file_type IS NOT 'stories' THEN message_id END), MAX(CASE WHEN file_type IS NOT 'stories' THEN message_id END), MAX(CAST(created_at AS TEXT)) FROM downloads WHERE group_id = ?`, groupID).Scan(&totalFiles, &totalBytes, &first, &last, &lastAt); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "database group stats query failed")
 		return
 	}

@@ -279,22 +279,27 @@ func manualGroup(dialog telegram.Dialog) map[string]any {
 }
 
 func (a *App) queueMessageURL(ctx context.Context, session *engine.MessageSession, dialog telegram.Dialog, fresh *telegram.RefreshedMessage, epoch uint64) (string, bool, error) {
+	name, count, err := a.queueExplicitMessages(ctx, session, dialog, []*telegram.RefreshedMessage{fresh}, epoch)
+	return name, count > 0, err
+}
+
+func (a *App) queueExplicitMessages(ctx context.Context, session *engine.MessageSession, dialog telegram.Dialog, messages []*telegram.RefreshedMessage, epoch uint64) (string, int, error) {
 	a.mediaMu.RLock()
 	defer a.mediaMu.RUnlock()
 	if err := a.mediaWritable(ctx); err != nil {
-		return "", false, err
+		return "", 0, err
 	}
 	if err := a.checkURLPurge(epoch); err != nil {
-		return "", false, err
+		return "", 0, err
 	}
 	if err := session.Err(); err != nil {
-		return "", false, err
+		return "", 0, err
 	}
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
 	cfg, err := a.config.Load(ctx)
 	if err != nil {
-		return "", false, err
+		return "", 0, err
 	}
 	group := urlGroup(cfg, dialog.ID)
 	added := group == nil
@@ -303,41 +308,57 @@ func (a *App) queueMessageURL(ctx context.Context, session *engine.MessageSessio
 		groups, _ := cfg["groups"].([]any)
 		cfg["groups"] = append(groups, group)
 	}
-	target, allowed, err := a.monitorFilterConfig(engine.WithOrigin(ctx, "url"), cfg, session.AccountID, fresh.Message, fresh.Entities)
-	if err != nil {
-		return "", false, err
+	targets := make([]engine.Target, len(messages))
+	for n, fresh := range messages {
+		target, allowed, e := a.monitorFilterConfig(engine.WithOrigin(ctx, session.Origin()), cfg, session.AccountID, fresh.Message, fresh.Entities)
+		if e != nil {
+			return "", 0, e
+		}
+		if !allowed {
+			return "", 0, errors.New("Group account, suspension or ownership prevents this download")
+		}
+		targets[n] = target
 	}
-	if !allowed {
-		return "", false, errors.New("Group account, suspension or ownership prevents this download")
+	if len(messages) == 0 {
+		return toString(group["name"]), 0, nil
 	}
-	// Serialize acceptance with the drainer's final pending-work check so it
-	// cannot exit on an older empty snapshot after this enqueue succeeds.
+	// The drainer must see acceptance and config registration as one commit.
 	a.historyMu.Lock()
 	defer a.historyMu.Unlock()
 	tx, err := a.db.Writer.BeginTx(ctx, nil)
 	if err != nil {
-		return "", false, err
+		return "", 0, err
 	}
 	defer tx.Rollback()
 	if added {
 		encoded, e := json.Marshal(cfg)
 		if e != nil {
-			return "", false, e
+			return "", 0, e
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE kv SET value=?,updated_at=? WHERE key='config'`, string(encoded), time.Now().UnixMilli()); err != nil {
-			return "", false, err
+			return "", 0, err
 		}
 	}
-	id, accepted, err := session.QueueTx(ctx, tx, target, fresh.Message, true, fresh.PTS)
-	if err != nil {
-		return "", false, err
+	ids := []int64{}
+	count := 0
+	for n, fresh := range messages {
+		id, accepted, e := session.QueueTx(ctx, tx, targets[n], fresh.Message, true, fresh.PTS)
+		if e != nil {
+			return "", 0, e
+		}
+		if accepted {
+			count++
+		}
+		ids = append(ids, id)
 	}
 	if err = tx.Commit(); err != nil {
-		return "", false, err
+		return "", 0, err
 	}
-	session.Wake(id)
+	for _, id := range ids {
+		session.Wake(id)
+	}
 	if added {
 		a.hub.Broadcast(ws.Event{Type: "config_updated", Flat: true})
 	}
-	return target.Name, accepted, nil
+	return targets[0].Name, count, nil
 }

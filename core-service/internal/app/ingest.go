@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/download"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 	"github.com/gotd/td/tg"
@@ -28,6 +29,13 @@ func (a *App) ingestTelegram(ctx context.Context, message *tg.Message, groupID, 
 		groupID = attachment.GroupID
 	}
 	item := download.Item{GroupID: groupID, GroupName: groupName, MessageID: attachment.MessageID, Name: attachment.Name, Type: attachment.Type, Identity: attachment.Identity}
+	if engine.Origin(ctx) == "stories" {
+		item.MessageID, err = telegram.StoryKey(message.ID)
+		if err != nil {
+			return download.Record{}, err
+		}
+		item.Type = "stories"
+	}
 	record, err := a.library.Ingest(ctx, item, telegram.AttachmentClient{Source: transport, Media: attachment})
 	if err != nil {
 		return record, err

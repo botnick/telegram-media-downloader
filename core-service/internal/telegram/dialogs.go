@@ -29,8 +29,8 @@ func (a *Account) RecoveryDialogs(ctx context.Context, archived bool) ([]Dialog,
 	if archived {
 		folder = 1
 	}
-	return fetchDialogPages(ctx, a.API(), -1, folder, func(ctx context.Context, chats []tg.ChatClass) error {
-		return a.state.cacheDialogHashes(ctx, a.selfID, chats)
+	return fetchDialogPages(ctx, a.API(), -1, folder, func(ctx context.Context, chats []tg.ChatClass, users []tg.UserClass) error {
+		return a.state.cacheStoryPeers(ctx, a.selfID, chats, users)
 	})
 }
 
@@ -46,8 +46,8 @@ func (a *Account) Dialogs(ctx context.Context, limit int, archived bool) ([]Dial
 	if archived {
 		folder = 1
 	}
-	return fetchDialogPages(ctx, a.API(), limit, folder, func(ctx context.Context, chats []tg.ChatClass) error {
-		return a.state.cacheDialogHashes(ctx, a.selfID, chats)
+	return fetchDialogPages(ctx, a.API(), limit, folder, func(ctx context.Context, chats []tg.ChatClass, users []tg.UserClass) error {
+		return a.state.cacheStoryPeers(ctx, a.selfID, chats, users)
 	})
 }
 
@@ -58,7 +58,7 @@ func fetchDialogs(ctx context.Context, api dialogsAPI, limit, folder int) ([]Dia
 // The requested limit is a total, not an RPC page size. Telegram can return a
 // slice even when fewer than the requested number of dialogs fit in the page.
 // Never interpret a partial or malformed page as a complete recovery index.
-func fetchDialogPages(ctx context.Context, api dialogsAPI, limit, folder int, observe func(context.Context, []tg.ChatClass) error) ([]Dialog, error) {
+func fetchDialogPages(ctx context.Context, api dialogsAPI, limit, folder int, observe func(context.Context, []tg.ChatClass, []tg.UserClass) error) ([]Dialog, error) {
 	if limit != -1 && (limit <= 0 || limit > 1000) {
 		limit = 500
 	}
@@ -97,7 +97,7 @@ func fetchDialogPages(ctx context.Context, api dialogsAPI, limit, folder int, ob
 			return nil, fmt.Errorf("unexpected Telegram dialogs response %T", result)
 		}
 		if observe != nil {
-			if err := observe(ctx, chats); err != nil {
+			if err := observe(ctx, chats, users); err != nil {
 				return nil, err
 			}
 		}

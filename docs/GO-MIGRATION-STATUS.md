@@ -11,14 +11,15 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the Go executable passes **217 of 324
-  tests**, with **23 of 36 files passing**. The remaining **107 failed cases in
-  13 files** are still release blockers, not waived expectations. These are
+- The latest full black-box run against the Go executable passes **223 of 324
+  tests**, with **24 of 36 files passing**. The remaining **101 failed cases in
+  12 files** are still release blockers, not waived expectations. These are
   fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
 - Passing domains include accounts, authentication, shares, queue controls,
   chats, downloads/groups, files/static assets, configuration, AI library reads
   and edits, dedup, deletion, thumbnails, faststart, database/file maintenance
-  and system/session maintenance. Inventory and two Go packaging/smoke fixtures
+  and system/session maintenance. Telegram-action validation and preflight
+  contracts now pass 7/7. Inventory and two Go packaging/smoke fixtures
   are also included in the totals. Normal WebSocket messages retain
   `{type,payload}`; released event families that use top-level fields remain flat.
 - The native chat-access projection, single-flight recheck job, gallery queries
@@ -137,6 +138,24 @@ legacy private-ID conversion and rejects ambiguous message IDs. See [URL scope,
 protocol references and validation](GO-URL-DOWNLOADS.md). Album/comment expansion
 and live network/browser E2E remain outside the verified boundary.
 
+Stories now use native peer/all-page reads and full-object downloads through the
+shared accounts and durable queue. Story IDs occupy a separate catalog namespace
+from messages; identified legacy story rows migrate without changing row IDs or
+files. Fresh media identities reuse dedup, stale references refresh through the
+story RPC, and accepted batches survive restart. Account-scoped user access hashes
+persist without advancing Telegram update cursors. The native proxy probe checks
+TCP reachability with bounded DNS/dialing and private-target rejection; actual
+configured proxy routing and negotiation remain unfinished. Fixture tests cover
+these workflows; see [Stories, proxy probe and validation](GO-STORIES.md).
+
+A WebSocket handshake race exposed by the full contracts is fixed: subscription
+now precedes writing HTTP 101, so an immediate browser action cannot lose its
+first event. A deterministic native test reproduces the old ordering's failure
+and passes ten race-enabled repetitions with the fix. Contract expectations and
+timing were not changed. One earlier full run also hit a test-harness port
+allocation collision; the final complete run executed all 324 tests without
+skips. Atomic port allocation remains work for the native test runner.
+
 Media subscription filters now use the UI's `files` key and distinguish voice
 messages from music using Telegram's audio `voice` attribute. Both remain
 `audio` in the catalog. Images sent as documents use `photos`, GIFs use `gifs`,
@@ -202,9 +221,10 @@ migration; the current source tree is not yet free of Node dependencies.
 
 ## Required before release
 
-- Validate native Telegram login/account management, history and URL jobs on a real account; complete
-  account-wide oversized-gap repair, account routing/proxies, stories and
-  forwarding. Channel history gaps are repaired natively; an unresolved global
+- Validate native Telegram login/account management, history, URL and Stories
+  jobs on a real account; complete account-wide oversized-gap repair, broader
+  account routing, configured proxies and forwarding. Channel history gaps are
+  repaired natively; an unresolved global
   or incomplete marker still prevents restart and must never be cleared merely
   to make startup succeed.
 - Complete queue rate limiting, priority/TTL handling, old queue-history import
@@ -212,8 +232,8 @@ migration; the current source tree is not yet free of Node dependencies.
   and the queue snapshot are implemented, but the complete queue workflow still
   needs browser and performance coverage.
 - Complete backup, cluster/peer/cluster-WebSocket, AI-job, NSFW, seekbar
-  maintenance, Telegram-action, recovery, purge, security,
-  update and periodic WebSocket contracts. These are the 13 failing files in
+  maintenance, recovery, purge, security,
+  update and periodic WebSocket contracts. These are the 12 failing files in
   the latest full run. A low-level Go
   projection or helper is not a replacement for the public workflow.
 - Finish the native test runner, remove the old server sources and launchers,

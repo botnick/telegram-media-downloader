@@ -43,7 +43,7 @@ func (h *Handler) GroupStats(w http.ResponseWriter, r *http.Request) {
 	err = db.QueryRowContext(r.Context(), `
 		SELECT COUNT(*),
 		       COALESCE(SUM(COALESCE(file_size, 0)), 0),
-		       MIN(message_id), MAX(message_id), MAX(CAST(created_at AS TEXT))
+		       MIN(CASE WHEN file_type IS NOT 'stories' THEN message_id END), MAX(CASE WHEN file_type IS NOT 'stories' THEN message_id END), MAX(CAST(created_at AS TEXT))
 		  FROM downloads
 		 WHERE group_id = ?
 	`, groupID).Scan(&total.TotalFiles, &total.TotalBytes, &first, &last, &at)

@@ -38,6 +38,50 @@ func TestRunMigrationsIsIdempotentAndPreservesSeedSchema(t *testing.T) {
 	}
 }
 
+func TestStoryKeyMigrationPreservesRowsAndRejectsCollision(t *testing.T) {
+	for _, conflict := range []bool{false, true} {
+		t.Run(map[bool]string{false: "preserve", true: "collision"}[conflict], func(t *testing.T) {
+			ctx := context.Background()
+			db, err := Open(ctx, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Reader.Close()
+			defer db.Writer.Close()
+			if _, err = db.Writer.Exec(`INSERT INTO downloads(id,group_id,message_id,file_type,file_path,file_hash,pinned) VALUES(10,'42',7,'stories','kept.mp4','sha',1),(11,'42',8,'video','message.mp4','other',0)`); err != nil {
+				t.Fatal(err)
+			}
+			if conflict {
+				if _, err = db.Writer.Exec(`INSERT INTO downloads(group_id,message_id,file_type) VALUES('42',4294967303,'document')`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for range 2 {
+				_, err = RunMigrations(ctx, db.Writer)
+				if (err != nil) != conflict {
+					t.Fatalf("conflict=%v %v", conflict, err)
+				}
+			}
+			var id int64
+			var path, hash string
+			var pinned int
+			if err = db.Reader.QueryRow(`SELECT message_id,file_path,file_hash,pinned FROM downloads WHERE id=10`).Scan(&id, &path, &hash, &pinned); err != nil {
+				t.Fatal(err)
+			}
+			want := int64(4294967303)
+			if conflict {
+				want = 7
+			}
+			if id != want || path != "kept.mp4" || hash != "sha" || pinned != 1 {
+				t.Fatalf("changed metadata %d %s %s %d", id, path, hash, pinned)
+			}
+			if err = db.Reader.QueryRow(`SELECT message_id FROM downloads WHERE id=11`).Scan(&id); err != nil || id != 8 {
+				t.Fatalf("message moved %d %v", id, err)
+			}
+		})
+	}
+}
+
 func TestOpenCreatesMissingDataDirectory(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "nested", "data")
 	db, err := Open(context.Background(), dataDir)

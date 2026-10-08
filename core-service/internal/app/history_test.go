@@ -378,7 +378,7 @@ func TestHistoryModesUseCatalogBoundsAndRegisterUnknownGroupsDisabled(t *testing
 			if err = a.config.Save(context.Background(), cfg); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = a.db.Writer.Exec(`INSERT INTO downloads(group_id,group_name,message_id,file_name,file_path,file_type,file_size,status) VALUES('-1000000000042','Old',-5,'a','a','document',4,'completed'),('-1000000000042','Old',10,'b','b','document',4,'completed'),('-1000000000042','Old',20,'c','c','document',4,'completed')`); err != nil {
+			if _, err = a.db.Writer.Exec(`INSERT INTO downloads(group_id,group_name,message_id,file_name,file_path,file_type,file_size,status) VALUES('-1000000000042','Old',-5,'a','a','document',4,'completed'),('-1000000000042','Old',10,'b','b','document',4,'completed'),('-1000000000042','Old',20,'c','c','document',4,'completed'),('-1000000000042','Old',1,'story-old','story-old','stories',4,'completed'),('-1000000000042','Old',4294967396,'story','story','stories',4,'completed')`); err != nil {
 				t.Fatal(err)
 			}
 			res := historyHTTP(t, a, "POST", "/api/history", fmt.Sprintf(`{"groupId":"-1000000000042","mode":%q}`, mode))

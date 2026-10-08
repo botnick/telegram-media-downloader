@@ -161,7 +161,7 @@ func TestDialogsTotalLimitCancellationAndObserverFailure(t *testing.T) {
 	if _, err := fetchDialogs(ctx, api, 2, 0); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation=%v", err)
 	}
-	items, err = fetchDialogPages(context.Background(), api, 2, 0, func(context.Context, []tg.ChatClass) error { return errors.New("cache failed") })
+	items, err = fetchDialogPages(context.Background(), api, 2, 0, func(context.Context, []tg.ChatClass, []tg.UserClass) error { return errors.New("cache failed") })
 	if err == nil || !strings.Contains(err.Error(), "cache failed") || items != nil {
 		t.Fatalf("ignored cache failure: %v %+v", err, items)
 	}

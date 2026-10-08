@@ -53,6 +53,91 @@ func (c *Controller) OpenURL(ctx context.Context, accountID string) (*MessageSes
 	return c.openMessages(ctx, accountID, "url")
 }
 
+func (c *Controller) OpenStories(ctx context.Context, accountID string) (*MessageSession, error) {
+	return c.openMessages(ctx, accountID, "stories")
+}
+
+func (s *MessageSession) Origin() string { return s.origin }
+
+type storySource interface {
+	ListPeerStories(context.Context, telegram.Dialog, string) (telegram.PeerStoryList, error)
+	StoryPage(context.Context, string) (telegram.StoryPage, error)
+	ReadStories(context.Context, telegram.Dialog, []int) ([]*telegram.RefreshedMessage, error)
+	RefreshStory(context.Context, *tg.Message) (*telegram.RefreshedMessage, error)
+}
+
+func (s *MessageSession) PeerStories(dialog telegram.Dialog, ref string) (telegram.PeerStoryList, error) {
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
+	source, ok := s.source.(storySource)
+	if !ok {
+		return telegram.PeerStoryList{}, errors.New("account cannot read stories")
+	}
+	return source.ListPeerStories(ctx, dialog, ref)
+}
+func (s *MessageSession) Stories(dialog telegram.Dialog, ids []int) ([]*telegram.RefreshedMessage, error) {
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
+	source, ok := s.source.(storySource)
+	if !ok {
+		return nil, errors.New("account cannot read stories")
+	}
+	return source.ReadStories(ctx, dialog, ids)
+}
+func (s *MessageSession) AllStories() ([]telegram.StoryGroup, int, error) {
+	source, ok := s.source.(storySource)
+	if !ok {
+		return nil, 0, errors.New("account cannot read stories")
+	}
+	groups := []telegram.StoryGroup{}
+	positions := map[string]int{}
+	storyIDs := map[string]map[int]bool{}
+	state := ""
+	seen := map[string]bool{}
+	count, stories := 0, 0
+	for n := 0; n < 1000; n++ {
+		ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+		page, err := source.StoryPage(ctx, state)
+		cancel()
+		if err != nil {
+			return nil, 0, err
+		}
+		count = max(count, page.Count)
+		for _, g := range page.Groups {
+			key := g.Key
+			if key == "" {
+				key = g.PeerID
+			}
+			position, exists := positions[key]
+			if !exists {
+				position = len(groups)
+				positions[key] = position
+				groups = append(groups, telegram.StoryGroup{Key: key, PeerID: g.PeerID, Stories: []telegram.StoryView{}})
+				storyIDs[key] = map[int]bool{}
+			}
+			for _, story := range g.Stories {
+				if !storyIDs[key][story.ID] {
+					storyIDs[key][story.ID] = true
+					groups[position].Stories = append(groups[position].Stories, story)
+					stories++
+				}
+			}
+		}
+		if len(groups) > 10000 || stories > 100000 {
+			return nil, 0, errors.New("story list exceeds limit")
+		}
+		if !page.More {
+			return groups, max(count, len(groups)), nil
+		}
+		if page.State == "" || seen[page.State] {
+			return nil, 0, errors.New("story pagination did not advance")
+		}
+		seen[page.State] = true
+		state = page.State
+	}
+	return nil, 0, errors.New("story pagination exceeds page limit")
+}
+
 type messageSource interface {
 	ReadMessage(context.Context, telegram.Dialog, int) (*telegram.RefreshedMessage, error)
 }
@@ -82,6 +167,10 @@ func (c *Controller) openMessages(ctx context.Context, accountID, origin string)
 	if origin == "history" {
 		if _, ok := source.(historySource); !ok {
 			return nil, fmt.Errorf("account %s cannot read Telegram history", accountID)
+		}
+	} else if origin == "stories" {
+		if _, ok := source.(storySource); !ok {
+			return nil, fmt.Errorf("account %s cannot read stories", accountID)
 		}
 	} else if _, ok := source.(messageSource); !ok {
 		return nil, fmt.Errorf("account %s cannot read Telegram messages", accountID)

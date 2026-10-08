@@ -687,9 +687,24 @@ func (c *Controller) worker(run *running) {
 		attemptCtx, finishAttempt := context.WithTimeout(ctx, c.attemptLimit(work.FileSize))
 		if err == nil && (work.ForceRefresh || work.Attempts > 1 || time.Since(time.UnixMilli(work.CreatedAt)) > time.Minute) {
 			var fresh *telegram.RefreshedMessage
-			fresh, err = run.accounts[work.AccountID].RefreshMessage(attemptCtx, message)
+			if work.Origin == "stories" {
+				if source, ok := run.accounts[work.AccountID].(storySource); ok {
+					fresh, err = source.RefreshStory(attemptCtx, message)
+				} else {
+					err = errors.New("account cannot refresh stories")
+				}
+			} else {
+				fresh, err = run.accounts[work.AccountID].RefreshMessage(attemptCtx, message)
+			}
 			if err == nil && (fresh == nil || fresh.Message == nil) {
 				err = errors.New("Telegram refresh returned no message")
+			}
+			if err == nil && work.Origin == "stories" {
+				oldMedia, e := telegram.MessageAttachment(message)
+				newMedia, ne := telegram.MessageAttachment(fresh.Message)
+				if e != nil || ne != nil || newMedia.GroupID != oldMedia.GroupID || newMedia.MessageID != oldMedia.MessageID {
+					err = errors.New("Telegram refresh returned another story")
+				}
 			}
 			if err == nil {
 				message = fresh.Message

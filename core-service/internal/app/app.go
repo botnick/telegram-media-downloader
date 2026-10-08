@@ -100,6 +100,7 @@ type App struct {
 	thumbBuildCancel    context.CancelFunc
 	maintenanceMu       sync.Mutex
 	telegramMaintenance map[string]map[string]any
+	storiesOp           sync.Mutex
 	dbIntegrityStatus   map[string]any
 	filesVerifyStatus   map[string]any
 	filesVerifyLastRun  map[string]any
@@ -200,6 +201,8 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerMonitorMaintenance(mux, a)
 	registerHistoryRoutes(mux, a)
 	registerURLRoutes(mux, a)
+	registerStoryRoutes(mux, a)
+	mux.Handle("POST /api/proxy/test", a.requireAdmin(http.HandlerFunc(a.handleProxyProbe)))
 	registerQueueRoutes(mux, a)
 	registerAccountRoutes(mux, a)
 	registerDialogRoutes(mux, a)
@@ -301,13 +304,16 @@ func (a *App) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	// Subscribe before the 101 response becomes observable. The browser can
+	// issue a mutation as soon as its handshake completes, even while Upgrade
+	// is still returning on this goroutine.
+	client := a.hub.Add(sess.Role)
+	defer a.hub.Remove(client)
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
-	client := a.hub.Add(sess.Role)
 	defer func() {
-		a.hub.Remove(client)
 		_ = conn.Close()
 	}()
 	conn.SetReadLimit(1 << 20)

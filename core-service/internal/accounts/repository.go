@@ -348,6 +348,9 @@ func (r *Repository) commitConfig(ctx context.Context, op operation) error {
 		if _, err = tx.ExecContext(ctx, `UPDATE tgdl_work SET status='failed',body=X'',error='Source Telegram account removed',claim_generation=NULL WHERE account_id=? AND status IN ('pending','processing')`, op.ID); err != nil {
 			return err
 		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM tgdl_user_peers WHERE account_id=?`, op.ID); err != nil {
+			return err
+		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM tgdl_update_recovery WHERE account_id=?`, op.ID); err != nil {
 			return err
 		}

@@ -51,6 +51,9 @@ Useful commands:
 - Dialog resync and group refresh read current Telegram names and avatars through
   the shared accounts. Maintenance restart joins old transfers before opening new
   accounts. See [behavior, limits and measurements](../docs/GO-MONITOR-MAINTENANCE.md).
+- Stories listing and selected downloads use the same native accounts and durable
+  dedup queue, with distinct story/message keys. The proxy test performs a bounded
+  TCP probe. See [story behavior and compatibility](../docs/GO-STORIES.md).
 
 ## Data safety
 

@@ -56,7 +56,22 @@ func resolveDialog(ctx context.Context, api peerRecoveryAPI, state *UpdateState,
 		case id < 0:
 			dialog.Type, dialog.peer = "group", &tg.InputPeerChat{ChatID: -id}
 		default:
-			return Dialog{}, errors.New("user is absent from the dialog index; username required")
+			if id <= 0 {
+				return Dialog{}, errors.New("invalid user id")
+			}
+			dialog.Type = "user"
+			if id == selfID {
+				dialog.peer = &tg.InputPeerSelf{}
+				return dialog, nil
+			}
+			hash, found, err := state.userAccessHash(ctx, selfID, id)
+			if err != nil {
+				return Dialog{}, err
+			}
+			if !found {
+				return Dialog{}, errors.New("user is absent from the dialog index; username required")
+			}
+			dialog.peer = &tg.InputPeerUser{UserID: id, AccessHash: hash}
 		}
 		return dialog, nil
 	}
@@ -71,7 +86,7 @@ func resolveDialog(ctx context.Context, api peerRecoveryAPI, state *UpdateState,
 	if len(dialogs) != 1 || dialogs[0].peer == nil {
 		return Dialog{}, errors.New("username returned no usable peer")
 	}
-	if err := state.cacheDialogHashes(ctx, selfID, result.Chats); err != nil {
+	if err := state.cacheStoryPeers(ctx, selfID, result.Chats, result.Users); err != nil {
 		return Dialog{}, err
 	}
 	return dialogs[0], nil

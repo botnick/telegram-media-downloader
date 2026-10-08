@@ -54,7 +54,7 @@ func (a *App) monitorFilterConfig(ctx context.Context, cfg map[string]any, accou
 			}
 		}
 	}
-	if group == nil || (group["enabled"] != true && engine.Origin(ctx) != "history" && engine.Origin(ctx) != "url") || group["suspended"] == true {
+	if group == nil || (group["enabled"] != true && engine.Origin(ctx) != "history" && engine.Origin(ctx) != "url" && engine.Origin(ctx) != "stories") || group["suspended"] == true {
 		return engine.Target{}, false, nil
 	}
 	if pin := toString(group["monitorAccount"]); pin != "" && pin != accountID {
@@ -78,7 +78,7 @@ func (a *App) monitorFilterConfig(ctx context.Context, cfg map[string]any, accou
 	}
 	// An explicit message link selects its media regardless of subscription
 	// filters. Account pinning, suspension and peer ownership still apply.
-	if engine.Origin(ctx) == "url" {
+	if engine.Origin(ctx) == "url" || engine.Origin(ctx) == "stories" {
 		return engine.Target{ID: toString(group["id"]), Name: toString(group["name"])}, true, nil
 	}
 	filters, _ := group["filters"].(map[string]any)

@@ -66,6 +66,14 @@ func enqueueWork(ctx context.Context, db queueWriter, accountID string, target T
 	if accountID == "" {
 		return 0, false, errors.New("queue account is required")
 	}
+	sourcePTS := int64(pts)
+	if origin == "stories" {
+		media.MessageID, err = telegram.StoryKey(message.ID)
+		if err != nil {
+			return 0, false, err
+		}
+		media.Type = "stories"
+	}
 	buffer := bin.Buffer{}
 	if err = message.Encode(&buffer); err != nil {
 		return 0, false, err
@@ -73,8 +81,17 @@ func enqueueWork(ctx context.Context, db queueWriter, accountID string, target T
 	if target.ID == "" {
 		target.ID = media.GroupID
 	}
+	if origin == "stories" {
+		// Stories have no message PTS. Explicit reads serialize in the app and
+		// enqueue in a transaction. Use a durable sequence independent of the
+		// wall clock, including across account changes and process restarts.
+		if err = db.QueryRowContext(ctx, `SELECT COALESCE((SELECT source_pts FROM tgdl_work WHERE group_id=? AND message_id=?),0)+1`, target.ID, media.MessageID).Scan(&sourcePTS); err != nil {
+			return 0, false, err
+		}
+	}
 	version := max(message.Date, message.EditDate)
 	_, channel := message.PeerID.(*tg.PeerChannel)
+	comparable := channel || origin == "stories"
 	now := time.Now().UnixMilli()
 	verifyExisting := len(repair) > 0 && repair[0] && origin != "live"
 	var id int64
@@ -94,13 +111,13 @@ func enqueueWork(ctx context.Context, db queueWriter, accountID string, target T
  AND ((tgdl_work.origin='live' AND tgdl_work.status='pending')
  OR (excluded.origin='url' AND tgdl_work.origin<>'url' AND tgdl_work.status IN ('pending','processing'))))
  OR (? AND excluded.version=tgdl_work.version AND excluded.identity=tgdl_work.identity AND tgdl_work.status IN ('completed','skipped','failed'))
- RETURNING id`, accountID, target.ID, target.Name, media.MessageID, version, pts, media.Identity.Key(), media.Type, media.Name, media.Identity.Size, buffer.Buf, now, now, origin, channel, channel, verifyExisting).Scan(&id)
+ RETURNING id`, accountID, target.ID, target.Name, media.MessageID, version, sourcePTS, media.Identity.Key(), media.Type, media.Name, media.Identity.Size, buffer.Buf, now, now, origin, comparable, comparable, verifyExisting).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A repeated identity can still carry a newer ordering watermark. Keep
 		// it without requeueing, otherwise an intermediate delayed edit could
 		// replace a later observation of the current attachment.
 		_, err = db.ExecContext(ctx, `UPDATE tgdl_work SET source_pts=MAX(source_pts,?)
- WHERE group_id=? AND message_id=? AND version=? AND identity=? AND (? OR account_id=?)`, pts, target.ID, media.MessageID, version, media.Identity.Key(), channel, accountID)
+ WHERE group_id=? AND message_id=? AND version=? AND identity=? AND (? OR account_id=?)`, sourcePTS, target.ID, media.MessageID, version, media.Identity.Key(), comparable, accountID)
 		return 0, false, err
 	}
 	return id, err == nil, err
@@ -181,6 +198,9 @@ func (s *WorkStore) Refresh(ctx context.Context, w *Work, message *tg.Message) (
 	media, err := telegram.MessageAttachment(message)
 	if err != nil {
 		return false, err
+	}
+	if w.Origin == "stories" {
+		media.Type = "stories"
 	}
 	buf := bin.Buffer{}
 	if err = message.Encode(&buf); err != nil {

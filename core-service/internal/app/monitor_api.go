@@ -150,15 +150,15 @@ func (a *App) ingestWork(ctx context.Context, work *engine.Work, message *tg.Mes
 	for _, group := range configuredGroupList(cfg) {
 		if toString(group["id"]) == work.GroupID {
 			pin := toString(group["monitorAccount"])
-			allowed = (group["enabled"] == true || work.Origin == "history" || work.Origin == "url") && group["suspended"] != true && (pin == "" || pin == work.AccountID)
+			allowed = (group["enabled"] == true || work.Origin == "history" || work.Origin == "url" || work.Origin == "stories") && group["suspended"] != true && (pin == "" || pin == work.AccountID)
 			break
 		}
 	}
 	if !allowed {
 		return engine.ErrFiltered
 	}
-	if work.Origin == "url" {
-		_, allowed, err = a.monitorFilterConfig(engine.WithOrigin(ctx, "url"), cfg, work.AccountID, message, nil)
+	if work.Origin == "url" || work.Origin == "stories" {
+		_, allowed, err = a.monitorFilterConfig(engine.WithOrigin(ctx, work.Origin), cfg, work.AccountID, message, nil)
 		if err != nil {
 			return err
 		}

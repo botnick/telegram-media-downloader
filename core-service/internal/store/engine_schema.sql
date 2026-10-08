@@ -1,3 +1,7 @@
+CREATE TABLE IF NOT EXISTS tgdl_user_peers (
+    account_id TEXT NOT NULL, self_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+    access_hash INTEGER NOT NULL, PRIMARY KEY(account_id,self_id,user_id)
+);
 CREATE TABLE IF NOT EXISTS tgdl_work (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  account_id TEXT NOT NULL,

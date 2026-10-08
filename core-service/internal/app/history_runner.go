@@ -230,9 +230,9 @@ func (a *App) initializeHistory(ctx context.Context, id, accountID string, dialo
 	if !j.initialized {
 		switch j.Mode {
 		case "pull-older":
-			err = a.db.Reader.QueryRowContext(ctx, `SELECT COALESCE(MIN(message_id),0) FROM downloads WHERE group_id=? AND message_id>0`, j.GroupID).Scan(&j.cursor)
+			err = a.db.Reader.QueryRowContext(ctx, `SELECT COALESCE(MIN(message_id),0) FROM downloads WHERE group_id=? AND message_id BETWEEN 1 AND 2147483647 AND file_type IS NOT 'stories'`, j.GroupID).Scan(&j.cursor)
 		case "catch-up":
-			err = a.db.Reader.QueryRowContext(ctx, `SELECT COALESCE(MAX(message_id),0) FROM downloads WHERE group_id=? AND message_id>0`, j.GroupID).Scan(&j.minID)
+			err = a.db.Reader.QueryRowContext(ctx, `SELECT COALESCE(MAX(message_id),0) FROM downloads WHERE group_id=? AND message_id BETWEEN 1 AND 2147483647 AND file_type IS NOT 'stories'`, j.GroupID).Scan(&j.minID)
 		}
 		if err != nil {
 			return err
