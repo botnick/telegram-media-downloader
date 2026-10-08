@@ -39,6 +39,23 @@ func (m *Manager) Download(ctx context.Context, identity telegram.MediaIdentity,
 	if !m.Index.Reserve(identity) {
 		return "", ErrDuplicate
 	}
+	return m.downloadReserved(ctx, identity, finalPath)
+}
+
+// DownloadReserved publishes an identity that was reserved by the live
+// Telegram monitor before enqueueing. It is the handoff that prevents a live
+// update and a history catch-up from both starting network I/O.
+func (m *Manager) DownloadReserved(ctx context.Context, identity telegram.MediaIdentity, finalPath string) (string, error) {
+	if m == nil || m.Client == nil || m.Index == nil {
+		return "", errors.New("download manager is not configured")
+	}
+	if !m.Index.Has(identity) {
+		return "", errors.New("telegram media identity was not reserved")
+	}
+	return m.downloadReserved(ctx, identity, finalPath)
+}
+
+func (m *Manager) downloadReserved(ctx context.Context, identity telegram.MediaIdentity, finalPath string) (string, error) {
 	committed := false
 	defer func() {
 		if !committed {

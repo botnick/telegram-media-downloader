@@ -16,6 +16,15 @@ is now absorbed by `tgdl-server`: one Go binary, one SQLite writer, and no
 Node subprocess, proxy or runtime fallback. Explicit ffmpeg/AI workers remain
 sidecars with stable contracts rather than alternate server implementations.
 
+The first Telegram cutover slice is now in the Go tree: `internal/session`
+decrypts the existing gramJS `SecureSession` (v1 and v2), parses its
+`StringSession`, and writes a gotd session atomically while leaving the `.enc`
+source untouched. `internal/telegram.LiveMonitor` reserves Telegram media
+identity before queueing, so live updates and history catch-up share the same
+dedup gate. The actual gotd account runner still owns network I/O and must use
+`GotdConfig.EncryptedSessionPath` plus `SessionSecret` when importing an old
+account.
+
 ## The gate: the API contract suite
 
 `tests/contract/` is a black-box suite recorded from today's Node server

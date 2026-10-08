@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -395,5 +397,38 @@ func TestDeleteRoutesUseTransactions(t *testing.T) {
 	var count int
 	if err := a.db.Writer.QueryRow(`SELECT COUNT(*) FROM downloads`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("remaining rows = %d err=%v", count, err)
+	}
+}
+
+func TestDeleteRoutesRemoveOnlySafeMediaFiles(t *testing.T) {
+	dataDir := t.TempDir()
+	a, err := New(context.Background(), Config{DataDir: dataDir, Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	media := filepath.Join(dataDir, "downloads", "Gallery", "photo.jpg")
+	if err := os.MkdirAll(filepath.Dir(media), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(media, []byte("image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Writer.Exec(`INSERT INTO downloads(group_id, message_id, file_path) VALUES ('-1', 1, 'Gallery/photo.jpg')`); err != nil {
+		t.Fatal(err)
+	}
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/downloads/bulk-delete", strings.NewReader(`{"ids":[1]}`))
+	req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	rr := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("delete status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	if _, err := os.Stat(media); !os.IsNotExist(err) {
+		t.Fatalf("media still exists, stat error=%v", err)
 	}
 }

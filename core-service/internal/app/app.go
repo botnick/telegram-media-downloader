@@ -283,7 +283,7 @@ func (a *App) issueSession(w http.ResponseWriter, r *http.Request, role string) 
 		writeJSONError(w, http.StatusInternalServerError, "Internal error")
 		return false
 	}
-	http.SetCookie(w, &http.Cookie{Name: a.sessions.CookieName(), Value: token, Path: "/", MaxAge: int((30 * 24 * time.Hour) / time.Second), HttpOnly: true, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: a.sessions.CookieName(), Value: token, Path: "/", MaxAge: int(a.sessions.TTL() / time.Second), HttpOnly: true, SameSite: http.SameSiteStrictMode})
 	return true
 }
 

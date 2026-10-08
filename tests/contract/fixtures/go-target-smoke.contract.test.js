@@ -49,5 +49,21 @@ describe('Go target foundation smoke', () => {
         }
         expect(response?.status).toBe(200);
         await expect(response.json()).resolves.toMatchObject({ ok: true, service: 'tgdl-server' });
+
+        const base = `http://127.0.0.1:${port}`;
+        const setup = await fetch(`${base}/api/auth/setup`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ password: 'smoke-pass-123' }),
+        });
+        expect(setup.status).toBe(200);
+        const setCookie = setup.headers.get('set-cookie');
+        expect(setCookie).toMatch(/tg_dl_session=/);
+        const cookie = setCookie.split(';', 1)[0];
+        for (const endpoint of ['/api/auth_check', '/api/stats', '/api/downloads/all', '/api/groups']) {
+            const result = await fetch(`${base}${endpoint}`, { headers: { cookie } });
+            expect(result.status, endpoint).toBe(200);
+            await expect(result.json(), endpoint).resolves.toBeTruthy();
+        }
     }, 15000);
 });

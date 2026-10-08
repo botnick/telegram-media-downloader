@@ -40,4 +40,27 @@ func TestTrackerSingleFlightProgressAndCancellation(t *testing.T) {
 	if !errors.Is(<-finished, context.Canceled) {
 		t.Fatalf("job error = %v", job.Err())
 	}
+	snapshot, ok = tracker.Get(job.ID)
+	if !ok || snapshot.Status != "cancelled" {
+		t.Fatalf("terminal snapshot = %+v ok=%v", snapshot, ok)
+	}
+}
+
+func TestTrackerRetainsBoundedTerminalHistory(t *testing.T) {
+	tracker := NewTracker()
+	var ids []string
+	for i := 0; i < 260; i++ {
+		job, err := tracker.Start(context.Background(), "job", 1, func(context.Context, func(int, string)) error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		<-job.Done
+		ids = append(ids, job.ID)
+	}
+	if _, ok := tracker.Get(ids[0]); ok {
+		t.Fatal("old terminal job was not evicted")
+	}
+	if snapshot, ok := tracker.Get(ids[len(ids)-1]); !ok || snapshot.Status != "completed" {
+		t.Fatalf("latest terminal job = %+v ok=%v", snapshot, ok)
+	}
 }

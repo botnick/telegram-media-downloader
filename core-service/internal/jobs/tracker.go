@@ -1,6 +1,8 @@
-// Package jobs provides bounded, restart-safe job state primitives. A caller
-// owns durable persistence; this package guarantees single-flight execution,
-// cancellation, progress snapshots and terminal completion signalling.
+// Package jobs provides bounded job state primitives. A caller owns durable
+// persistence; this package guarantees single-flight execution, cancellation,
+// progress snapshots and terminal completion signalling. Terminal snapshots
+// are retained in memory so the dashboard can fetch the result after a worker
+// exits; the bounded history prevents an untrusted client from growing it.
 package jobs
 
 import (
@@ -50,12 +52,14 @@ func (j *Job) Snapshot() Snapshot {
 type Tracker struct {
 	mu       sync.RWMutex
 	jobs     map[string]*Job
+	finished map[string]*Job
+	order    []string
 	byKind   map[string]string
 	sequence atomic.Uint64
 }
 
 func NewTracker() *Tracker {
-	return &Tracker{jobs: make(map[string]*Job), byKind: make(map[string]string)}
+	return &Tracker{jobs: make(map[string]*Job), finished: make(map[string]*Job), byKind: make(map[string]string)}
 }
 
 func (t *Tracker) Start(parent context.Context, kind string, total int, run func(context.Context, func(int, string)) error) (*Job, error) {
@@ -104,6 +108,13 @@ func (t *Tracker) Start(parent context.Context, kind string, total int, run func
 		cancel()
 		t.mu.Lock()
 		delete(t.jobs, id)
+		t.finished[id] = job
+		t.order = append(t.order, id)
+		if len(t.order) > 256 {
+			oldest := t.order[0]
+			t.order = t.order[1:]
+			delete(t.finished, oldest)
+		}
 		if t.byKind[kind] == id {
 			delete(t.byKind, kind)
 		}
@@ -127,6 +138,9 @@ func (t *Tracker) Cancel(id string) error {
 func (t *Tracker) Get(id string) (Snapshot, bool) {
 	t.mu.RLock()
 	job := t.jobs[id]
+	if job == nil {
+		job = t.finished[id]
+	}
 	t.mu.RUnlock()
 	if job == nil {
 		return Snapshot{}, false
@@ -136,8 +150,11 @@ func (t *Tracker) Get(id string) (Snapshot, bool) {
 
 func (t *Tracker) List() []Snapshot {
 	t.mu.RLock()
-	jobs := make([]*Job, 0, len(t.jobs))
+	jobs := make([]*Job, 0, len(t.jobs)+len(t.finished))
 	for _, job := range t.jobs {
+		jobs = append(jobs, job)
+	}
+	for _, job := range t.finished {
 		jobs = append(jobs, job)
 	}
 	t.mu.RUnlock()

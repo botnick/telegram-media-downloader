@@ -54,10 +54,26 @@ func (s *SessionStore) Validate(ctx context.Context, token string) (Session, err
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, errors.New("invalid session")
 	}
+	if err != nil {
+		return Session{}, err
+	}
+	now := time.Now()
+	// Match the Node dashboard's sliding renewal: sessions are extended only
+	// in their final quarter, keeping ordinary requests a cheap read.
+	if s.ttl > 0 && out.ExpiresAt-now.UnixMilli() <= s.ttl.Milliseconds()/4 {
+		out.ExpiresAt = now.Add(s.ttl).UnixMilli()
+		if _, err := s.db.ExecContext(ctx, `UPDATE web_sessions SET expires_at = ?, last_seen = ? WHERE token = ?`, out.ExpiresAt, now.UnixMilli(), token); err != nil {
+			return Session{}, err
+		}
+	} else {
+		_, _ = s.db.ExecContext(ctx, `UPDATE web_sessions SET last_seen = ? WHERE token = ?`, now.UnixMilli(), token)
+	}
 	return out, err
 }
 
 func (s *SessionStore) CookieName() string { return s.cookieName }
+
+func (s *SessionStore) TTL() time.Duration { return s.ttl }
 
 func (s *SessionStore) Revoke(ctx context.Context, token string) error {
 	if strings.TrimSpace(token) == "" {
