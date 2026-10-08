@@ -59,66 +59,67 @@ type App struct {
 	closeOnce        sync.Once
 	closeErr         error
 
-	db                 *store.DB
-	library            *download.Library
-	sessions           *auth.SessionStore
-	hub                *ws.Hub
-	read               *dbread.Handler
-	config             auth.ConfigStore
-	jobs               *jobs.Tracker
-	dataDir            string
-	pairing            *cluster.PairingStore
-	loginRL            *rateLimiter
-	handler            http.Handler
-	configMu           sync.Mutex
-	dedupMu            sync.Mutex
-	dedupWG            sync.WaitGroup
-	dedupClosed        bool
-	mediaMu            sync.RWMutex
-	purgeMu            sync.Mutex
-	purgeEpoch         uint64 // guarded by purgeMu; invalidates unresolved URL requests
-	purgeWG            sync.WaitGroup
-	purgeClosed        bool
-	purgeResume        bool
-	recoveryWriting    bool
-	recoveryMu         sync.Mutex
-	recoveryStatus     map[string]any
-	purges             map[string]purgeRecord
-	maintenanceJobMu   sync.Mutex
-	maintenanceJobWG   sync.WaitGroup
-	maintenanceClosed  bool
-	dedupLastScan      map[string]any
-	dedupScanStatus    map[string]any
-	dedupDeleteStatus  map[string]any
-	faststartMu        sync.Mutex
-	faststartStatus    map[string]any
-	faststartLastRun   map[string]any
-	thumbMu            sync.Mutex
-	thumbBuildStatus   map[string]any
-	thumbBuildLastRun  map[string]any
-	thumbRebuildStatus map[string]any
-	thumbBuildCancel   context.CancelFunc
-	maintenanceMu      sync.Mutex
-	dbIntegrityStatus  map[string]any
-	filesVerifyStatus  map[string]any
-	filesVerifyLastRun map[string]any
-	reindexStatus      map[string]any
-	reindexLastRun     map[string]any
-	vacuumStatus       map[string]any
-	setupRL            *rateLimiter
-	secureCookies      bool
-	output             io.Writer
-	resetMu            sync.Mutex
-	resetTokens        map[string]time.Time
-	chatRecheckMu      sync.Mutex
-	chatRecheck        chatRecheckState
-	chatRecheckWG      sync.WaitGroup
-	chatRecheckClosed  bool
-	groupRefreshMu     sync.Mutex
-	groupRefreshInfo   groupRefreshState
-	groupRefreshPhotos groupRefreshState
-	groupRefreshWG     sync.WaitGroup
-	groupRefreshClosed bool
+	db                  *store.DB
+	library             *download.Library
+	sessions            *auth.SessionStore
+	hub                 *ws.Hub
+	read                *dbread.Handler
+	config              auth.ConfigStore
+	jobs                *jobs.Tracker
+	dataDir             string
+	pairing             *cluster.PairingStore
+	loginRL             *rateLimiter
+	handler             http.Handler
+	configMu            sync.Mutex
+	dedupMu             sync.Mutex
+	dedupWG             sync.WaitGroup
+	dedupClosed         bool
+	mediaMu             sync.RWMutex
+	purgeMu             sync.Mutex
+	purgeEpoch          uint64 // guarded by purgeMu; invalidates unresolved URL requests
+	purgeWG             sync.WaitGroup
+	purgeClosed         bool
+	purgeResume         bool
+	recoveryWriting     bool
+	recoveryMu          sync.Mutex
+	recoveryStatus      map[string]any
+	purges              map[string]purgeRecord
+	maintenanceJobMu    sync.Mutex
+	maintenanceJobWG    sync.WaitGroup
+	maintenanceClosed   bool
+	dedupLastScan       map[string]any
+	dedupScanStatus     map[string]any
+	dedupDeleteStatus   map[string]any
+	faststartMu         sync.Mutex
+	faststartStatus     map[string]any
+	faststartLastRun    map[string]any
+	thumbMu             sync.Mutex
+	thumbBuildStatus    map[string]any
+	thumbBuildLastRun   map[string]any
+	thumbRebuildStatus  map[string]any
+	thumbBuildCancel    context.CancelFunc
+	maintenanceMu       sync.Mutex
+	telegramMaintenance map[string]map[string]any
+	dbIntegrityStatus   map[string]any
+	filesVerifyStatus   map[string]any
+	filesVerifyLastRun  map[string]any
+	reindexStatus       map[string]any
+	reindexLastRun      map[string]any
+	vacuumStatus        map[string]any
+	setupRL             *rateLimiter
+	secureCookies       bool
+	output              io.Writer
+	resetMu             sync.Mutex
+	resetTokens         map[string]time.Time
+	chatRecheckMu       sync.Mutex
+	chatRecheck         chatRecheckState
+	chatRecheckWG       sync.WaitGroup
+	chatRecheckClosed   bool
+	groupRefreshMu      sync.Mutex
+	groupRefreshInfo    groupRefreshState
+	groupRefreshPhotos  groupRefreshState
+	groupRefreshWG      sync.WaitGroup
+	groupRefreshClosed  bool
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -196,6 +197,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("POST /api/maintenance/db/backup", a.requireAdmin(http.HandlerFunc(a.handleBackup)))
 	mux.Handle("POST /api/cluster/pairing-code", a.requireAdmin(http.HandlerFunc(a.handlePairingCode)))
 	registerMonitorRoutes(mux, a)
+	registerMonitorMaintenance(mux, a)
 	registerHistoryRoutes(mux, a)
 	registerURLRoutes(mux, a)
 	registerQueueRoutes(mux, a)

@@ -91,8 +91,8 @@ Protocol references: [messages.getHistory](https://core.telegram.org/method/mess
 
 At the history checkpoint, the full frozen HTTP/WebSocket run passed 213/324
 cases (22/36 files); see [migration status](GO-MIGRATION-STATUS.md) for the latest run.
-The monitor file improves from 2/8 to 5/8; its remaining failures belong to
-resync/restart maintenance, not the three history contract cases. Full Go race
+At that checkpoint the monitor file improved from 2/8 to 5/8; subsequent native
+[resync/restart maintenance](GO-MONITOR-MAINTENANCE.md) brings it to 8/8. Full Go race
 tests and vet pass. Focused lifecycle regressions also pass after the final
 purge/account/drain changes. Linux builds and Windows amd64/macOS arm64
 cross-builds pass; the foreign binaries were not executed natively.

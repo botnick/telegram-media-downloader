@@ -3,7 +3,9 @@ package engine
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
@@ -30,9 +32,13 @@ type RecoveryIndex struct {
 	stop     func() bool
 	accounts map[string]recoverySource
 	ids      []string
+	release  func()
+	once     sync.Once
 }
 
-func (i *RecoveryIndex) Close() { i.stop(); i.cancel() }
+func (i *RecoveryIndex) Close() {
+	i.once.Do(func() { i.stop(); i.cancel(); i.release() })
+}
 
 func (i *RecoveryIndex) Err() error {
 	if err := i.runCtx.Err(); err != nil {
@@ -41,7 +47,25 @@ func (i *RecoveryIndex) Err() error {
 	return i.ctx.Err()
 }
 
+func (i *RecoveryIndex) Context() context.Context { return i.ctx }
+
 func (c *Controller) RecoveryIndex(ctx context.Context) (*RecoveryIndex, error) {
+	index, err := c.OpenRecoveryIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err = index.Load(); err != nil {
+		index.Close()
+		return nil, err
+	}
+	return index, nil
+}
+
+// OpenRecoveryIndex acquires a manual lease before asynchronous enumeration.
+// Opening is local; Load performs the potentially long Telegram reads.
+func (c *Controller) OpenRecoveryIndex(ctx context.Context) (*RecoveryIndex, error) {
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
 	c.mu.Lock()
 	if c.run == nil || c.state != "running" {
 		c.mu.Unlock()
@@ -61,32 +85,55 @@ func (c *Controller) RecoveryIndex(ctx context.Context) (*RecoveryIndex, error) 
 	c.mu.Unlock()
 	sort.Strings(ids)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-	index := &RecoveryIndex{ctx: ctx, runCtx: run.ctx, cancel: cancel, stop: context.AfterFunc(run.ctx, cancel), accounts: sources, ids: ids}
+	run.jobUsers.Add(1)
+	index := &RecoveryIndex{ctx: ctx, runCtx: run.ctx, cancel: cancel, stop: context.AfterFunc(run.ctx, cancel), accounts: sources, ids: ids, release: func() { run.jobUsers.Add(-1) }}
 	if err := run.ctx.Err(); err != nil {
 		index.Close()
 		return nil, err
 	}
-	for _, id := range ids {
+	return index, nil
+}
+
+func (i *RecoveryIndex) Load() error {
+	if err := i.Err(); err != nil {
+		return err
+	}
+	dialogs := []RecoveryDialog{}
+	for _, id := range i.ids {
 		seen := map[string]bool{}
 		for _, archived := range []bool{false, true} {
-			items, err := sources[id].RecoveryDialogs(ctx, archived)
+			items, err := i.accounts[id].RecoveryDialogs(i.ctx, archived)
 			if err != nil {
-				index.Close()
-				return nil, fmt.Errorf("recovery index account %s: %w", id, err)
+				return fmt.Errorf("recovery index account %s: %w", id, err)
 			}
 			for _, item := range items {
 				if !seen[item.ID] {
-					index.Dialogs = append(index.Dialogs, RecoveryDialog{Dialog: item, AccountID: id})
+					dialogs = append(dialogs, RecoveryDialog{Dialog: item, AccountID: id})
 					seen[item.ID] = true
 				}
 			}
 		}
 	}
-	if err := ctx.Err(); err != nil {
-		index.Close()
-		return nil, err
+	if err := i.Err(); err != nil {
+		return err
 	}
-	return index, nil
+	i.Dialogs = dialogs
+	return nil
+}
+
+func (i *RecoveryIndex) Photo(candidate RecoveryDialog, w io.Writer) (bool, error) {
+	if err := i.Err(); err != nil {
+		return false, err
+	}
+	source, ok := i.accounts[candidate.AccountID].(interface {
+		DownloadDialogPhoto(context.Context, telegram.Dialog, io.Writer) (bool, error)
+	})
+	if !ok {
+		return false, fmt.Errorf("account %s cannot download profile photos", candidate.AccountID)
+	}
+	ctx, cancel := context.WithTimeout(i.ctx, 30*time.Second)
+	defer cancel()
+	return source.DownloadDialogPhoto(ctx, candidate.Dialog, w)
 }
 
 func (i *RecoveryIndex) Probe(candidate RecoveryDialog) error {

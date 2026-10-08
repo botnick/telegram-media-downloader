@@ -48,6 +48,9 @@ Useful commands:
 - `/api/download/url` reads fresh Telegram messages through the same account
   pool and persists explicit URL work before acknowledgement, including when
   live monitoring is off. See [link behavior and validation](../docs/GO-URL-DOWNLOADS.md).
+- Dialog resync and group refresh read current Telegram names and avatars through
+  the shared accounts. Maintenance restart joins old transfers before opening new
+  accounts. See [behavior, limits and measurements](../docs/GO-MONITOR-MAINTENANCE.md).
 
 ## Data safety
 

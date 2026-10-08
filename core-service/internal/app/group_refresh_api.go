@@ -1,10 +1,8 @@
 package app
 
 import (
+	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
@@ -70,7 +68,7 @@ func (a *App) startGroupRefresh(photos bool) bool {
 		return false
 	}
 	now := time.Now()
-	*state = groupRefreshState{running: true, attempts: state.attempts + 1, startedAt: now.UnixMilli(), stage: "starting", progress: map[string]any{}}
+	*state = groupRefreshState{running: true, attempts: state.attempts + 1, successes: state.successes, failures: state.failures, result: state.result, startedAt: now.UnixMilli(), stage: "starting", progress: map[string]any{}}
 	a.groupRefreshWG.Add(1)
 	a.groupRefreshMu.Unlock()
 	a.broadcastGroupRefreshProgress(photos)
@@ -86,63 +84,57 @@ func (a *App) startGroupRefresh(photos bool) bool {
 }
 
 func (a *App) runInfoRefresh(start time.Time) {
-	ids := make([]string, 0, 64)
-	seen := map[string]bool{}
-	config, err := a.config.Load(a.ctx)
-	if err == nil {
-		for _, group := range configuredGroupList(config) {
-			id := strings.TrimSpace(toString(group["id"]))
-			if id != "" && !seen[id] {
-				seen[id] = true
-				ids = append(ids, id)
-			}
-		}
-	}
-	if rows, queryErr := a.groupAggregates(contextRequest(a.ctx)); queryErr == nil {
-		for _, row := range rows {
-			if row.id != "" && !seen[row.id] {
-				seen[row.id] = true
-				ids = append(ids, row.id)
-			}
-		}
-	}
-	a.setGroupRefreshProgress(false, map[string]any{"processed": 0, "total": len(ids), "updated": 0, "stage": "resolving"})
-	for i := range ids {
-		if a.ctx.Err() != nil {
-			a.finishGroupRefresh(false, start, nil, a.ctx.Err())
-			return
-		}
-		a.setGroupRefreshProgress(false, map[string]any{"processed": i + 1, "total": len(ids), "updated": 0, "stage": "resolving"})
-	}
-	result := map[string]any{"updated": 0, "scanned": len(ids), "updates": []any{}}
-	a.finishGroupRefresh(false, start, result, nil)
+	result, err := a.runGroupMetadata(false)
+	a.finishGroupRefresh(false, start, result, err)
 }
 
 func (a *App) runPhotoRefresh(start time.Time) {
-	config, err := a.config.Load(a.ctx)
-	groups := []map[string]any{}
-	if err == nil {
-		groups = configuredGroupList(config)
-	}
-	results := make([]map[string]any, 0, len(groups))
-	a.setGroupRefreshProgress(true, map[string]any{"processed": 0, "total": len(groups), "stage": "downloading"})
-	for i, group := range groups {
-		if a.ctx.Err() != nil {
-			a.finishGroupRefresh(true, start, nil, a.ctx.Err())
-			return
+	result, err := a.runGroupMetadata(true)
+	a.finishGroupRefresh(true, start, result, err)
+}
+
+func (a *App) runGroupMetadata(photos bool) (map[string]any, error) {
+	readiness := a.telegramReadiness(a.ctx)
+	if readiness == nil {
+		epoch, err := a.urlPurgeCheckpoint()
+		if err != nil {
+			return nil, err
 		}
-		id := group["id"]
-		idText := strings.TrimSpace(toString(id))
-		var photo any
-		if idText != "" {
-			if info, statErr := os.Stat(filepath.Join(a.dataDir, "photos", idText+".jpg")); statErr == nil && !info.IsDir() {
-				photo = "/photos/" + idText + ".jpg"
-			}
-		}
-		results = append(results, map[string]any{"id": id, "url": photo})
-		a.setGroupRefreshProgress(true, map[string]any{"processed": i + 1, "total": len(groups), "stage": "downloading"})
+		return a.refreshTelegramGroups(a.ctx, photos, epoch, func(p map[string]any) { a.setGroupRefreshProgress(photos, p) })
 	}
-	a.finishGroupRefresh(true, start, map[string]any{"results": results}, nil)
+	if !errors.Is(readiness, errNoAPICredentials) && !errors.Is(readiness, errNoAccounts) {
+		return nil, readiness
+	}
+	// Without an account the released refresh buttons expose only cached data;
+	// resync-dialogs has a stricter synchronous credentials/accounts preflight.
+	targets, err := a.metadataTargets(a.ctx, photos)
+	if err != nil {
+		return nil, err
+	}
+	results := []any{}
+	report := func(n int) {
+		p := map[string]any{"processed": n, "total": len(targets), "stage": "resolving"}
+		if photos {
+			p["stage"] = "downloading"
+		} else {
+			p["updated"] = 0
+		}
+		a.setGroupRefreshProgress(photos, p)
+	}
+	report(0)
+	for n, t := range targets {
+		if err := a.ctx.Err(); err != nil {
+			return nil, err
+		}
+		if photos {
+			results = append(results, map[string]any{"id": t.raw, "url": a.cachedMetadataPhoto(t.id)})
+		}
+		report(n + 1)
+	}
+	if photos {
+		return map[string]any{"results": results}, nil
+	}
+	return map[string]any{"updated": 0, "scanned": len(targets), "updates": []any{}}, nil
 }
 
 func (a *App) groupRefreshStateLocked(photos bool) *groupRefreshState {
@@ -168,7 +160,7 @@ func (a *App) groupRefreshStatus(photos bool) map[string]any {
 		"attempts": state.attempts, "durationMs": state.durationMs, "error": state.err,
 		"failures": state.failures, "finishedAt": state.finishedAt,
 		"kind":     map[bool]string{false: "groupsRefreshInfo", true: "groupsRefreshPhotos"}[photos],
-		"progress": progress, "result": state.result, "running": state.running,
+		"progress": progress, "result": cloneConfigValue(state.result), "running": state.running,
 		"stage": stage, "startedAt": state.startedAt, "successes": state.successes,
 	}
 }
@@ -204,21 +196,18 @@ func (a *App) finishGroupRefresh(photos bool, start time.Time, result map[string
 	state.running = false
 	state.finishedAt = time.Now().UnixMilli()
 	state.durationMs = time.Since(start).Milliseconds()
-	state.result = result
 	if runErr != nil {
 		state.stage = "error"
 		state.err = runErr.Error()
 		state.failures++
 	} else {
+		state.result = result
 		state.stage = "done"
 		state.err = nil
 		state.successes++
 	}
 	duration := state.durationMs
 	a.groupRefreshMu.Unlock()
-	if runErr != nil {
-		return
-	}
 	prefix := "groups_refresh_info"
 	kind := "groupsRefreshInfo"
 	if photos {
@@ -226,8 +215,12 @@ func (a *App) finishGroupRefresh(photos bool, start time.Time, result map[string
 		kind = "groupsRefreshPhotos"
 	}
 	payload := map[string]any{"kind": kind, "durationMs": duration}
-	for key, value := range result {
-		payload[key] = value
+	if runErr != nil {
+		payload["error"] = runErr.Error()
+	} else {
+		for key, value := range result {
+			payload[key] = value
+		}
 	}
 	a.hub.Broadcast(ws.Event{Type: prefix + "_done", Flat: true, Payload: payload})
 }

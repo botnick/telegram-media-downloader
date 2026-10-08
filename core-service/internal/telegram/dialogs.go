@@ -12,13 +12,15 @@ import (
 )
 
 type Dialog struct {
-	peer     tg.InputPeerClass
-	ID       string
-	Name     string
-	Username string
-	Type     string
-	Archived bool
-	Members  *int
+	peer       tg.InputPeerClass
+	photo      *peerPhoto
+	photoKnown bool
+	ID         string
+	Name       string
+	Username   string
+	Type       string
+	Archived   bool
+	Members    *int
 }
 
 // Recovery must distinguish an absent peer from one beyond the UI's limit.
@@ -219,6 +221,7 @@ func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg
 			item.ID = fmt.Sprintf("%d", -1000000000000-peer.ChannelID)
 			item.Type = "channel"
 			if channel, ok := chatByID[peer.ChannelID].(*tg.Channel); ok {
+				item.photo, item.photoKnown = chatPhoto(channel.Photo)
 				item.Name = channel.Title
 				item.Username = channel.Username
 				if channel.ParticipantsCount > 0 {
@@ -230,6 +233,7 @@ func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg
 			item.ID = fmt.Sprintf("-%d", peer.ChatID)
 			item.Type = "group"
 			if chat, ok := chatByID[peer.ChatID].(*tg.Chat); ok {
+				item.photo, item.photoKnown = chatPhoto(chat.Photo)
 				item.Name = chat.Title
 				if chat.ParticipantsCount > 0 {
 					members := chat.ParticipantsCount
@@ -240,6 +244,13 @@ func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg
 			item.ID = fmt.Sprint(peer.UserID)
 			item.Type = "user"
 			if user := userByID[peer.UserID]; user != nil {
+				item.photoKnown = !user.Min
+				switch p := user.Photo.(type) {
+				case *tg.UserProfilePhoto:
+					item.photo, item.photoKnown = &peerPhoto{ID: p.PhotoID, DC: p.DCID}, true
+				case *tg.UserProfilePhotoEmpty:
+					item.photoKnown = true
+				}
 				item.Name = strings.TrimSpace(user.FirstName + " " + user.LastName)
 				item.Username = user.Username
 				if user.Bot {

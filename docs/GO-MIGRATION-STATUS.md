@@ -11,9 +11,9 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the Go executable passes **214 of 324
-  tests**, with **22 of 36 files passing**. The remaining **110 failed cases in
-  14 files** are still release blockers, not waived expectations. These are
+- The latest full black-box run against the Go executable passes **217 of 324
+  tests**, with **23 of 36 files passing**. The remaining **107 failed cases in
+  13 files** are still release blockers, not waived expectations. These are
   fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
 - Passing domains include accounts, authentication, shares, queue controls,
   chats, downloads/groups, files/static assets, configuration, AI library reads
@@ -89,9 +89,12 @@ functionality. Do not deploy this branch over a working library yet.
 - Linux process smoke check: HTTP health → SIGTERM exit 0 → reopen the same data
   directory → SIGTERM exit 0. Linux, Windows amd64 and macOS arm64 server builds
   pass; Windows/macOS binaries were not run natively.
-- The monitor contract file passes 5/8 cases, including all three history cases.
-  Resync/restart maintenance remains incomplete; **the complete monitor suite
-  has not passed**.
+- The monitor contract file passes **8/8**, including history and native
+  resync/restart maintenance. Name/avatar refresh now reads complete Telegram
+  metadata through the shared accounts, preserves chosen names, batches SQLite
+  changes and confines atomic avatar writes. Fixture integration verifies
+  cancellation, pins, rollback, purge and restart with actual file bytes.
+  See [maintenance scope and performance](GO-MONITOR-MAINTENANCE.md).
 
 Native account management now runs through Go: filesystem account discovery,
 encrypted phone/code/2FA login, bounded cancellation and expiry, durable add and
@@ -209,8 +212,8 @@ migration; the current source tree is not yet free of Node dependencies.
   and the queue snapshot are implemented, but the complete queue workflow still
   needs browser and performance coverage.
 - Complete backup, cluster/peer/cluster-WebSocket, AI-job, NSFW, seekbar
-  maintenance, monitor/history, Telegram-action, recovery, purge, security,
-  update and periodic WebSocket contracts. These are the 14 failing files in
+  maintenance, Telegram-action, recovery, purge, security,
+  update and periodic WebSocket contracts. These are the 13 failing files in
   the latest full run. A low-level Go
   projection or helper is not a replacement for the public workflow.
 - Finish the native test runner, remove the old server sources and launchers,
