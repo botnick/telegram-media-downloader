@@ -79,6 +79,13 @@ type App struct {
 	thumbBuildLastRun  map[string]any
 	thumbRebuildStatus map[string]any
 	thumbBuildCancel   context.CancelFunc
+	maintenanceMu      sync.Mutex
+	dbIntegrityStatus  map[string]any
+	filesVerifyStatus  map[string]any
+	filesVerifyLastRun map[string]any
+	reindexStatus      map[string]any
+	reindexLastRun     map[string]any
+	vacuumStatus       map[string]any
 	setupRL            *rateLimiter
 	secureCookies      bool
 	output             io.Writer
@@ -127,7 +134,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		ttl = 7 * 24 * time.Hour
 	}
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
-	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute), loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild")}
+	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute), loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum")}
 	a.ctx, a.cancel = context.WithCancel(ctx)
 	a.releaseOwnership = release
 	a.accounts = accounts.NewRepository(db.Writer, db.Reader, cfg.DataDir, &a.configMu)
@@ -180,6 +187,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerDedupRoutes(mux, a)
 	registerFaststartRoutes(mux, a)
 	registerThumbRoutes(mux, a)
+	registerMaintenanceRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
 	registerArchiveRoutes(mux, a)
