@@ -1,7 +1,10 @@
 package app
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -168,23 +171,23 @@ func (a *App) handleAPIPurgeGroup(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "group id is required")
 		return
 	}
-	result, err := a.db.Writer.ExecContext(r.Context(), `DELETE FROM downloads WHERE group_id = ?`, id)
+	deleted, paths, err := a.deleteByWhere(r, `group_id = ?`, id)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "purge failed")
 		return
 	}
-	deleted, _ := result.RowsAffected()
+	a.removeMediaFiles(paths)
 	a.hub.Broadcast(ws.Event{Type: "group_purged", Payload: map[string]any{"groupId": id, "deleted": deleted}})
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "deleted": deleted, "groupId": id})
 }
 
 func (a *App) handleAPIPurgeAll(w http.ResponseWriter, r *http.Request) {
-	result, err := a.db.Writer.ExecContext(r.Context(), `DELETE FROM downloads`)
+	deleted, paths, err := a.deleteByWhere(r, `1 = 1`)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "purge failed")
 		return
 	}
-	deleted, _ := result.RowsAffected()
+	a.removeMediaFiles(paths)
 	a.hub.Broadcast(ws.Event{Type: "purge_all", Payload: map[string]any{"deleted": deleted}})
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "deleted": deleted})
 }
@@ -195,9 +198,18 @@ func (a *App) deleteRows(r *http.Request, ids []int64, paths []string) (int64, e
 		return 0, err
 	}
 	var deleted int64
+	storedPaths := make([]string, 0, len(ids)+len(paths))
 	for _, id := range ids {
 		if id <= 0 {
 			continue
+		}
+		var stored sql.NullString
+		if err := tx.QueryRowContext(r.Context(), `SELECT file_path FROM downloads WHERE id = ?`, id).Scan(&stored); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			_ = tx.Rollback()
+			return 0, err
+		}
+		if stored.Valid {
+			storedPaths = append(storedPaths, stored.String)
 		}
 		result, err := tx.ExecContext(r.Context(), `DELETE FROM downloads WHERE id = ?`, id)
 		if err != nil {
@@ -212,6 +224,28 @@ func (a *App) deleteRows(r *http.Request, ids []int64, paths []string) (int64, e
 		if path == "" {
 			continue
 		}
+		rows, queryErr := tx.QueryContext(r.Context(), `SELECT file_path FROM downloads WHERE file_path = ? OR REPLACE(file_path, '\\', '/') = ?`, path, strings.ReplaceAll(path, "\\", "/"))
+		if queryErr != nil {
+			_ = tx.Rollback()
+			return 0, queryErr
+		}
+		for rows.Next() {
+			var stored sql.NullString
+			if scanErr := rows.Scan(&stored); scanErr != nil {
+				_ = rows.Close()
+				_ = tx.Rollback()
+				return 0, scanErr
+			}
+			if stored.Valid {
+				storedPaths = append(storedPaths, stored.String)
+			}
+		}
+		if rowsErr := rows.Err(); rowsErr != nil {
+			_ = rows.Close()
+			_ = tx.Rollback()
+			return 0, rowsErr
+		}
+		_ = rows.Close()
 		result, err := tx.ExecContext(r.Context(), `DELETE FROM downloads WHERE file_path = ? OR REPLACE(file_path, '\\', '/') = ?`, path, strings.ReplaceAll(path, "\\", "/"))
 		if err != nil {
 			_ = tx.Rollback()
@@ -223,7 +257,64 @@ func (a *App) deleteRows(r *http.Request, ids []int64, paths []string) (int64, e
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+	a.removeMediaFiles(storedPaths)
 	return deleted, nil
+}
+
+func (a *App) deleteByWhere(r *http.Request, where string, args ...any) (int64, []string, error) {
+	tx, err := a.db.Writer.BeginTx(r.Context(), nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	rows, err := tx.QueryContext(r.Context(), `SELECT file_path FROM downloads WHERE `+where, args...)
+	if err != nil {
+		_ = tx.Rollback()
+		return 0, nil, err
+	}
+	paths := make([]string, 0)
+	for rows.Next() {
+		var stored sql.NullString
+		if err := rows.Scan(&stored); err != nil {
+			_ = rows.Close()
+			_ = tx.Rollback()
+			return 0, nil, err
+		}
+		if stored.Valid {
+			paths = append(paths, stored.String)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		_ = tx.Rollback()
+		return 0, nil, err
+	}
+	_ = rows.Close()
+	result, err := tx.ExecContext(r.Context(), `DELETE FROM downloads WHERE `+where, args...)
+	if err != nil {
+		_ = tx.Rollback()
+		return 0, nil, err
+	}
+	deleted, _ := result.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return 0, nil, err
+	}
+	return deleted, paths, nil
+}
+
+func (a *App) removeMediaFiles(storedPaths []string) {
+	root := filepath.Join(a.dataDir, "downloads")
+	seen := make(map[string]struct{}, len(storedPaths))
+	for _, stored := range storedPaths {
+		candidate, ok := safeDownloadPath(root, stored)
+		if !ok {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		_ = os.Remove(candidate)
+	}
 }
 
 func safeDownloadPath(root, stored string) (string, bool) {
