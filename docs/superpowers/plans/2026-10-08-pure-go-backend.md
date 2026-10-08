@@ -6,7 +6,10 @@
 
 **Architecture:** Extend `core-service` into a Go application server. Move domains in dependency order, preserving the existing HTTP/WS and data contracts, then embed the SPA and delete Node runtime files and dependencies from the release image.
 
-**Tech Stack:** Go 1.24+, `net/http`, `github.com/gotd/td`, `modernc.org/sqlite`, `embed.FS`, existing ffmpeg and Python sidecars where their contracts remain explicit.
+**Tech Stack:** Go 1.25+ (toolchain 1.26.8), `net/http`, `github.com/gotd/td`, `modernc.org/sqlite`, `embed.FS`, existing ffmpeg and Python sidecars where their contracts remain explicit.
+
+**Execution status:** See [GO-MIGRATION-STATUS.md](../../GO-MIGRATION-STATUS.md).
+Implementation commits and package tests alone do not complete the tasks below.
 
 **Spec:** `docs/superpowers/specs/2026-10-08-pure-go-backend-design.md`
 

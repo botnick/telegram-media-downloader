@@ -42,36 +42,37 @@ func NewGotdClient(cfg GotdConfig) (*GotdClient, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.SessionPath), 0o700); err != nil {
 		return nil, fmt.Errorf("create Telegram session directory: %w", err)
 	}
-	if cfg.EncryptedSessionPath != "" {
-		if cfg.SessionSecret == "" {
-			return nil, errors.New("Telegram session secret is required for encrypted sessions")
-		}
-		if err := ensureConvertedSession(cfg); err != nil {
-			return nil, err
-		}
+	storage, err := sessionconv.NewEncryptedStorage(cfg.SessionPath, cfg.SessionSecret)
+	if err != nil {
+		return nil, err
 	}
-	return &GotdClient{client: gotd.NewClient(cfg.AppID, cfg.AppHash, gotd.Options{
-		SessionStorage: &session.FileStorage{Path: cfg.SessionPath},
-	})}, nil
+	if err := ensureConvertedSession(cfg, storage); err != nil {
+		return nil, err
+	}
+	return &GotdClient{client: gotd.NewClient(cfg.AppID, cfg.AppHash, gotd.Options{SessionStorage: storage})}, nil
 }
 
-func ensureConvertedSession(cfg GotdConfig) error {
-	if info, err := os.Stat(cfg.SessionPath); err == nil && info.Size() > 0 {
-		loader := &session.Loader{Storage: &session.FileStorage{Path: cfg.SessionPath}}
-		if _, loadErr := loader.Load(context.Background()); loadErr == nil {
-			return nil
+func ensureConvertedSession(cfg GotdConfig, storage session.Storage) error {
+	if info, err := os.Lstat(cfg.SessionPath); err == nil {
+		if !info.Mode().IsRegular() || info.Size() == 0 {
+			return errors.New("invalid native Telegram session file")
 		}
-	} else if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("inspect gotd session: %w", err)
+		loader := &session.Loader{Storage: storage}
+		if _, err := loader.Load(context.Background()); err != nil {
+			return fmt.Errorf("load native Telegram session: %w", err)
+		}
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect native Telegram session: %w", err)
+	}
+	if cfg.EncryptedSessionPath == "" {
+		return nil
 	}
 	data, err := sessionconv.LoadEncrypted(cfg.EncryptedSessionPath, cfg.SessionSecret)
 	if err != nil {
-		return fmt.Errorf("convert gramJS session: %w", err)
+		return fmt.Errorf("import Telegram session: %w", err)
 	}
-	if err := sessionconv.WriteGotd(context.Background(), cfg.SessionPath, data); err != nil {
-		return err
-	}
-	return nil
+	return sessionconv.WriteGotd(context.Background(), cfg.SessionPath, cfg.SessionSecret, data)
 }
 
 func (c *GotdClient) Run(ctx context.Context, ready func(context.Context) error) error {

@@ -1,6 +1,8 @@
 module github.com/botnick/telegram-media-downloader/core-service
 
-go 1.22
+go 1.25.0
+
+toolchain go1.26.8
 
 require (
 	github.com/gorilla/websocket v1.5.3

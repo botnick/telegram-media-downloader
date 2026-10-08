@@ -31,7 +31,7 @@ func FromFullEnv(getenv func(string) string) (FullConfig, error) {
 		}
 		port = n
 	}
-	ttlDays := 30
+	ttlDays := 7
 	if raw := strings.TrimSpace(getenv("TGDL_SESSION_TTL_DAYS")); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > 3650 {

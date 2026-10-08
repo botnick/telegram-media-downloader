@@ -42,7 +42,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	a, err := app.New(context.Background(), app.Config{DataDir: cfg.DataDir, Port: cfg.Port, Static: static, CookieName: cfg.CookieName, SessionTTL: cfg.SessionTTL})
+	a, err := app.New(context.Background(), app.Config{DataDir: cfg.DataDir, Port: cfg.Port, Static: static, CookieName: cfg.CookieName, SessionTTL: cfg.SessionTTL, Output: stdout, SecureCookies: os.Getenv("TGDL_SECURE_COOKIES") == "1" || os.Getenv("NODE_ENV") == "production"})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1

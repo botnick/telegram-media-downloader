@@ -48,10 +48,17 @@ func TestSessionStoreRenewsInFinalQuarter(t *testing.T) {
 		t.Fatal(err)
 	}
 	nearExpiry := time.Now().Add(10 * time.Minute).UnixMilli()
-	if _, err := db.Exec(`UPDATE web_sessions SET expires_at = ? WHERE token = ?`, nearExpiry, token); err != nil {
+	if _, err := db.Exec(`UPDATE web_sessions SET issued_at = ?, expires_at = ? WHERE token = ?`, nearExpiry-ttl.Milliseconds(), nearExpiry, token); err != nil {
 		t.Fatal(err)
 	}
 	got, err := sessions.Validate(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renewed, err := sessions.Renew(context.Background(), got); err != nil || renewed != ttl {
+		t.Fatalf("renewal=%v err=%v", renewed, err)
+	}
+	got, err = sessions.Validate(context.Background(), token)
 	if err != nil {
 		t.Fatal(err)
 	}

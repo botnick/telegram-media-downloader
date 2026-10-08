@@ -2,7 +2,6 @@ package app
 
 import (
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -13,16 +12,18 @@ func registerMediaRoutes(mux *http.ServeMux, a *App) {
 }
 
 func (a *App) handleFile(w http.ResponseWriter, r *http.Request) {
-	path, ok := safeDownloadPath(filepath.Join(a.dataDir, "downloads"), r.PathValue("path"))
-	if !ok {
+	f, err := openMedia(filepath.Join(a.dataDir, "downloads"), r.PathValue("path"))
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	if _, err := os.Stat(path); err != nil {
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	http.ServeFile(w, r, path)
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
 func (a *App) handlePhoto(w http.ResponseWriter, r *http.Request) {
@@ -31,10 +32,16 @@ func (a *App) handlePhoto(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	path := filepath.Join(a.dataDir, "photos", id+".jpg")
-	if _, err := os.Stat(path); err != nil {
+	f, err := openMedia(filepath.Join(a.dataDir, "photos"), id+".jpg")
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	http.ServeFile(w, r, path)
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }

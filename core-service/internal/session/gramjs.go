@@ -8,13 +8,13 @@ import (
 	"crypto/cipher"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/gotd/td/crypto"
@@ -52,7 +52,10 @@ func DecryptSecureSession(raw []byte, password string) (string, error) {
 		return "", errors.New("secure session is missing iv, data, or tag")
 	}
 	salt := legacySalt
-	if blob.Version >= 2 {
+	if blob.Version < 0 || blob.Version > 2 {
+		return "", errors.New("unsupported encrypted session version")
+	}
+	if blob.Version == 2 {
 		if blob.Salt == "" {
 			return "", errors.New("v2 secure session is missing salt")
 		}
@@ -108,21 +111,27 @@ func ParseGramJSStringSession(value string) (GramJSData, error) {
 		return GramJSData{}, errors.New("gramJS session is truncated")
 	}
 	dc := int(raw[0])
+	if dc == 0 {
+		return GramJSData{}, errors.New("invalid Telegram datacenter")
+	}
 	offset := 1
 	var address string
-	if len(raw) == 1+4+2+256 {
-		address = net.IP(raw[offset : offset+4]).String()
-		offset += 4
-	} else {
-		addressLen := int(int16(raw[offset])<<8 | int16(raw[offset+1]))
+	addressLen := int(binary.BigEndian.Uint16(raw[1:3]))
+	if addressLen > 0 && addressLen <= 128 && 3+addressLen+2+256 == len(raw) {
 		offset += 2
-		if addressLen <= 0 || addressLen > 128 || offset+addressLen+2+256 > len(raw) {
-			return GramJSData{}, errors.New("gramJS session has an invalid server address")
-		}
 		address = string(raw[offset : offset+addressLen])
 		offset += addressLen
+	} else if len(raw) == 1+4+2+256 || len(raw) == 1+16+2+256 {
+		ipLen := len(raw) - 1 - 2 - 256
+		address = net.IP(raw[offset : offset+ipLen]).String()
+		offset += ipLen
+	} else {
+		return GramJSData{}, errors.New("gramJS session has an invalid server address")
 	}
-	port := int(int16(raw[offset])<<8 | int16(raw[offset+1]))
+	if net.ParseIP(address) == nil {
+		return GramJSData{}, errors.New("Telegram session address must be an IP address")
+	}
+	port := int(binary.BigEndian.Uint16(raw[offset : offset+2]))
 	offset += 2
 	if port <= 0 || port > 65535 || offset+256 != len(raw) {
 		return GramJSData{}, errors.New("gramJS session has an invalid port or auth key")
@@ -148,37 +157,18 @@ func LoadEncrypted(path, secret string) (GramJSData, error) {
 	return ParseGramJSStringSession(plain)
 }
 
-// WriteGotd persists a converted session atomically in gotd's native JSON
-// format. This is deliberately separate from LoadEncrypted so rollback keeps
-// the original gramJS .enc file untouched.
-func WriteGotd(ctx context.Context, path string, data GramJSData) error {
+// WriteGotd persists an imported session in authenticated encrypted storage.
+// The legacy source is only read during an explicit one-time import.
+func WriteGotd(ctx context.Context, path, secret string, data GramJSData) error {
 	if err := validate(data); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create gotd session directory: %w", err)
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".gotd-session-*")
+	storage, err := NewEncryptedStorage(path, secret)
 	if err != nil {
-		return fmt.Errorf("create gotd session temp: %w", err)
+		return err
 	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close gotd session temp: %w", err)
-	}
-	storage := &gotdSession.FileStorage{Path: tmpPath}
 	loader := &gotdSession.Loader{Storage: storage}
-	if err := loader.Save(ctx, &gotdSession.Data{DC: data.DC, Addr: data.Addr, AuthKey: data.AuthKey, AuthKeyID: data.AuthKeyID}); err != nil {
-		return fmt.Errorf("write gotd session: %w", err)
-	}
-	if err := os.Chmod(tmpPath, 0o600); err != nil {
-		return fmt.Errorf("protect gotd session: %w", err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("publish gotd session: %w", err)
-	}
-	return nil
+	return loader.Save(ctx, &gotdSession.Data{DC: data.DC, Addr: data.Addr, AuthKey: data.AuthKey, AuthKeyID: data.AuthKeyID})
 }
 
 func validate(data GramJSData) error {

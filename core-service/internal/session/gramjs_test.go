@@ -2,9 +2,12 @@ package session
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	gotdSession "github.com/gotd/td/session"
@@ -26,6 +29,19 @@ func TestDecryptSecureSessionMatchesNodeSecureSession(t *testing.T) {
 	}
 	if _, err := DecryptSecureSession([]byte(fixtureSecure), "wrong"); err == nil {
 		t.Fatal("wrong secret unexpectedly decrypted")
+	}
+}
+
+func TestGramJSPortUsesUnsignedWireInteger(t *testing.T) {
+	raw, err := base64.StdEncoding.DecodeString(fixturePlain[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset := 3 + int(binary.BigEndian.Uint16(raw[1:3]))
+	binary.BigEndian.PutUint16(raw[offset:offset+2], 65535)
+	data, err := ParseGramJSStringSession("1" + base64.StdEncoding.EncodeToString(raw))
+	if err != nil || data.Port != 65535 {
+		t.Fatalf("valid wire port rejected: %d %v", data.Port, err)
 	}
 }
 
@@ -61,10 +77,21 @@ func TestWriteGotdSessionIsReadableAndAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "sessions", "account.json")
-	if err := WriteGotd(context.Background(), path, data); err != nil {
+	if err := WriteGotd(context.Background(), path, "test-secret", data); err != nil {
 		t.Fatal(err)
 	}
 	buf, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(buf), base64.StdEncoding.EncodeToString(data.AuthKey)) {
+		t.Fatal("auth key stored in plaintext")
+	}
+	storage, err := NewEncryptedStorage(path, "test-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf, err = storage.LoadSession(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

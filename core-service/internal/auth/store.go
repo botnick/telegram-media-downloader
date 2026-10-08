@@ -30,6 +30,10 @@ func NewSessionStore(db *sql.DB, cookieName string, ttl time.Duration) *SessionS
 }
 
 func (s *SessionStore) Create(ctx context.Context, role string) (string, error) {
+	return s.CreateWithTTL(ctx, role, s.ttl)
+}
+
+func (s *SessionStore) CreateWithTTL(ctx context.Context, role string, ttl time.Duration) (string, error) {
 	if role != "admin" && role != "guest" {
 		return "", errors.New("invalid session role")
 	}
@@ -39,7 +43,10 @@ func (s *SessionStore) Create(ctx context.Context, role string) (string, error) 
 	}
 	token := hex.EncodeToString(b)
 	now := time.Now().UnixMilli()
-	expiry := time.Now().Add(s.ttl).UnixMilli()
+	if ttl <= 0 {
+		return "", errors.New("invalid session lifetime")
+	}
+	expiry := now + ttl.Milliseconds()
 	_, err := s.db.ExecContext(ctx, `INSERT INTO web_sessions(token, role, issued_at, expires_at, last_seen) VALUES(?,?,?,?,?)`, token, role, now, expiry, now)
 	return token, err
 }
@@ -57,18 +64,29 @@ func (s *SessionStore) Validate(ctx context.Context, token string) (Session, err
 	if err != nil {
 		return Session{}, err
 	}
-	now := time.Now()
-	// Match the Node dashboard's sliding renewal: sessions are extended only
-	// in their final quarter, keeping ordinary requests a cheap read.
-	if s.ttl > 0 && out.ExpiresAt-now.UnixMilli() <= s.ttl.Milliseconds()/4 {
-		out.ExpiresAt = now.Add(s.ttl).UnixMilli()
-		if _, err := s.db.ExecContext(ctx, `UPDATE web_sessions SET expires_at = ?, last_seen = ? WHERE token = ?`, out.ExpiresAt, now.UnixMilli(), token); err != nil {
-			return Session{}, err
-		}
-	} else {
-		_, _ = s.db.ExecContext(ctx, `UPDATE web_sessions SET last_seen = ? WHERE token = ?`, now.UnixMilli(), token)
+	if out.Role != "admin" && out.Role != "guest" {
+		return Session{}, errors.New("invalid session role")
 	}
-	return out, err
+	return out, nil
+}
+
+// Renew slides only sessions in their final quarter and reports the lifetime
+// to set on the response cookie. Ordinary validation performs no writes.
+func (s *SessionStore) Renew(ctx context.Context, sess Session) (time.Duration, error) {
+	now := time.Now().UnixMilli()
+	ttl := sess.ExpiresAt - sess.IssuedAt
+	if ttl <= 0 || sess.ExpiresAt-now >= ttl/4 {
+		return 0, nil
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE web_sessions SET issued_at=?, expires_at=?, last_seen=? WHERE token=? AND expires_at=? AND expires_at>?`, now, now+ttl, now, sess.Token, sess.ExpiresAt, now)
+	if err != nil {
+		return 0, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil || count == 0 {
+		return 0, err
+	}
+	return time.Duration(ttl) * time.Millisecond, nil
 }
 
 func (s *SessionStore) CookieName() string { return s.cookieName }
@@ -85,6 +103,14 @@ func (s *SessionStore) Revoke(ctx context.Context, token string) error {
 
 func (s *SessionStore) RevokeAll(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM web_sessions`)
+	return err
+}
+
+func (s *SessionStore) RevokeRole(ctx context.Context, role string) error {
+	if role != "admin" && role != "guest" {
+		return errors.New("invalid session role")
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM web_sessions WHERE role = ?`, role)
 	return err
 }
 

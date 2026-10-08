@@ -93,6 +93,11 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_schema_meta (version INTEGER NOT NULL); INSERT INTO tgdl_schema_meta(version) SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM tgdl_schema_meta);`); err != nil {
 		return 0, fmt.Errorf("record schema version: %w", err)
 	}
+	// File cleanup is a durable outbox: a process exit between the database
+	// commit and unlink must not silently abandon files or undo deleted rows.
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_file_cleanup (path TEXT PRIMARY KEY NOT NULL)`); err != nil {
+		return 0, fmt.Errorf("create file cleanup queue: %w", err)
+	}
 	var version int
 	if err := db.QueryRowContext(ctx, `SELECT version FROM tgdl_schema_meta LIMIT 1`).Scan(&version); err != nil {
 		return 0, fmt.Errorf("read schema version: %w", err)

@@ -8,6 +8,10 @@
 
 <h1 align="center">Telegram Media Downloader</h1>
 
+> This branch is undergoing a Go backend migration and is not ready for
+> production replacement. [Verified coverage and remaining work](docs/GO-MIGRATION-STATUS.md).
+> The feature and installation documentation below describes the existing release.
+
 <p align="center">
   <b>A self-hosted Telegram media downloader with a web dashboard.</b><br>
   Download Telegram channel and group media, or back up any chat you belong to — photos, videos, documents,<br>

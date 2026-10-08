@@ -1,13 +1,34 @@
 // Package ws provides a bounded, non-blocking event hub for dashboard clients.
 package ws
 
-import "sync"
+import (
+	"encoding/json"
+	"sync"
+)
 
 type Event struct {
 	Type    string
 	Roles   []string
 	Payload any
 }
+
+// Dashboard events have a lowercase type and top-level payload fields.
+// Routing roles are internal metadata and must never go onto the wire.
+func (e Event) MarshalJSON() ([]byte, error) {
+	fields := map[string]any{}
+	if e.Payload != nil {
+		raw, err := json.Marshal(e.Payload)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return nil, err
+		}
+	}
+	fields["type"] = e.Type
+	return json.Marshal(fields)
+}
+
 type Client struct {
 	role   string
 	events chan Event

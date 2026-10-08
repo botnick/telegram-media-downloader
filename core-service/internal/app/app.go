@@ -3,17 +3,18 @@ package app
 
 import (
 	"context"
+	"crypto/sha1" // #nosec G505 -- HTTP cache validators, not authentication.
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
-	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/auth"
@@ -22,27 +23,37 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/dbread"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/jobs"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/store"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 	"github.com/gorilla/websocket"
 )
 
 type Config struct {
-	DataDir    string
-	Port       int
-	Static     fs.FS
-	CookieName string
-	SessionTTL time.Duration
+	DataDir       string
+	Port          int
+	Static        fs.FS
+	CookieName    string
+	SessionTTL    time.Duration
+	SecureCookies bool
+	Output        io.Writer
 }
 type App struct {
-	db       *store.DB
-	sessions *auth.SessionStore
-	hub      *ws.Hub
-	read     *dbread.Handler
-	config   auth.ConfigStore
-	jobs     *jobs.Tracker
-	dataDir  string
-	pairing  *cluster.PairingStore
-	handler  http.Handler
+	db            *store.DB
+	sessions      *auth.SessionStore
+	hub           *ws.Hub
+	read          *dbread.Handler
+	config        auth.ConfigStore
+	jobs          *jobs.Tracker
+	dataDir       string
+	pairing       *cluster.PairingStore
+	loginRL       *rateLimiter
+	handler       http.Handler
+	configMu      sync.Mutex
+	setupRL       *rateLimiter
+	secureCookies bool
+	output        io.Writer
+	resetMu       sync.Mutex
+	resetTokens   map[string]time.Time
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -69,33 +80,26 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	}
 	ttl := cfg.SessionTTL
 	if ttl <= 0 {
-		ttl = 30 * 24 * time.Hour
+		ttl = 7 * 24 * time.Hour
 	}
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
-	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute)}
+	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute), loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time)}
+	if err := a.drainFileCleanup(ctx); err != nil && cfg.Output != nil {
+		fmt.Fprintf(cfg.Output, "Media cleanup remains pending: %v\n", err)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "service": "tgdl-server"})
 	})
-	mux.HandleFunc("GET /api/auth_check", func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(cookie)
-		if err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]any{"authenticated": false})
-			return
-		}
-		s, err := a.sessions.Validate(r.Context(), c.Value)
-		if err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]any{"authenticated": false})
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"authenticated": true, "role": s.Role})
-	})
-	mux.HandleFunc("POST /api/login", a.handleLogin)
+	mux.HandleFunc("GET /api/auth_check", a.handleAuthCheck)
+	mux.Handle("POST /api/login", a.loginRL.middleware(http.HandlerFunc(a.handleLogin)))
 	mux.HandleFunc("POST /api/logout", a.handleLogout)
-	mux.HandleFunc("POST /api/auth/setup", a.handleSetup)
+	mux.Handle("POST /api/auth/setup", a.setupRL.middleware(http.HandlerFunc(a.handleSetup)))
+	mux.Handle("POST /api/auth/change-password", a.loginRL.middleware(a.requireAdmin(http.HandlerFunc(a.handleChangePassword))))
+	mux.Handle("POST /api/auth/guest-password", a.requireAdmin(http.HandlerFunc(a.handleGuestPassword)))
+	mux.Handle("POST /api/auth/reset/request", a.loginRL.middleware(http.HandlerFunc(a.handleResetRequest)))
+	mux.Handle("POST /api/auth/reset/confirm", a.loginRL.middleware(http.HandlerFunc(a.handleResetConfirm)))
 	mux.Handle("POST /api/downloads/pin", a.requireAdmin(http.HandlerFunc(a.handleBatchPin)))
 	mux.Handle("POST /api/downloads/{id}/pin", a.requireAdmin(http.HandlerFunc(a.handlePin)))
 	mux.Handle("GET /api/jobs", a.requireSession(http.HandlerFunc(a.handleJobs)))
@@ -106,26 +110,55 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerGalleryRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
+	registerShareRoutes(mux, a)
 	registerReadRoutes(mux, read, a.requireSession)
 	mux.HandleFunc("GET /ws", a.handleWebSocket)
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		if cfg.Static == nil {
-			http.NotFound(w, r)
-			return
-		}
-		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
-		if name == "." || name == "" {
-			name = "index.html"
-		}
-		data, err := fs.ReadFile(cfg.Static, name)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeContent(w, r, name, time.Time{}, strings.NewReader(string(data)))
+	mux.Handle("/", newStaticHandler(cfg.Static))
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"version": version.AppVersion, "commit": "dev", "builtAt": nil})
 	})
-	a.handler = mux
+
+	a.handler = securityHeaders(a.gateway(mux))
 	return a, nil
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	const csp = "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", csp)
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+		w.Header().Set("Origin-Agent-Cluster", "?1")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Strict-Transport-Security", "max-age=0")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-DNS-Prefetch-Control", "off")
+		w.Header().Set("X-Download-Options", "noopen")
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
+		w.Header().Set("X-XSS-Protection", "0")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func webBoolValue(web map[string]any, key string, fallback bool) bool {
+	if web == nil {
+		return fallback
+	}
+	value, ok := web[key].(bool)
+	if !ok {
+		return fallback
+	}
+	return value
+}
+
+func ensureMap(root map[string]any, key string) map[string]any {
+	if value, ok := root[key].(map[string]any); ok {
+		return value
+	}
+	value := map[string]any{}
+	root[key] = value
+	return value
 }
 
 func (a *App) handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -153,9 +186,8 @@ func (a *App) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 	})
-	if err := conn.WriteJSON(map[string]any{"type": "ws_ready", "role": sess.Role}); err != nil {
-		return
-	}
+	heartbeat := time.NewTicker(30 * time.Second)
+	defer heartbeat.Stop()
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)
@@ -169,122 +201,20 @@ func (a *App) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-readDone:
 			return
+		case <-heartbeat.C:
+			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second)); err != nil {
+				return
+			}
 		case event, ok := <-client.Events():
 			if !ok {
 				return
 			}
+			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := conn.WriteJSON(event); err != nil {
 				return
 			}
 		}
 	}
-}
-
-func (a *App) requireSession(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(a.sessions.CookieName())
-		if err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		session, err := a.sessions.Validate(r.Context(), cookie.Value)
-		if err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(auth.WithSession(r.Context(), session)))
-	})
-}
-
-func (a *App) requireAdmin(next http.Handler) http.Handler {
-	return a.requireSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, _ := auth.SessionFromContext(r.Context())
-		if session.Role != "admin" {
-			http.Error(w, "admin required", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	}))
-}
-
-func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Password string `json:"password"`
-	}
-	if err := decodeBody(w, r, &body); err != nil || body.Password == "" {
-		if err == nil {
-			writeJSONError(w, http.StatusBadRequest, "Password required")
-		}
-		return
-	}
-	role, configured, err := a.config.Login(r.Context(), body.Password)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "Internal error")
-		return
-	}
-	if !configured {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "Web dashboard not initialised", "setupRequired": true})
-		return
-	}
-	if role == "" {
-		writeJSONError(w, http.StatusUnauthorized, "Invalid password")
-		return
-	}
-	if !a.issueSession(w, r, role) {
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "role": role})
-}
-
-func (a *App) handleSetup(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Password string `json:"password"`
-	}
-	if err := decodeBody(w, r, &body); err != nil || len(body.Password) < 8 {
-		if err == nil {
-			writeJSONError(w, http.StatusBadRequest, "Password must be at least 8 characters")
-		}
-		return
-	}
-	if !isLocalRequest(r) {
-		writeJSONError(w, http.StatusForbidden, "Initial setup must be done from the local machine")
-		return
-	}
-	_, configured, err := a.config.Login(r.Context(), "")
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "Internal error")
-		return
-	}
-	if configured {
-		writeJSONError(w, http.StatusConflict, "Already configured")
-		return
-	}
-	if err := a.config.SetAdminPassword(r.Context(), body.Password); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "Internal error")
-		return
-	}
-	if !a.issueSession(w, r, "admin") {
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"success": true})
-}
-
-func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(a.sessions.CookieName()); err == nil {
-		_ = a.sessions.Revoke(r.Context(), cookie.Value)
-	}
-	http.SetCookie(w, &http.Cookie{Name: a.sessions.CookieName(), Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
-	writeJSON(w, http.StatusOK, map[string]any{"success": true})
-}
-
-func (a *App) issueSession(w http.ResponseWriter, r *http.Request, role string) bool {
-	token, err := a.sessions.Create(r.Context(), role)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "Internal error")
-		return false
-	}
-	http.SetCookie(w, &http.Cookie{Name: a.sessions.CookieName(), Value: token, Path: "/", MaxAge: int(a.sessions.TTL() / time.Second), HttpOnly: true, SameSite: http.SameSiteStrictMode})
-	return true
 }
 
 func (a *App) handlePin(w http.ResponseWriter, r *http.Request) {
@@ -415,9 +345,16 @@ func decodeBody(w http.ResponseWriter, r *http.Request, dst any) error {
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
+	body, err := json.Marshal(value)
+	if err != nil {
+		status = http.StatusInternalServerError
+		body = []byte(`{"error":"Internal error"}`)
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	sum := sha1.Sum(body) // #nosec G401 -- HTTP ETag wire compatibility.
+	w.Header().Set("ETag", `W/"`+strconv.FormatInt(int64(len(body)), 16)+`-`+base64.RawStdEncoding.EncodeToString(sum[:])+`"`)
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+	_, _ = w.Write(body)
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
@@ -429,15 +366,6 @@ func boolInt(value bool) int {
 		return 1
 	}
 	return 0
-}
-
-func isLocalRequest(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	ip := net.ParseIP(host)
-	return ip == nil || ip.IsLoopback()
 }
 
 func (a *App) Handler() http.Handler { return a.handler }

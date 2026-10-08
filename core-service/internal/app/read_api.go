@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -29,8 +30,41 @@ func (a *App) handleAPISystemHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "process": map[string]any{"goVersion": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH}, "server": "tgdl-server", "websocketClients": 0})
 }
 
-func (a *App) handleAPIMonitorStatus(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"state": "stopped", "running": false, "accounts": 0})
+func (a *App) handleAPIMonitorStatus(w http.ResponseWriter, r *http.Request) {
+	config, err := a.config.Load(r.Context())
+	if err != nil {
+		writeJSONError(w, 500, "config read failed")
+		return
+	}
+	entries, err := os.ReadDir(filepath.Join(a.dataDir, "sessions"))
+	if err != nil && !os.IsNotExist(err) {
+		writeJSONError(w, 500, "account directory read failed")
+		return
+	}
+	accounts := 0
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".enc") {
+			accounts++
+		}
+	}
+	telegram, _ := config["telegram"].(map[string]any)
+	var hint any
+	switch {
+	case number(telegram["apiId"], 0) <= 0 || toString(telegram["apiHash"]) == "":
+		hint = "configure-api"
+	case accounts == 0:
+		hint = "add-account"
+	default:
+		hint = "enable-group"
+		for _, group := range configuredGroups(config) {
+			if group["enabled"] == true {
+				hint = nil
+				break
+			}
+		}
+	}
+	// No account runner is started by App yet; expose the actual idle state.
+	writeJSON(w, http.StatusOK, map[string]any{"state": "stopped", "error": nil, "startedAt": nil, "uptimeMs": 0, "stats": nil, "queue": 0, "active": 0, "workers": 0, "accounts": accounts, "hint": hint})
 }
 
 func (a *App) handleAPIQueueSnapshot(w http.ResponseWriter, _ *http.Request) {
@@ -53,11 +87,21 @@ func (a *App) handleAPIDownloads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := make([]map[string]any, 0, len(rows))
+	config, _ := a.config.Load(r.Context())
+	configured := configuredGroups(config)
 	for _, row := range rows {
-		out = append(out, map[string]any{
-			"id": row.id, "name": row.name, "totalFiles": row.count,
-			"sizeFormatted": formatBytes(row.size), "enabled": false,
-		})
+		item := map[string]any{"id": row.id, "name": row.name, "totalFiles": row.count, "sizeFormatted": formatBytes(row.size), "enabled": false, "type": nil, "photoUrl": nil}
+		if group := configured[row.id]; group != nil {
+			for _, key := range []string{"enabled", "type"} {
+				if value, ok := group[key]; ok {
+					item[key] = value
+				}
+			}
+		}
+		if st, err := os.Stat(filepath.Join(a.dataDir, "photos", row.id+".jpg")); err == nil && !st.IsDir() {
+			item["photoUrl"] = "/photos/" + row.id + ".jpg"
+		}
+		out = append(out, item)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -321,10 +365,28 @@ func formatBytes(value int64) string {
 	for _, unit := range units {
 		f /= 1024
 		if f < 1024 || unit == "TB" {
-			return strconv.FormatFloat(f, 'f', 1, 64) + " " + unit
+			formatted := strconv.FormatFloat(f, 'f', 2, 64)
+			formatted = strings.TrimRight(strings.TrimRight(formatted, "0"), ".")
+			return formatted + " " + unit
 		}
 	}
 	return strconv.FormatInt(value, 10) + " B"
+}
+
+func configuredGroups(config map[string]any) map[string]map[string]any {
+	out := map[string]map[string]any{}
+	groups, _ := config["groups"].([]any)
+	for _, raw := range groups {
+		group, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := strings.TrimSpace(toString(group["id"]))
+		if id != "" {
+			out[id] = group
+		}
+	}
+	return out
 }
 
 func toString(value any) string {

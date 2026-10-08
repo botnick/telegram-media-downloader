@@ -1,12 +1,12 @@
 # telegram-media-downloader Go server
 
-`cmd/tgdl-server` is the production backend. It serves the embedded SPA,
-owns the HTTP and WebSocket surfaces, opens the WAL SQLite database, and
-manages sessions, read projections, writes, jobs, Telegram adapters and
-backups in one process. Production does not start Node, proxy to Node, or
-select another implementation when a feature fails.
+`cmd/tgdl-server` is the Go backend under development. It serves the embedded
+SPA and implemented HTTP/WebSocket routes directly. Packaging selects it,
+but account/download lifecycle and public API parity remain incomplete.
+See [verified coverage and remaining release work](../docs/GO-MIGRATION-STATUS.md).
+The executable does not start or proxy to a Node server.
 
-The browser JavaScript under `web/public` is client code and runs in the
+The browser JavaScript under `internal/webassets/public` is client code and runs in the
 user's browser. ffmpeg and explicitly configured AI services are external
 workers with clear errors; they are not server fallbacks.
 
@@ -19,7 +19,7 @@ TGDL_DATA_DIR=/var/lib/telegram-media-downloader PORT=3000 \
 
 `TGDL_DATA_DIR` is required. The server creates `db.sqlite` and applies the
 same idempotent schema used by existing installations. `PORT` defaults to
-`3000`; `TGDL_SESSION_TTL_DAYS` defaults to 30. The existing session cookie
+`3000`; `TGDL_SESSION_TTL_DAYS` defaults to 7. The existing session cookie
 name is preserved as `tg_dl_session`.
 
 Useful commands:
@@ -35,7 +35,7 @@ Useful commands:
 - `POST /api/auth/setup`, `POST /api/login`, `POST /api/logout`, and
   `GET /api/auth_check` manage the compatible scrypt/session flow.
 - `GET /` and asset paths serve the embedded SPA.
-- `GET /ws` upgrades an authenticated session and sends `ws_ready`; events
+- `GET /` or `GET /ws` upgrades an authenticated session; events
   are bounded and role-filtered so a slow browser cannot block workers.
 - `/v1/db/*` exposes the read projections used by the gallery, maintenance,
   AI, NSFW, integrity, dedup and cluster surfaces. They run directly against
