@@ -67,18 +67,36 @@ func SavedSessions(dataDir string) ([]SavedSession, error) {
 			byID[id] = saved
 		}
 	}
-	// A legacy single-account file is imported under one stable ID only when
-	// no multi-account session exists. No second connection shares its key.
-	if len(byID) == 0 {
-		legacy := filepath.Join(dataDir, "session.enc")
-		if info, err := os.Lstat(legacy); err == nil {
-			if !info.Mode().IsRegular() {
-				return nil, errors.New("legacy Telegram session is not a regular file")
-			}
-			byID["legacy"] = SavedSession{ID: "legacy", NativePath: filepath.Join(root, "native", "legacy.enc"), ImportPath: legacy, Modified: info.ModTime()}
-		} else if !os.IsNotExist(err) {
-			return nil, err
+	// Keep the old single-account file visible even after native accounts are
+	// added. Otherwise adding one account silently hides the legacy account and
+	// a later removal can orphan it. A native legacy file is the converted copy
+	// of this same source and therefore retains the import path.
+	legacy := filepath.Join(dataDir, "session.enc")
+	if info, err := os.Lstat(legacy); err == nil {
+		if !info.Mode().IsRegular() {
+			return nil, errors.New("legacy Telegram session is not a regular file")
 		}
+		saved, found := byID["legacy"]
+		marker := filepath.Join(root, "native", "legacy.enc.imported")
+		_, markerErr := os.Stat(marker)
+		if found && os.IsNotExist(markerErr) {
+			return nil, errors.New("ambiguous legacy Telegram session; native legacy account lacks import marker")
+		}
+		if markerErr != nil && !os.IsNotExist(markerErr) {
+			return nil, markerErr
+		}
+		if !found {
+			saved = SavedSession{ID: "legacy", NativePath: filepath.Join(root, "native", "legacy.enc"), Modified: info.ModTime()}
+		}
+		if saved.ImportPath == "" {
+			saved.ImportPath = legacy
+		}
+		if saved.Modified.IsZero() || info.ModTime().Before(saved.Modified) {
+			saved.Modified = info.ModTime()
+		}
+		byID["legacy"] = saved
+	} else if !os.IsNotExist(err) {
+		return nil, err
 	}
 	out := make([]SavedSession, 0, len(byID))
 	for _, saved := range byID {

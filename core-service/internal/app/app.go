@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/botnick/telegram-media-downloader/core-service/internal/accounts"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/auth"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/backup"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/cluster"
@@ -25,23 +26,27 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/jobs"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/store"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 	"github.com/gorilla/websocket"
 )
 
 type Config struct {
-	AccountFactory engine.Factory
-	DataDir        string
-	Port           int
-	Static         fs.FS
-	CookieName     string
-	SessionTTL     time.Duration
-	SecureCookies  bool
-	Output         io.Writer
+	AccountFactory      engine.Factory
+	AccountLoginFactory telegram.LoginFactory
+	DataDir             string
+	Port                int
+	Static              fs.FS
+	CookieName          string
+	SessionTTL          time.Duration
+	SecureCookies       bool
+	Output              io.Writer
 }
 type App struct {
 	monitor          *engine.Controller
+	accounts         *accounts.Repository
+	accountWizard    *accounts.Wizard
 	monitorOp        sync.Mutex
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -104,6 +109,12 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute), loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time)}
 	a.ctx, a.cancel = context.WithCancel(ctx)
 	a.releaseOwnership = release
+	a.accounts = accounts.NewRepository(db.Writer, db.Reader, cfg.DataDir, &a.configMu)
+	if err = a.accounts.Recover(ctx); err != nil {
+		a.Close()
+		return nil, err
+	}
+	a.accountWizard = accounts.NewWizard(a.ctx, accounts.WizardConfig{DataDir: cfg.DataDir, Factory: cfg.AccountLoginFactory, Publish: a.publishAccount})
 	a.library, err = download.NewLibrary(db.Writer, db.Reader, filepath.Join(cfg.DataDir, "downloads"), 64)
 	if err != nil {
 		a.Close()
@@ -138,6 +149,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("POST /api/maintenance/db/backup", a.requireAdmin(http.HandlerFunc(a.handleBackup)))
 	mux.Handle("POST /api/cluster/pairing-code", a.requireAdmin(http.HandlerFunc(a.handlePairingCode)))
 	registerMonitorRoutes(mux, a)
+	registerAccountRoutes(mux, a)
 	registerGalleryRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
@@ -425,6 +437,9 @@ func (a *App) Close() error {
 			a.cancel()
 		}
 		a.bootWG.Wait()
+		if a.accountWizard != nil {
+			a.closeErr = errors.Join(a.closeErr, a.accountWizard.Close())
+		}
 		a.monitorOp.Lock()
 		defer a.monitorOp.Unlock()
 		if a.monitor != nil {

@@ -24,6 +24,9 @@ func registerMonitorRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("POST /api/monitor/restart", a.requireAdmin(http.HandlerFunc(a.handleMonitorRestart)))
 }
 func (a *App) startMonitor(ctx context.Context) error {
+	if err := a.accounts.Recover(ctx); err != nil {
+		return err
+	}
 	cfg, err := a.config.Load(ctx)
 	if err != nil {
 		return err

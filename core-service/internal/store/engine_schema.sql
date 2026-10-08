@@ -37,3 +37,6 @@ CREATE TABLE IF NOT EXISTS tgdl_update_recovery (
  reason TEXT NOT NULL,created_at INTEGER NOT NULL,
  PRIMARY KEY(account_id,channel_id)
 );
+CREATE TABLE IF NOT EXISTS tgdl_account_ops (
+ id TEXT PRIMARY KEY NOT NULL,payload TEXT NOT NULL
+);

@@ -67,6 +67,15 @@ functionality. Do not deploy this branch over a working library yet.
   The partial contract command still exits nonzero because the harness requires
   all history/maintenance entries; **the complete monitor suite has not passed**.
 
+Native account management now runs through Go: filesystem account discovery,
+encrypted phone/code/2FA login, bounded cancellation and expiry, durable add and
+remove journals, config metadata merge, legacy-session preservation with an
+explicit import marker, matching group-pin and recovery-marker cleanup, and one
+monitor refresh per successful mutation. The wizard retains the password prompt
+when Telegram's optional hint request fails and treats gotd's nil-on-cancel
+result as a terminal error. HTTP integration reopens the encrypted gotd session;
+the frozen accounts contract is green. Live Telegram E2E remains unverified.
+
 The contract runner still uses development-time JavaScript dependencies to
 compare the Go server with frozen responses. It does not launch a Node server
 for these Go-target tests. Removing this test tooling remains part of the

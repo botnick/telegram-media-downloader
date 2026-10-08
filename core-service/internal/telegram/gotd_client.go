@@ -73,6 +73,23 @@ func ensureConvertedSession(cfg GotdConfig, storage session.Storage) error {
 	if err != nil {
 		return fmt.Errorf("import Telegram session: %w", err)
 	}
+	// Mark the one legacy source that can otherwise be confused with a
+	// separately named native account. The marker contains no credential data.
+	if filepath.Base(cfg.EncryptedSessionPath) == "session.enc" {
+		marker := cfg.SessionPath + ".imported"
+		file, markerErr := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if markerErr == nil {
+			if _, markerErr = file.WriteString("legacy\n"); markerErr == nil {
+				markerErr = file.Sync()
+			}
+			_ = file.Close()
+		} else if !os.IsExist(markerErr) {
+			return fmt.Errorf("mark imported Telegram session: %w", markerErr)
+		}
+		if markerErr != nil {
+			return fmt.Errorf("mark imported Telegram session: %w", markerErr)
+		}
+	}
 	return sessionconv.WriteGotd(context.Background(), cfg.SessionPath, cfg.SessionSecret, data)
 }
 
