@@ -54,6 +54,9 @@ Useful commands:
 - Stories listing and selected downloads use the same native accounts and durable
   dedup queue, with distinct story/message keys. The proxy test performs a bounded
   TCP probe. See [story behavior and compatibility](../docs/GO-STORIES.md).
+- Configured SOCKS4/5 and MTProxy connections now cover accounts, login and media
+  DCs. Handshakes are bounded and invalid settings cannot silently select direct
+  connections. See [proxy configuration and verification](../docs/GO-PROXIES.md).
 
 ## Data safety
 

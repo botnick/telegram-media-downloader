@@ -22,6 +22,7 @@ type GotdConfig struct {
 	EncryptedSessionPath string
 	SessionSecret        string
 	UpdateHandler        gotd.UpdateHandler
+	Proxy                *ProxyConfig
 }
 
 // GotdClient owns one Telegram account connection. Run is the only method
@@ -40,6 +41,10 @@ func NewGotdClient(cfg GotdConfig) (*GotdClient, error) {
 	if cfg.SessionPath == "" {
 		return nil, errors.New("telegram session path is required")
 	}
+	resolver, err := newProxyResolver(cfg.Proxy, nil)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(filepath.Dir(cfg.SessionPath), 0o700); err != nil {
 		return nil, fmt.Errorf("create Telegram session directory: %w", err)
 	}
@@ -50,7 +55,7 @@ func NewGotdClient(cfg GotdConfig) (*GotdClient, error) {
 	if err := ensureConvertedSession(cfg, storage); err != nil {
 		return nil, err
 	}
-	return &GotdClient{client: gotd.NewClient(cfg.AppID, cfg.AppHash, gotd.Options{SessionStorage: storage, UpdateHandler: cfg.UpdateHandler})}, nil
+	return &GotdClient{client: gotd.NewClient(cfg.AppID, cfg.AppHash, gotd.Options{SessionStorage: storage, UpdateHandler: cfg.UpdateHandler, Resolver: resolver})}, nil
 }
 
 func ensureConvertedSession(cfg GotdConfig, storage session.Storage) error {

@@ -8,6 +8,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/gotd/td v0.115.0
 	golang.org/x/crypto v0.31.0
+	golang.org/x/net v0.29.0
 	golang.org/x/sys v0.48.0
 	modernc.org/sqlite v1.60.1
 )
@@ -32,7 +33,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20230315142452-642cacee5cc0 // indirect
-	golang.org/x/net v0.29.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

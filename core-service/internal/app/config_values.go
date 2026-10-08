@@ -76,6 +76,7 @@ func objectAt(config map[string]any, path ...string) map[string]any {
 var configSecrets = [][]string{
 	{"telegram", "apiHash"}, {"web", "shareSecret"}, {"web", "guestPasswordHash"},
 	{"proxy", "password"}, {"advanced", "nsfw", "apiToken"},
+	{"proxy", "secret"},
 	{"advanced", "seekbar", "apiToken"}, {"advanced", "ai", "faces", "sidecarToken"},
 }
 
@@ -93,6 +94,13 @@ func redactConfig(config map[string]any) map[string]any {
 			continue
 		}
 		key := path[len(path)-1]
+		// Older proxy blocks have no MTProxy credential. Preserve their public
+		// shape while making a configured secret write-only.
+		if path[0] == "proxy" && key == "secret" {
+			if _, present := block[key]; !present {
+				continue
+			}
+		}
 		value := block[key]
 		block[key+"Set"] = value != nil && value != "" && value != false
 		delete(block, key)

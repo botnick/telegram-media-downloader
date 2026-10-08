@@ -144,9 +144,16 @@ from messages; identified legacy story rows migrate without changing row IDs or
 files. Fresh media identities reuse dedup, stale references refresh through the
 story RPC, and accepted batches survive restart. Account-scoped user access hashes
 persist without advancing Telegram update cursors. The native proxy probe checks
-TCP reachability with bounded DNS/dialing and private-target rejection; actual
-configured proxy routing and negotiation remain unfinished. Fixture tests cover
+TCP reachability with bounded DNS/dialing and private-target rejection. Fixture tests cover
 these workflows; see [Stories, proxy probe and validation](GO-STORIES.md).
+
+Configured SOCKS4/5 and MTProxy routing now reaches every native account and the
+login wizard, including media DC connections. Bounded handshakes, concurrent
+destination selection and cancellation retain the proxy route. Invalid settings
+and protocol failures produce errors rather than direct connections. Native
+socket and HTTP fixtures verify routing, restart, login snapshots and secret
+redaction; public-proxy/live Telegram E2E remains unverified.
+See [proxy configuration, protocols and evidence](GO-PROXIES.md).
 
 A WebSocket handshake race exposed by the full contracts is fixed: subscription
 now precedes writing HTTP 101, so an immediate browser action cannot lose its
@@ -223,7 +230,8 @@ migration; the current source tree is not yet free of Node dependencies.
 
 - Validate native Telegram login/account management, history, URL and Stories
   jobs on a real account; complete account-wide oversized-gap repair, broader
-  account routing, configured proxies and forwarding. Channel history gaps are
+  account routing and forwarding. Validate configured proxies on the live
+  network as well. Channel history gaps are
   repaired natively; an unresolved global
   or incomplete marker still prevents restart and must never be cleared merely
   to make startup succeed.

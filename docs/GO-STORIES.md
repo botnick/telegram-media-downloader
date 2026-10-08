@@ -95,10 +95,10 @@ perform a second hostname lookup that changes the target. Success returns
 `{ok:true,ms}` and closes the socket; resolver/socket failures return
 `{ok:false,error}`. A blocked target returns 400.
 
-This checks TCP reachability only. SOCKS/MTProxy negotiation, credentials and
-actually routing all Telegram/login/media connections through configured proxies
-remain separate implementation and release work. A successful probe does not
-prove those operations.
+This checks TCP reachability only. Native SOCKS/MTProxy negotiation and routing
+for Telegram/login/media connections are now implemented separately; see
+[proxy routing and verification](GO-PROXIES.md). A successful TCP probe does not
+prove those operations, and live Telegram/proxy E2E remains unverified.
 
 ## WebSocket handshake correction
 

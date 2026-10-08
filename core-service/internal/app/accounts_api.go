@@ -34,7 +34,11 @@ func (a *App) telegramCredentials(ctx context.Context) (telegram.GotdConfig, err
 	if id <= 0 || hash == "" {
 		return telegram.GotdConfig{}, errNoAPICredentials
 	}
-	return telegram.GotdConfig{AppID: id, AppHash: hash}, nil
+	proxy, err := telegram.ParseProxy(cfg["proxy"])
+	if err != nil {
+		return telegram.GotdConfig{}, err
+	}
+	return telegram.GotdConfig{AppID: id, AppHash: hash, Proxy: proxy}, nil
 }
 func (a *App) accountError(w http.ResponseWriter, err error, step bool) {
 	if errors.Is(err, errNoAPICredentials) {

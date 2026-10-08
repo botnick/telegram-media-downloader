@@ -67,6 +67,7 @@ func rawRedactedConfig(config map[string]any) map[string]any {
 		{"web", "guestPasswordHash"},
 		{"web", "shareSecret"},
 		{"proxy", "password"},
+		{"proxy", "secret"},
 		{"advanced", "nsfw", "apiToken"},
 		{"advanced", "seekbar", "apiToken"},
 		{"advanced", "ai", "faces", "sidecarToken"},

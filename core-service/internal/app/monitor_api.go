@@ -44,6 +44,10 @@ func (a *App) startTelegramEngine(ctx context.Context, observe bool) error {
 	if appID <= 0 || appHash == "" {
 		return errNoAPICredentials
 	}
+	proxy, err := telegram.ParseProxy(cfg["proxy"])
+	if err != nil {
+		return err
+	}
 	saved, err := telegram.SavedSessions(a.dataDir)
 	if err != nil {
 		return err
@@ -68,7 +72,7 @@ func (a *App) startTelegramEngine(ctx context.Context, observe bool) error {
 	}
 	specs := make([]engine.AccountConfig, 0, len(saved))
 	for _, saved := range saved {
-		specs = append(specs, engine.AccountConfig{ID: saved.ID, Name: names[saved.ID], Telegram: telegram.GotdConfig{AppID: appID, AppHash: appHash, SessionPath: saved.NativePath, EncryptedSessionPath: saved.ImportPath, SessionSecret: strings.TrimSpace(string(secret))}})
+		specs = append(specs, engine.AccountConfig{ID: saved.ID, Name: names[saved.ID], Telegram: telegram.GotdConfig{AppID: appID, AppHash: appHash, Proxy: proxy, SessionPath: saved.NativePath, EncryptedSessionPath: saved.ImportPath, SessionSecret: strings.TrimSpace(string(secret))}})
 	}
 	download, _ := cfg["download"].(map[string]any)
 	if !observe {
