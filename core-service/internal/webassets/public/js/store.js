@@ -1,0 +1,176 @@
+// Central State Store
+//
+// Beyond the bag-of-state, this module owns the *canonical* group-name
+// lookup used by every render path in the SPA. Multiple paths used to
+// resolve names independently (`g.name`, `g.title`, dataset attrs,
+// per-event payloads, DB rows) — the result was that the sidebar would
+// say "Telegram Tips" while a paste-link page or a download toast for
+// the same id still said "Unknown chat" or showed the bare numeric id.
+//
+// Resolution order (first hit wins):
+//   1. state.groupNameCache[id]   — populated by the WS `groups_refreshed`
+//                                   handler and the post-refresh-info update.
+//   2. state.groups               — /api/config (the authoritative human-set
+//                                   label for monitored groups).
+//   3. state.allDialogs           — /api/dialogs (Telegram-side titles, only
+//                                   loaded on the Groups page).
+//   4. state.downloads            — /api/downloads (DB-side group_name).
+//   5. last group_name on any state.files entry — for the gallery breadcrumb
+//                                   when /api/downloads/:id replied with a
+//                                   row whose group_name was filled in later.
+//   6. fallback "Unknown chat (#<id>)" — never leak a bare numeric id.
+
+export const state = {
+    currentPage: 'viewer',
+    currentGroup: null,
+    currentFilter: 'all',
+    groups: [],
+    downloads: [],
+    files: [],
+    allFiles: [],
+    currentFileIndex: 0,
+    config: {},
+    page: 1,
+    hasMore: true,
+    loading: false,
+    observer: null,
+    imageObserver: null,
+    viewMode: 'grid',
+    searchQuery: '',
+    // Federated-gallery scope (Layer 1, v2.12+). 'local' (default) shows
+    // only this peer's files; 'all' UNIONs in every paired peer; a peer-id
+    // string narrows to one peer's files. Persisted in localStorage as
+    // `tgdl-gallery-scope`. Hidden entirely when no peers are paired.
+    //
+    // Read at module load (NOT lazily inside initGalleryScope) so the
+    // very first /api/downloads/all request honours the saved scope.
+    // Without this, a user who'd previously selected "All peers" would
+    // see local-only content for one second on every reload while the
+    // chip init catches up.
+    galleryScope: (() => {
+        try {
+            const v = localStorage.getItem('tgdl-gallery-scope');
+            return v && v.length > 0 ? v : 'local';
+        } catch {
+            return 'local';
+        }
+    })(),
+    // Cached `/api/cluster/peers` snapshot (id + name + status). Used by
+    // the gallery-scope chip to render the per-peer entries; also lets the
+    // tile peer badge render without a second round-trip per row.
+    clusterPeers: [],
+    // Canonical name cache — fed by /api/groups/refresh-info responses and
+    // the WS `groups_refreshed` broadcast. Keyed by stringified id. Map
+    // (not plain object) so we can LRU-cap it via `lruSet` — see
+    // CLAUDE.md → Big-data patterns rule 3. The `lookup` / `set` helpers
+    // below are the canonical accessors; legacy callsites that read
+    // `state.groupNameCache?.[key]` are tolerated via the proxy below.
+    groupNameCache: new Map(),
+    // 'admin' | 'guest' | null — populated from /api/auth_check on boot.
+    // Drives both router.js (admin-only routes redirect guests) and the
+    // body[data-role] CSS gate that hides admin-only UI elements.
+    role: null,
+};
+
+/** True for "missing / placeholder / numeric-id-as-name" inputs. */
+function looksUnresolved(name, id) {
+    if (!name) return true;
+    const s = String(name).trim();
+    if (!s) return true;
+    if (s === 'Unknown' || s === 'unknown') return true;
+    if (id != null && s === String(id)) return true;
+    if (/^-?\d{6,}$/.test(s)) return true;
+    if (/^Group\s/i.test(s)) return true;
+    return false;
+}
+
+/**
+ * Canonical group-name lookup. Always returns a non-empty string, never
+ * leaks a bare numeric id. Pass `{ fallback }` to override the default
+ * "Unknown chat (#<id>)" placeholder.
+ */
+export function getGroupName(id, opts = {}) {
+    if (id == null || id === '') return opts.fallback || 'Unknown chat';
+    const key = String(id);
+
+    // 1. Explicit cache (refresh-info / WS groups_refreshed).
+    const cached = state.groupNameCache?.get?.(key);
+    if (cached && !looksUnresolved(cached, key)) return cached;
+
+    // 2. Config-defined groups (state.groups).
+    const cfg = (state.groups || []).find((g) => String(g.id) === key);
+    if (cfg && !looksUnresolved(cfg.name, key)) return cfg.name;
+
+    // 3. Dialogs list (browse-chats picker).
+    const dlg = (state.allDialogs || []).find((d) => String(d.id) === key);
+    if (dlg) {
+        const dn = dlg.name || dlg.title;
+        if (!looksUnresolved(dn, key)) return dn;
+    }
+
+    // 4. Downloads list (DB-side group_name).
+    const dn2 = (state.downloads || []).find((d) => String(d.id) === key);
+    if (dn2 && !looksUnresolved(dn2.name, key)) return dn2.name;
+
+    // 5. Any file row carrying group_name for this id.
+    const file = (state.files || []).find(
+        (f) => String(f.groupId ?? f.group_id ?? '') === key && (f.groupName || f.group_name),
+    );
+    if (file) {
+        const fn = file.groupName || file.group_name;
+        if (!looksUnresolved(fn, key)) return fn;
+    }
+
+    // 6. Fallback — friendly placeholder, never the bare id.
+    if (opts.fallback) return opts.fallback;
+    return `Unknown chat (#${key})`;
+}
+
+/**
+ * Merge updates from /api/groups/refresh-info (and the matching WS
+ * `groups_refreshed` broadcast) into the cache. Accepts an array of
+ * `{id, name}` pairs OR a `{id: name}` map.
+ */
+// LRU cap for `state.groupNameCache`. 1 000 entries × ~50 bytes ≈ 50 KB
+// in memory, plenty for any reasonable account, and the eviction is O(1)
+// (Map iteration order is insertion order, so the oldest key is at the
+// front). Tunable here only — every writer goes through `updateGroupNameCache`.
+const GROUP_NAME_CACHE_CAP = 1000;
+function _setGroupName(key, value) {
+    const m = state.groupNameCache;
+    if (!(m instanceof Map)) return;
+    // Re-set bumps insertion order to the back → real LRU on touch.
+    if (m.has(key)) m.delete(key);
+    m.set(key, value);
+    while (m.size > GROUP_NAME_CACHE_CAP) {
+        const first = m.keys().next().value;
+        if (first === undefined) break;
+        m.delete(first);
+    }
+}
+
+export function updateGroupNameCache(updates) {
+    if (!updates) return 0;
+    if (!(state.groupNameCache instanceof Map)) state.groupNameCache = new Map();
+    let n = 0;
+    if (Array.isArray(updates)) {
+        for (const u of updates) {
+            if (!u || u.id == null || !u.name) continue;
+            if (looksUnresolved(u.name, u.id)) continue;
+            _setGroupName(String(u.id), String(u.name));
+            n++;
+        }
+    } else if (typeof updates === 'object') {
+        for (const [id, name] of Object.entries(updates)) {
+            if (!name || looksUnresolved(name, id)) continue;
+            _setGroupName(String(id), String(name));
+            n++;
+        }
+    }
+    return n;
+}
+
+/** Exposed for the unresolved-row detection in the sidebar render. */
+export function isUnresolvedName(name, id) {
+    return looksUnresolved(name, id);
+}

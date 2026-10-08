@@ -1,476 +1,93 @@
 ---
 title: "Deploy"
-description: "Install Telegram Media Downloader with Docker or on bare metal: reverse proxies, updates, split disks, sidecars on another machine, systemd and PM2."
+description: "Deploy the pure-Go Telegram media downloader."
 nav_order: 2
 ---
 
-# Deployment
+# Deploy
 
-The dashboard listens on `:3000` by default. Don't expose it directly to the public internet — put it behind a reverse proxy with TLS.
+Production is one `tgdl-server` process. The browser bundle is embedded in
+its binary, so the container does not install or execute Node. ffmpeg and an
+explicitly configured AI worker are the only optional external processes.
 
-## Docker (recommended)
+## Docker
 
-`docker-compose.yml` ships a production-ready setup:
-
-```bash
+```sh
 docker compose up -d
-# open http://localhost:3000
-# 1. set the dashboard password (only allowed from localhost on first run)
-# 2. Settings → Telegram API → enter apiId / apiHash from my.telegram.org
-# 3. Settings → Telegram Accounts → "Add account" → phone / OTP / 2FA
-# 4. Settings → Engine → Start monitor
+docker compose logs -f telegram-downloader
 ```
 
-The image is published to GHCR on every release: `ghcr.io/botnick/telegram-media-downloader:<version>`.
+The image listens on port `3000` and stores all mutable state under `/app/data`.
+Override the host port with `TGDL_PORT` and persist that directory. The image
+runs as a non-root `tgdl` user and its healthcheck calls `GET /health`.
 
-### Verify a deployment
+For Synology, copy `docker-compose.synology.yml`, adjust the data volume, and
+run the same command. The manifest uses the same pure-Go image on amd64 and
+arm64.
 
-After `docker compose up -d` (or any host install), run the diagnostics:
+## Bare metal
 
-```bash
-docker compose exec app npm run doctor      # inside the container
-# or, for host installs:
-npm run doctor
+Install Go 1.22 or newer and ffmpeg, then build and run:
+
+```sh
+cd core-service
+go build -trimpath -ldflags '-s -w' -o tgdl-server ./cmd/tgdl-server
+TGDL_DATA_DIR=/var/lib/telegram-media-downloader PORT=3000 ./tgdl-server
 ```
 
-Reports Node + ABI, config load, SQLite open, `data/` writability, port availability, and `ffmpeg`. Exits non-zero on any blocking failure — wire it into your provisioning script or CI smoke-step.
-
-### Environment variables
-
-| Var | Default | Notes |
-|---|---|---|
-| `PORT`                          | `3000`              | HTTP port. |
-| `NODE_ENV`                      | unset               | Set to `production` to enable `Secure` cookies (requires HTTPS). |
-| `TZ`                            | `UTC`               | Container timezone. |
-| `TGDL_RUN`                      | `monitor`           | Watchdog subcommand for `runner.js` / `runner.sh` / `watchdog.ps1`. |
-| `TGDL_DEBUG`                    | unset               | Set to any truthy value to surface gramJS reconnect noise on stderr. |
-| `TGDL_DATA_DIR`                 | `<repo>/data`       | Override the on-disk data root (`db.sqlite`, `downloads/`, sessions). Used by the test suite to point at an isolated tmpdir; also useful for Docker / multi-instance deploys that want the data on a different mount without symlinks. |
-| `TGDL_DOWNLOADS_DIR`            | `<TGDL_DATA_DIR>/downloads` | Override the downloads directory independently of the main data root. See **Split-disk setup** below. |
-| `TRUST_PROXY`                   | unset               | `1`, `loopback`, or any value Express's `trust proxy` understands; needed for accurate IPs behind a reverse proxy. |
-| `FFMPEG_PATH`                   | auto-detect         | Override the resolved ffmpeg binary used by `core/thumbs.js` and `tgdl-core` media workers. Resolver order: this var → `/usr/bin/ffmpeg` → `/usr/local/bin/ffmpeg` → `@ffmpeg-installer/ffmpeg` → bare `ffmpeg`. |
-| `FASTSTART_CONCURRENCY`         | `2` (max `8`)        | Concurrent MP4 faststart remuxes in `tgdl-core`; keep low on HDD/NAS storage. |
-| `THUMBS_IMG_CONCURRENCY`        | `4` (max `32`)      | Image and audio thumbnails are executed by `tgdl-core` when its `thumb` feature is available; keep this below available CPU cores. Older cores use the Node/Sharp fallback. |
-| `THUMBS_VID_CONCURRENCY`        | `6` (max `16`)      | Video thumbnails are executed by `tgdl-core` when its `thumb` feature is available; keep this below available CPU cores. |
-| `UV_THREADPOOL_SIZE`            | `16` (Docker image, `runner.js` / `runner.sh`, PM2 config); Node default `4` otherwise | libuv worker pool shared by file I/O, `sendFile` streams, hashing, DNS and sharp thumbnail jobs. Read once at process start, so set it in the environment (not in config). With the old default of 4, a thumbnail burst queued every file read behind it. |
-| `WATCHTOWER_HTTP_API_TOKEN`     | auto-generated      | Optional override. Bearer token shared between the dashboard and the optional watchtower sidecar. Setting this lights up the **Install update** button. |
-| `WATCHTOWER_URL`                | `http://watchtower:8080` | Internal address of the watchtower sidecar. |
-| `TGDL_MEM_LIMIT`                | `8g`                | Hard cgroup memory ceiling for the dashboard container (`deploy.resources.limits.memory`). Pair with `TGDL_HEAP_MB` so the V8 heap stays comfortably under the container limit. Drop to `2g` / `4g` on small hosts. |
-| `TGDL_HEAP_MB`                  | `8192`              | V8 `--max-old-space-size` in MB. 8 GiB lets a one-shot SELECT over a 1M-row dedup / integrity sweep complete without hitting the heap limit. Must stay strictly below `TGDL_MEM_LIMIT` (rule of thumb: leave ≥ 256 MiB for native allocations from better-sqlite3 / sharp / ffmpeg / libvips). |
-| `BACKUP_WORKERS_PER_DEST`       | `3`                 | Per-destination concurrent uploads for the backup subsystem. Keep modest — backups share the host's outbound bandwidth with everything else (including the realtime monitor). |
-| `HASH_WORKER_POOL_SIZE`         | `min(8, ⌊cpus/2⌋)`  | Files `tgdl-core` hashes at once (post-write hash + dedup catch-up). Set higher on a beefy host with many parallel downloads, lower on a Pi 4 / NAS. |
-| `TGDL_DBSCAN_WORKERS`           | `min(8, NumCPU-1)`  | DBSCAN workers in `tgdl-core`; tune explicitly when a face scan shares CPU with Telegram and the dashboard. |
-| `TGDL_CORE_BIN`                 | unset               | Path to a `tgdl-core` binary (the app's Go engine, see [GO-CORE.md](GO-CORE.md)). When set, only this path is tried (no download). |
-| `TGDL_CORE_ALLOW_ROOTS`         | unset               | Extra directories `tgdl-core` may read and use for thumbnail output, separated like `PATH` (`:` / `;` on Windows). The app always allows its downloads folders (`TGDL_DOWNLOADS_DIR`, `<data>/downloads`, a custom download path) and `<data>/thumbs`; files elsewhere are handled by Node itself. |
-| `TGDL_CORE_RELEASE_URL`         | GitHub release `core-v<version>` | Base URL the install step and the startup download fetch `tgdl-core-<slug>.tar.gz` and `SHA256SUMS` from — for a mirror or an air-gapped install. |
-| `TGDL_CORE_SKIP_INSTALL`        | unset               | `1` skips the `npm install` step that downloads (or builds) `tgdl-core`. The app still tries the download once when it starts. |
-| `TGDL_GO_CORE`, `TGDL_GO_FEATURES`, `HASH_WORKER_DISABLE` | — | No longer used (tgdl-core always does this work now); harmless if set. |
-| `COMPRESSION_LEVEL`             | `6`                 | gzip / brotli compression level (1-9) for text payloads (HTML / JS / CSS / JSON). Raw file routes (`/files/`, `/share/`, `/photos/`), Range requests and media types are never compressed. Lower the level on slow CPUs (Pi Zero, embedded NAS) so requests don't queue up behind compression; raise it on hosts with spare CPU + slow uplink. Set to `0` to turn compression off (e.g. when a reverse proxy already compresses). |
-| `FACES_SERVICE_URL`             | unset               | Override URL for the face-clustering sidecar. The bundled `docker-compose.yml` sets it to `http://tgdl-faces:8011` whether or not the `faces` profile is up. With the profile up, that sidecar is used; without it (`tgdl-faces` doesn't resolve) the app auto-spawns the sidecar binary inside its own container once AI + face clustering are enabled, and re-checks when a scan starts. Any other value is used as-is. Leave unset on bare-metal installs to let Node auto-spawn the bundled binary. |
-| `TGDL_FACES_API_TOKEN`          | unset               | Shared secret for the faces sidecar. Set in `.env`: the compose `tgdl-faces*` services require it on every call except `/health`, and the main service sends it (as `TGDL_FACES_SIDECAR_TOKEN`). For an external sidecar on another host, start it with this env and set `TGDL_FACES_SIDECAR_TOKEN` (or `advanced.ai.faces.sidecarToken`) on the app. |
-| `TGDL_FACES_SIDECAR_WAIT_MS`    | `300000`            | How long a face scan waits for an unreachable / still-loading sidecar before stopping. Nothing is marked scanned while it waits. |
-| `TGDL_FACE_CROP_CONCURRENCY`    | `4`                 | Max face crops (People-grid avatars) rendered at once. Each first-time crop decodes the full-resolution source or grabs a video frame; finished crops are cached under `data/thumbs/face-crops/`. |
-| `TGDL_FACES_SIDECAR_NICE`       | `10`                | Priority of the **auto-spawned** faces sidecar (nice / Windows below-normal) so the dashboard and healthcheck win CPU contention. `0` disables. |
-| `TGDL_FACES_AUTO_DOWNLOAD`      | `true`              | `false` refuses to download the prebuilt PyInstaller binary on first use — pair with a pre-staged binary under `data/faces-service/bin/` for air-gapped deploys. Full env-var reference in [docs/AI.md](AI.md). |
-| `SEEKBAR_SIDECAR_URL`           | unset               | Override URL for the Go seekbar sidecar. Set when running `seekbar-service/` as its own compose service; leave unset for the bundled auto-spawn path. |
-| `SEEKBAR_API_TOKEN`             | auto-generated      | Bearer token the dashboard sends as `X-API-Token` to the seekbar sidecar. Auto-generated per process; set explicitly only when running the sidecar standalone. |
-| `SEEKBAR_HWACCEL`               | `auto`              | `auto` / `cuda` / `qsv` / `vaapi` / `videotoolbox` / `v4l2m2m` / `none`. Forwarded to the sidecar's ffmpeg pipeline. |
-
-## Updating
-
-See [Updating in the README](https://github.com/botnick/telegram-media-downloader/blob/main/README.md#updating). In short: **Settings → Maintenance → Install update**, or `docker compose pull && docker compose up -d`. New versions need no config changes; migrations run automatically.
-
-### Install update button
-
-The bundled `docker-compose.yml` runs a `watchtower` service by default (no profile). It is idle: HTTP-API-only, no periodic polling, no published ports, and scoped to containers with the `com.centurylinklabs.watchtower.enable=true` label. The dashboard never touches `/var/run/docker.sock`; it sends an authenticated request to the sidecar, which has a read-only socket mount.
-
-No setup is needed: the app generates a random token once in `data/watchtower/api-token` and the sidecar reads it from that file (it starts after the app is healthy). To use your own token instead, set it in `.env`; it overrides the generated one:
-
-```bash
-echo "WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 32)" >> .env
-docker compose up -d
-```
-
-The image is the maintained fork `nickfedor/watchtower`. The archived `containrrr/watchtower:1.7.1` fails on Docker Engine 29+ with `client version 1.25 is too old`. If you keep an older compose file, re-download it (or change the image and replace `WATCHTOWER_HTTP_API_UPDATE=true` with `WATCHTOWER_HTTP_API_ENDPOINTS=update`, drop `profiles:`).
-
-Scheduled updates are opt-in: set `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true` and `WATCHTOWER_SCHEDULE` (cron, e.g. `0 0 4 * * *`) on the watchtower service.
-
-The SQLite database is snapshotted to `data/backups/` before every update. Without the token the button stays disabled and the dashboard links to the GitHub release page.
-
-## Hardware-accelerated video thumbnails (optional, advanced)
-
-If the host has an **Intel iGPU** (Iris Xe / UHD / Arc), an **AMD GPU** with VA-API support, or an **NVIDIA card**, `ffmpeg` can decode + scale on the GPU instead of the CPU — typically 5-10× faster on H.264 / H.265 input. Bookworm-slim ships the Intel media drivers and `vainfo` already, so the only host-side moving part is **device permissions**.
-
-### Quick start (Linux / Synology / generic)
-
-1. Uncomment the GPU passthrough block in `docker-compose.yml`:
-   ```yaml
-   devices:
-     - /dev/dri:/dev/dri
-   group_add:
-     - "video"
-     - "render"
-   ```
-2. Set `FFMPEG_HWACCEL=vaapi` (Intel/AMD) or `=cuda` (NVIDIA) in `.env`.
-3. `docker compose up -d`.
-4. Verify with `docker exec telegram-downloader vainfo` — the output lists every codec the iGPU exposes. Empty list = the device passed through but the in-container `node` user can't open it; check the entrypoint log for the `[entrypoint] node added to group …` line. Missing line = host hasn't passed `/dev/dri` through.
-
-The entrypoint resolves the device's GID at boot and adds the `node` user to a matching group automatically — **no manual group_add tweaks are needed** even when the host's render group has a non-standard GID. Set `ENTRYPOINT_DEBUG_GPU=1` to log every detection step.
-
-### Synology (DSM 6 / DSM 7)
-
-Synology's render group GID drifts between DSM versions (DSM 6 ≈ 937, DSM 7 ≈ 100, sometimes 939 on early DSM 7.0 builds), and the SSH user that runs `docker compose up` may not be a member of `videodriver` out of the box. Two host-side prep steps:
-
-1. **Add your shell user to `videodriver`** so the docker socket can read the device:
-   ```sh
-   sudo synogroup --member videodriver "$USER"
-   ```
-   Reboot or `newgrp videodriver` to pick up the change.
-
-2. **Verify the device is visible:**
-   ```sh
-   ls -l /dev/dri/renderD128
-   # crw-rw---- 1 root videodriver 226, 128 …  /dev/dri/renderD128
-   ```
-   If the file doesn't exist, the model has no iGPU; skip this section. (J / DS series ARM boxes don't have one. Plus / Value series Intel boxes do.)
-
-3. **Container Manager (Synology's Docker UI) doesn't honour compose `devices` directly** — install Docker via SSH (`sudo synopkg install_from_server Docker`) and run `docker compose` from a shell, or hand-edit the JSON under Container Manager → Project → ⚙️ → Settings to add the device. The compose snippet above works as-is once the JSON is saved.
-
-The dynamic GID detection in the entrypoint means the same image works on DSM 6 and DSM 7 without rebuilding. If you suspect GPU access isn't wired, set `ENTRYPOINT_DEBUG_GPU=1` in `.env` and read the boot transcript — every detected device + the chosen group is logged.
-
-### Why dynamic GID alignment matters
-
-A hardcoded `group_add: "render"` only works when `render` exists on the host AND its GID matches what's baked into the container's `/etc/group`. Synology, RHEL, and bare Debian all use different GIDs (937, 39, 104), so a one-size compose breaks on at least two of them. The entrypoint's `stat /dev/dri/renderD128 → groupadd -g $GID hostgpu_$GID → usermod -a -G hostgpu_$GID node` chain is portable: whatever GID the host uses, the container picks it up at boot.
-
-Set `ENTRYPOINT_DEBUG_GPU=1` to verify which device + GID landed in which group, and check `[entrypoint] node added to group …` in the boot log.
-
-## Reverse proxy
-
-### Caddy (TLS automatic)
-
-```caddyfile
-tg.example.com {
-    encode zstd gzip
-    reverse_proxy 127.0.0.1:3000 {
-        header_up X-Real-IP {remote}
-    }
-}
-```
-
-### nginx
-
-```nginx
-server {
-    server_name tg.example.com;
-    listen 443 ssl http2;
-    # ssl_certificate / ssl_certificate_key …
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        # WebSocket upgrade
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 1h;
-    }
-}
-```
-
-Behind a proxy, set `TRUST_PROXY=1` in the container env so the rate-limiter sees the real client IP.
-
-What answers on the dashboard port (3000 in the container, `PORT` on bare metal) is `tgdl-core`, the app's Go front server; the Node server listens on `127.0.0.1` behind it. Nothing changes for the proxy — point it at the same port as before:
-
-- **Client IP / `TRUST_PROXY`** work exactly as before: `X-Forwarded-For` / `-Proto` / `-Host` reach the app untouched, together with the address of whoever connected, and the app applies `TRUST_PROXY` (default: trust only loopback) to them just as when Node listened on the port. Proxy on the same host → the default already trusts it; proxy on another host or container → set `TRUST_PROXY` (e.g. `1` for one hop). `X-Tgdl-*` request headers are reserved and dropped.
-- **Timeouts**: 70 s for the request headers and 65 s keep-alive (Node's values); no timeout on a response body, so a video streams as long as it plays. Keep the proxy's upstream keep-alive under 65 s, or let it retry idle connections (nginx and Caddy do).
-- **Streaming**: nothing is buffered — video ranges and bulk ZIP downloads flow as they're produced; WebSockets (`/ws`, `/ws/cluster`) are passed through.
-- **HTTP/1.1** on the port, as before; TLS and HTTP/2 stay at the proxy.
-
-### Force HTTPS (TLS lockdown)
-
-Once the reverse proxy has a working TLS cert, lock the dashboard to HTTPS in **Settings → Privacy & Net → Dashboard security → Force HTTPS**. Effects:
-
-- Every HTTP request 308-redirects to HTTPS (`localhost` excepted so the operator can always reach the dashboard from the host even if the proxy melts).
-- A `Strict-Transport-Security: max-age=31536000; includeSubDomains` header attaches to every secure response — browsers cache the HTTPS-only verdict for a year.
-- Non-GET / non-HEAD HTTP requests get a `403 HTTPS required` response instead of a redirect, so a misconfigured client can't silently retry a write on plain HTTP.
-
-Pre-flight check before flipping the toggle:
-
-1. **Cert reachable** — `curl -I https://tg.example.com/` returns 200 (or whatever HTTP code, just not a TLS error).
-2. **`TRUST_PROXY=1`** is set in the dashboard container env so `req.secure` honours `X-Forwarded-Proto`. Without this, the dashboard sees every request as plain HTTP and 308-loops.
-3. **Localhost recovery path** — keep SSH / docker exec access; you can flip the toggle back from the host even if the cert breaks (the localhost exemption keeps `127.0.0.1:3000` reachable from inside the container).
-
-The setting persists in the `kv['config']` row of `data/db.sqlite` under `web.forceHttps`. To roll back without the dashboard, edit the row via `sqlite3` and restart the container.
-
-### Content Security Policy
-
-**Settings → Dashboard security → Content Security Policy** lets you turn the CSP off, switch it to report-only, or edit the allowed sources of each directive (one per line, e.g. add a site to `frame-ancestors` to embed the dashboard in an iframe). Changes apply on the next request. The setting is stored as `web.csp`; with no `web.csp` the built-in defaults apply. If a bad policy locks you out of the dashboard, start the server with `TGDL_CSP=off` to disable the CSP regardless of the saved setting, then fix it in Settings.
-
-For HSTS preload (chrome global list), submit your domain at <https://hstspreload.org> after the header has been live for at least a few weeks. The dashboard does **not** add `preload` to the HSTS header automatically — preload is a one-way commitment that needs operator opt-in.
-
-## Running a sidecar on another machine
-
-The NSFW classifier, the seekbar sprite generator and the face-clustering sidecar can each run on a different host than the app — a GPU box, a separate container, a NAS — reached directly on the LAN, through a reverse proxy, or through a Cloudflare Tunnel. Local / auto-spawned sidecars need none of this.
-
-How files get to a remote sidecar:
-
-| Setup | What happens |
-|---|---|
-| Sidecar mounts the downloads **at the same path** as the app | Path mode — the sidecar reads files directly. |
-| Sidecar mounts the downloads **at a different path** | Set a **path mapping** (`app path=sidecar path`, one rule per line or `;`-separated). Path mode keeps working. |
-| **No shared storage** | NSFW: images are uploaded (anything over 1.5 MB is downscaled to 1024 px first). Seekbar: the video is uploaded in 32 MB chunks and the finished sprite is downloaded back. Faces: frames/images are sent as base64. |
-
-Chunks and requests stay under Cloudflare's 100 MB request-body limit, and seekbar jobs are polled, so nothing depends on a request outliving Cloudflare's 100 s timeout.
-
-Always set a **token** on a sidecar that is reachable from anything but the app: the same value on the sidecar (`TGDL_NSFW_API_TOKEN` / `SEEKBAR_API_TOKEN`) and in the app (the dashboard field or the env var below). The app sends it as `X-API-Token`. `/health` stays open for health checks.
-
-### NSFW classifier (`nsfw-service` 1.2.0+)
-
-```bash
-# On the remote host — NVIDIA GPU (drop --gpus and use :latest for CPU)
-docker run -d --name tgdl-nsfw --restart unless-stopped --gpus all \
-  -p 8012:8012 \
-  -e TGDL_NSFW_API_TOKEN=change-me-to-a-long-random-string \
-  -v tgdl-nsfw-hf:/root/.cache/huggingface \
-  ghcr.io/botnick/tgdl-nsfw:gpu-latest
-
-# Optional, only with shared storage: let it read files in place
-#   -v /mnt/media:/media:ro -e TGDL_NSFW_ALLOW_ROOTS=/media
-#   and in the app: path mapping  /app/data/downloads=/media
-```
-
-In the app: **Maintenance → NSFW → Classifier mode → External** — URL, API token, optional path mapping → **Test** → **Apply**. Or in the app's environment:
-
-```bash
-TGDL_NSFW_SIDECAR_URL=https://nsfw.example.com
-TGDL_NSFW_API_TOKEN=change-me-to-a-long-random-string
-TGDL_NSFW_PATH_MAP=/app/data/downloads=/media   # only with shared storage
-```
-
-nsfw-service 1.1.0 still works (no token, base64 instead of raw uploads).
-
-### Seekbar sprites (`seekbar-service` 0.4.0+)
-
-```bash
-# On the remote host
-docker run -d --name tgdl-seekbar --restart unless-stopped \
-  -p 8089:8089 \
-  -e SEEKBAR_API_TOKEN=change-me-to-a-long-random-string \
-  -e SEEKBAR_HWACCEL=auto \
-  -v tgdl-seekbar:/data \
-  ghcr.io/botnick/tgdl-seekbar:latest
-# Intel / AMD hardware decode: add  --device /dev/dri
-# Optional shared storage: add  -v /mnt/media:/media:ro
-#   -e SEEKBAR_ALLOW_ROOTS=/media   and map  /app/data/downloads=/media  in the app
-```
-
-`SEEKBAR_ALLOW_ROOTS` (comma-separated) limits which directories the sidecar reads in path mode. Anything outside is answered as "source not found", and the app uploads the file instead. Leave it unset only when the sidecar runs next to the app.
-
-Without Docker, download `tgdl-seekbar-<os>-<arch>.tar.gz` from the `seekbar-v0.4.0` release, make sure `ffmpeg`/`ffprobe` are on `PATH`, and run `SEEKBAR_API_TOKEN=… SEEKBAR_HTTP_LISTEN=:8089 ./seekbar-server`.
-
-In the app: **Maintenance → Seekbar previews → System health → Sidecar mode → External** — URL, API token, optional path mapping → **Test** → **Use External**. Or:
-
-```bash
-SEEKBAR_SIDECAR_URL=https://seekbar.example.com
-SEEKBAR_API_TOKEN=change-me-to-a-long-random-string
-SEEKBAR_PATH_MAP=/app/data/downloads=/media      # only with shared storage
-```
-
-The app's sprite settings (interval, tile width, columns, format, quality) apply to the remote sidecar per job. Uploaded videos are deleted on the sidecar as soon as their sprite is done, and the sidecar's copy of each sprite is removed once the app has it. seekbar-service 0.3.3 still works when it can read the videos (same path or a path mapping); videos it can't read are rendered by the app's own ffmpeg, as before. One sidecar per app instance — sprites are named by download id.
-
-### Face clustering (`faces-service`)
-
-```bash
-docker run -d --name tgdl-faces --restart unless-stopped --gpus all \
-  -p 8011:8011 \
-  -e TGDL_FACES_HOST=0.0.0.0 -e TGDL_FACES_PORT=8011 \
-  -e TGDL_FACES_API_TOKEN=change-me-to-a-long-random-string \
-  -e TGDL_FACES_MODELS_DIR=/models -v tgdl-faces-models:/models \
-  ghcr.io/botnick/tgdl-faces:cuda-latest     # CPU: ghcr.io/botnick/tgdl-faces:latest, no --gpus
-```
-
-In the app: **Maintenance → AI → System health → Sidecar mode → External** — URL, API token, optional path mapping → **Test** → **Apply**. Or:
-
-```bash
-TGDL_FACES_SIDECAR_URL=https://faces.example.com
-TGDL_FACES_SIDECAR_TOKEN=change-me-to-a-long-random-string
-TGDL_FACES_PATH_MAP=/app/data/downloads=/media   # only with shared storage
-```
-
-Photos the sidecar can't read are uploaded (raw with faces-service 0.5.1+, base64 before that; anything over the ~40 MB request budget is sent as a 4096 px copy and the face boxes are scaled back). Videos are decoded by the app's ffmpeg and sent as frames.
-
-### Reverse proxy / tunnel notes
-
-- **Cloudflare Tunnel** can't strip a path prefix — give each sidecar its own hostname (`nsfw.example.com` → `http://localhost:8012`, `seekbar.example.com` → `http://localhost:8089`). Don't put Cloudflare Access in front of these hostnames: the app can't sign in to Access; the sidecar token protects them.
-- **Path prefixes** (`https://gpu.example.com/nsfw`) work when the proxy strips the prefix:
-
-  ```caddyfile
-  gpu.example.com {
-      handle_path /nsfw/*    { reverse_proxy 127.0.0.1:8012 }
-      handle_path /seekbar/* { reverse_proxy 127.0.0.1:8089 }
-  }
-  ```
-
-  ```nginx
-  location /seekbar/ {
-      proxy_pass http://127.0.0.1:8089/;   # trailing slash strips /seekbar
-      client_max_body_size 64m;            # nginx defaults to 1m — uploads need more
-      proxy_request_buffering off;
-      proxy_read_timeout 300s;
-  }
-  location /nsfw/ {
-      proxy_pass http://127.0.0.1:8012/;
-      client_max_body_size 64m;
-  }
-  ```
-
-- **Test** in the dashboard tells a wrong URL / missing prefix (`HTTP 404`, "not the sidecar"), a rejected or missing token, and whether files will be read in place or uploaded. A remote seekbar sidecar that is down is re-checked every 30 s; meanwhile the app renders previews with its own ffmpeg.
-
-## systemd unit (bare-metal Node)
+A systemd unit can execute the binary directly:
 
 ```ini
-# /etc/systemd/system/telegram-downloader.service
 [Unit]
-Description=Telegram Media Downloader
+Description=Telegram media downloader
 After=network-online.target
-Wants=network-online.target
 
 [Service]
-Type=simple
 User=tgdl
-WorkingDirectory=/opt/telegram-media-downloader
-Environment=NODE_ENV=production
+Group=tgdl
+WorkingDirectory=/opt/telegram-media-downloader/core-service
+Environment=TGDL_DATA_DIR=/var/lib/telegram-media-downloader
 Environment=PORT=3000
-ExecStart=/usr/bin/node src/web/server.js
+ExecStart=/opt/telegram-media-downloader/core-service/tgdl-server
 Restart=on-failure
 RestartSec=5
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/opt/telegram-media-downloader/data
-PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now telegram-downloader
-journalctl -u telegram-downloader -f
+`runner.sh` is available for hosts without systemd, but a native supervisor is
+preferred because it handles signals and logs directly.
+
+## Environment
+
+| Variable | Default | Meaning |
+|---|---:|---|
+| `TGDL_DATA_DIR` | required | SQLite database, sessions, downloads, logs and backups. The directory is created with mode 0700. |
+| `PORT` | `3000` | HTTP and WebSocket listen port. |
+| `TGDL_SESSION_TTL_DAYS` | `30` | Lifetime of a newly issued web session, from 1 to 3650 days. |
+| `FFMPEG_PATH` | `ffmpeg` | Explicit ffmpeg path for video operations. |
+| `TZ` | host | Log and display timezone. |
+
+The old `TGDL_GO_CORE`, `TGDL_GO_FEATURES`, `TGDL_CORE_BIN` and
+`TGDL_CORE_RELEASE_URL` variables are ignored by the pure-Go server. Leaving
+them in an existing `.env` is harmless, but they no longer select a fallback.
+
+## Reverse proxy
+
+Forward the same port to the proxy and preserve `Upgrade` / `Connection`
+headers for WebSocket. Terminate TLS at the proxy and set a secure cookie
+policy there. The application binds to the address supplied by the container;
+keep it private when the proxy is on another host.
+
+## Upgrade and backup
+
+```sh
+docker compose pull
+docker compose up -d
 ```
 
-## PM2 (bare-metal Node, alternative to systemd)
-
-If you'd rather use a userland process manager — handy on a Synology NAS, a
-shared host without root, or any environment where editing `/etc/systemd`
-isn't an option — the repo ships an `ecosystem.config.cjs` at the root.
-
-```bash
-npm install -g pm2
-pm2 start ecosystem.config.cjs               # production profile (PORT=3000)
-pm2 start ecosystem.config.cjs --env staging # staging profile  (PORT=3010)
-pm2 logs telegram-media-downloader
-pm2 save && pm2 startup                      # persist across reboots
-```
-
-The bundled config launches `src/web/server.js` (the dashboard + WebSocket bus), caps restarts at 10 with a 2-second backoff (so a crash-loop surfaces instead of pinning the CPU), restarts the worker if RSS exceeds 1.5 GB (`max_memory_restart: 1500M`), tags log lines with timestamps, and writes both streams to `data/logs/pm2-{out,err}.log` so the existing backup/rotation paths cover them. PM2 itself doesn't rotate logs — pair with `pm2 install pm2-logrotate` if you want bounded log files.
-
-## Backups
-
-Back up `data/secret.key` and `data/sessions/*.enc` together — losing `secret.key` means none of the sessions decrypt and every account has to re-login. `data/db.sqlite` and the downloads tree are easy to recreate from Telegram if needed.
-
-Pre-update DB snapshots land at `data/backups/db-pre-update-<utc-stamp>.sqlite` automatically when an in-dashboard update runs (last 5 kept). They're plain `.sqlite` files — to roll back, stop the container, swap one of them in for `data/db.sqlite`, and restart.
-
-Rotate `config.web.shareSecret` to invalidate every outstanding share link in one move (edit the value or delete it; a fresh 32-byte secret regenerates on next boot).
-
-## Watchdogs
-
-For long-running headless monitor:
-
-- **Linux/macOS:** `TGDL_RUN=monitor ./runner.sh`
-- **Windows:** `pwsh ./watchdog.ps1` (defaults to `monitor`)
-- **Docker:** the included compose file restarts the container on crash; the in-process runtime keeps the engine alive within it.
-
-### Auto-restart on crash AND on hangs (Docker)
-
-`docker-compose.yml` ships two layers of protection:
-
-1. **`restart: unless-stopped`** — Docker restarts the container whenever the process exits with a non-zero status. Covers crashes, OOM kills, and clean `process.exit(1)` calls.
-2. **`autoheal` sidecar** (`willfarrell/autoheal:1.2.0`) — polls the docker socket every 30 s, finds containers whose healthcheck is `unhealthy` AND that carry `autoheal=true`, and restarts them. Covers the case where the process is wedged but hasn't actually exited (deadlocked event loop, stuck DB handle, runaway worker).
-
-The dashboard container is labeled `autoheal=true` out of the box. If you'd rather rely on an external supervisor (systemd, Kubernetes liveness probes, NAS health monitor), comment out the `autoheal` service block in `docker-compose.yml`. The label is harmless without the sidecar.
-
-Memory cap, log rotation, and healthcheck timing all live in the same compose file:
-- `deploy.resources.limits.memory: ${TGDL_MEM_LIMIT:-8g}` — override per host via `.env`.
-- `logging.options.max-size: 10m` × `max-file: 5` — 50 MB ceiling per container, prevents log-fill-disk incidents.
-- `healthcheck.start_period: 30s` — gives the cold-start path room for state-migration + first WAL checkpoint on slow disks.
-
-Bare-metal users get equivalent coverage from `ecosystem.config.cjs`: `max_memory_restart: 1500M`, `max_restarts: 10` with a `restart_delay: 2000` ms backoff, `min_uptime: 10s` to surface crash-loops as a stopped process instead of a CPU-pinning restart storm.
-
-## Split-disk setup
-
-Store `db.sqlite`, sessions, logs, and backups on a fast SSD while large media files live on a cheaper, bigger HDD.
-
-**Which paths go where:**
-
-| Path | Recommended disk | Why |
-|---|---|---|
-| `db.sqlite` + WAL files | SSD | Random read/write, small |
-| `sessions/` | SSD | Small, accessed on every reconnect |
-| `backups/` | SSD | Verified before each update |
-| `logs/` | Either | Sequential write, small |
-| `downloads/` | HDD | Large sequential writes, rarely random |
-| `models/` (NSFW / faces) | Either | Read-once then cached |
-
-The NSFW classifier model (~85 MB at the default `q8` precision) is downloaded lazily on the first NSFW scan. For offline or firewalled deployments, seed `models/` once while online:
-
-```bash
-npm run pre-download-models                                                        # bare metal
-docker compose exec -u node telegram-downloader npm run pre-download-models        # Docker
-```
-
-It fetches the model and precision configured under **Maintenance → NSFW review** and is a no-op when an external NSFW sidecar is configured.
-
-**Docker (two bind-mounts):**
-
-```yaml
-# docker-compose.yml — volumes section
-volumes:
-  - /mnt/ssd/tgdl/data:/app/data          # SSD: DB + sessions + backups
-  - /mnt/hdd/tgdl/downloads:/mnt/hdd/downloads  # HDD: media files
-
-# docker-compose.yml — environment section
-environment:
-  - TGDL_DOWNLOADS_DIR=/mnt/hdd/downloads
-```
-
-The container entrypoint creates and permissions `TGDL_DOWNLOADS_DIR` automatically on boot.
-
-With the `faces` profile, mount the HDD into the `tgdl-faces` service at the **same path** and allow it, so the sidecar reads files directly instead of receiving every image as base64 over HTTP:
-
-```yaml
-# tgdl-faces service
-volumes:
-  - /mnt/hdd/tgdl/downloads:/mnt/hdd/downloads:ro
-environment:
-  - TGDL_FACES_ALLOW_ROOTS=/mnt/hdd/downloads
-```
-
-**Bare metal / Synology native:**
-
-```bash
-export TGDL_DATA_DIR=/mnt/ssd/tgdl/data
-export TGDL_DOWNLOADS_DIR=/mnt/hdd/tgdl/downloads
-npm start
-```
-
-**Windows:**
-
-```powershell
-$env:TGDL_DATA_DIR = "D:\tgdl\data"
-$env:TGDL_DOWNLOADS_DIR = "E:\tgdl\downloads"
-npm start
-```
-
-When `TGDL_DOWNLOADS_DIR` is unset, behaviour is identical to previous versions — downloads go to `<TGDL_DATA_DIR>/downloads`.
+Migrations are idempotent and run before `/health` becomes ready. Create an
+SQLite snapshot from the dashboard maintenance action or copy the generated
+file under `data/backups/` after the server is stopped. Each Go snapshot
+contains a byte count and SHA-256 digest.

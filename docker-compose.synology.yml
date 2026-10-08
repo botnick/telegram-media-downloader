@@ -6,32 +6,19 @@ services:
     restart: unless-stopped
     ports:
       - "${TGDL_PORT:-3000}:3000"
-    entrypoint: ["/usr/bin/tini", "--", "/bin/sh", "/patch-docker-entrypoint.sh"]
-    command: ["node", "src/web/server.js"]
     volumes:
       - /volume3/Downloads/telegram-media-downloader/data:/app/data
-      - /volume3/Downloads/telegram-media-downloader/patch-docker-entrypoint.sh:/patch-docker-entrypoint.sh:ro
     devices:
       - /dev/dri:/dev/dri
     environment:
-      - NODE_ENV=production
       - TZ=${TZ:-UTC}
-      - TGDL_DEBUG=${TGDL_DEBUG:-}
-      # Direct port publishing is the safe default. Set TRUST_PROXY=1 only
-      # when this service is behind one trusted reverse-proxy hop.
-      - TRUST_PROXY=${TRUST_PROXY:-loopback}
-      - WATCHTOWER_URL=${WATCHTOWER_URL:-http://watchtower:8080}
-      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
-      - FFMPEG_HWACCEL=${FFMPEG_HWACCEL:-vaapi}
-      - FACES_SERVICE_URL=http://tgdl-faces:8011
-      - TGDL_FACES_SIDECAR_TOKEN=${TGDL_FACES_API_TOKEN:-}
-      - TGDL_GO_CORE=${TGDL_GO_CORE:-}
-      - TGDL_GO_FEATURES=${TGDL_GO_FEATURES:-}
+      - PORT=3000
+      - TGDL_DATA_DIR=/app/data
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "autoheal=true"
     healthcheck:
-      test: ["CMD", "node", "scripts/healthcheck.js"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -43,47 +30,11 @@ services:
         reservations:
           memory: 256m
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
-        max-size: "10m"
+        max-size: 10m
         max-file: "5"
         compress: "true"
-
-  tgdl-faces:
-    image: ghcr.io/botnick/tgdl-faces:latest
-    pull_policy: always
-    container_name: tgdl-faces
-    restart: unless-stopped
-    volumes:
-      - /volume3/Downloads/telegram-media-downloader/data/downloads:/app/data/downloads:ro
-      - /volume3/Downloads/telegram-media-downloader/data/faces-service/models:/root/.cache/tgdl-faces/models
-    environment:
-      - TGDL_FACES_HOST=0.0.0.0
-      - TGDL_FACES_PORT=8011
-      - TGDL_FACES_ALLOW_ROOTS=/app/data/downloads
-      - TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
-      - TGDL_FACES_THROTTLE_MS=${TGDL_FACES_THROTTLE_MS:-0}
-      - TGDL_FACES_API_TOKEN=${TGDL_FACES_API_TOKEN:-}
-      - TZ=${TZ:-UTC}
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 90s
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    deploy:
-      resources:
-        limits:
-          memory: ${TGDL_FACES_MEM_LIMIT:-2g}
-        reservations:
-          memory: 512m
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
 
   autoheal:
     image: willfarrell/autoheal:1.2.0
@@ -98,34 +49,3 @@ services:
       - TZ=${TZ:-UTC}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1m"
-        max-file: "3"
-
-  # Idle updater for the dashboard's Install update button (API-only, no
-  # polling, no ports). nickfedor fork: the archived containrrr image fails
-  # on Docker Engine 29+ ("client version 1.25 is too old").
-  watchtower:
-    image: nickfedor/watchtower:1.22
-    container_name: telegram-downloader-updater
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Only the generated token folder, never the DB/sessions.
-      - /volume3/Downloads/telegram-media-downloader/data/watchtower:/run/tgdl:ro
-    depends_on:
-      telegram-downloader:
-        condition: service_healthy
-    environment:
-      - WATCHTOWER_HTTP_API_ENDPOINTS=update
-      # Default = path of the token file the app generates; watchtower reads
-      # the file's contents. A token set in .env is used as-is instead.
-      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-/run/tgdl/api-token}
-      - WATCHTOWER_HTTP_API_PERIODIC_POLLS=${WATCHTOWER_HTTP_API_PERIODIC_POLLS:-false}
-      - WATCHTOWER_LABEL_ENABLE=true
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_INCLUDE_RESTARTING=true
-      - WATCHTOWER_NO_STARTUP_MESSAGE=true
-      - TZ=${TZ:-UTC}

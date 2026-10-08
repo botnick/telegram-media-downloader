@@ -33,7 +33,8 @@ describe('Go target foundation smoke', () => {
         const binary = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-go-smoke-')), 'tgdl-server');
         binaries.add(binary);
         execFileSync(process.env.GO_BIN || '/usr/local/go/bin/go', ['build', '-o', binary, './cmd/tgdl-server'], { cwd: core });
-        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-go-data-'));
+        const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-go-data-'));
+        const dataDir = path.join(dataRoot, 'nested', 'fresh-data');
         const port = await freePort();
         const child = spawn(binary, [], { cwd: root, env: { ...process.env, TGDL_DATA_DIR: dataDir, PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'] });
         children.add(child);

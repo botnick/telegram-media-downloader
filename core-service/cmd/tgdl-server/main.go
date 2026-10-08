@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/app"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/config"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/webassets"
 )
 
 func main() {
@@ -35,7 +37,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 2
 	}
-	a, err := app.New(context.Background(), app.Config{DataDir: cfg.DataDir, Port: cfg.Port, CookieName: cfg.CookieName, SessionTTL: cfg.SessionTTL})
+	static, err := fs.Sub(webassets.FS, "public")
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
+	}
+	a, err := app.New(context.Background(), app.Config{DataDir: cfg.DataDir, Port: cfg.Port, Static: static, CookieName: cfg.CookieName, SessionTTL: cfg.SessionTTL})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1

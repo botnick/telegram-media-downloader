@@ -7,6 +7,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -28,6 +29,9 @@ type DB struct {
 func Open(ctx context.Context, dataDir string) (*DB, error) {
 	if strings.TrimSpace(dataDir) == "" {
 		return nil, errors.New("data directory is required")
+	}
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return nil, fmt.Errorf("create data directory: %w", err)
 	}
 	dbPath := filepath.Join(dataDir, "db.sqlite")
 	writer, err := sql.Open("sqlite", dbPath)

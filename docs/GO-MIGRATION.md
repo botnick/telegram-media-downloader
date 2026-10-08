@@ -1,24 +1,20 @@
 ---
 title: "Go migration plan"
-description: "The plan for moving the backend from Node.js to Go without users noticing: waves, the API contract gate and data-compatibility rules."
+description: "The pure-Go backend cutover, data compatibility rules and verification gates."
 nav_order: 10
 ---
 
 # Moving the backend to pure Go
 
-The backend is moving from Node.js to Go, domain by domain, behind a Go
-front server. The SPA in `src/web/public` stays exactly as it is. The hard
-requirement: **users must not notice.** Every HTTP route, every WebSocket
-event, every file in the data directory and every environment variable
-behaves as it does today.
+The backend cutover targets one Go process. The SPA in `src/web/public` stays
+as browser code and is embedded into `tgdl-server`. Every HTTP route,
+WebSocket event, data-directory format and environment variable remains
+compatible while ownership moves to Go.
 
-This plan extends [GO-CORE.md](GO-CORE.md). `tgdl-core` started as a
-companion that takes over hot paths while Node stays in charge (Node is the
-single DB writer, every feature has a Node fallback). Here the end state is
-different: one Go binary, no Node at runtime. The GO-CORE rules still apply
-to everything shipped as a *companion feature* (flags, shadow mode, parity
-counters, Node fallback). This document adds the rules for moving whole
-domains, and the gate every move has to pass.
+This plan extends [GO-CORE.md](GO-CORE.md). The historical companion process
+is now absorbed by `tgdl-server`: one Go binary, one SQLite writer, and no
+Node subprocess, proxy or runtime fallback. Explicit ffmpeg/AI workers remain
+sidecars with stable contracts rather than alternate server implementations.
 
 ## The gate: the API contract suite
 
@@ -93,43 +89,31 @@ restart it on a fresh seed between files — scenarios mutate state).
 ## Architecture during the move
 
 ```
-browser ──► Go front server ──┬─► Go handlers (domains already moved)
-                               └─► Node server (everything else, proxied)
-             /ws ─────────────────► Go broadcaster ◄── events from Node
+browser ──► tgdl-server ──► Go handlers ──► SQLite / media / gotd
+                         └─► explicit ffmpeg or AI sidecars when configured
+             /ws ────────► bounded Go broadcaster
 ```
 
-- The front server owns the listening port, TLS/proxy trust, security
-  headers, compression, static files and `/files` Range streaming from
-  wave A on, and proxies every other request to a Node child on a loopback
-  port (HTTP and WebSocket upgrades, headers and cookies untouched).
-- Writes move **with their caches and events**: a domain's writes, the WS
-  events they emit and the in-memory caches over that data (config cache,
-  sidebar aggregates, stats cache, job trackers) switch together —
-  splitting them across processes turns every cache into a stale-data bug.
-  Reads may move earlier (wave B) only where Go answers straight from
-  SQLite with no cache of its own, so a Node write is visible to the next
-  Go read.
-- One DB, two processes during waves B–D. SQLite in WAL mode allows it
-  (file locks), with the same pragmas on both sides (`journal_mode=WAL`,
-  `synchronous=NORMAL`, `busy_timeout=5000`, `foreign_keys=ON`). The owner
-  of a table's writes is always the process that owns the domain; the other
-  side only reads. `kv['config']` stays written by Node until the config
-  domain moves in wave C; Go reads it with the same 2 s cache semantics.
-- WebSocket: from wave C the Go front server owns every dashboard socket.
-  Node, while it still runs domains, pushes its events to Go over an
-  internal loopback channel; Go keeps the storm control of
-  `src/web/lib/ws-broadcaster.js` (500 ms latest-wins coalescing of
-  `download_progress` / `history_progress` / `queue_length` /
-  `queue_changed{op:enqueue}`, flush-before rules, 1 MiB backpressure cap,
-  30 s ping/terminate heartbeat) and the per-role `stats_update` push.
+- `tgdl-server` owns the listening port, static files, auth, SQLite writer,
+  read projections, writes, jobs and every dashboard WebSocket. It never
+  proxies a request to a child process.
+- SQLite stays in WAL mode with one bounded writer pool and a read pool. Every
+  mutation commits before its WebSocket event is broadcast, so a reconnecting
+  browser cannot observe an event for data that was rolled back.
+- Media downloads reserve Telegram identity before network I/O and publish
+  through an atomic sibling-file rename. Cancellation removes the partial file
+  and releases the reservation.
+- Sidecars are explicit dependencies: ffmpeg and configured AI workers may be
+  unavailable with a clear error, but no Node implementation is selected as a
+  fallback.
 
 ## Waves
 
-### A — hashing, file-system sweeps, dbscan, and the Go front server *(in progress)*
+### A — hashing, file-system sweeps, dbscan, and the Go front server *(complete foundation)*
 
 - tgdl-core phases 1–2 ([GO-CORE.md](GO-CORE.md)): SHA-256 hashing, integrity
-  walk, disk-usage scan, orphan detection, face-clustering DBSCAN — still
-  companion features with Node fallback and parity counters.
+  walk, disk-usage scan, orphan detection and face-clustering DBSCAN remain
+  reusable Go libraries inside the server.
 - Go front server: static SPA (including the `?v=<version>` rewrite of HTML
   `src`/`href` and of relative JS imports), `/photos`, `/files/*` with Range,
   conditional requests, `?inline=1`, file-token auth and the auto-prune of
@@ -157,11 +141,9 @@ browser ──► Go front server ──┬─► Go handlers (domains already m
 - Read APIs move: library / gallery / search, groups sidebar, stats,
   GET config, share-link list, people / faces reads, NSFW tiers, backup
   destination reads, cluster reads, update history, logs.
-- First read-only slice shipped: the groups/downloads aggregate, library
-  totals, and per-group data projections are served by `tgdl-core` from a
-  query-only SQLite pool (`db` feature), with the Node queries retained as
-  compatibility fallbacks while the rest of Wave B moves.
-- Node still writes. Exit: the domain files pass on `go`.
+- The first slice is shipped: all existing `/v1/db/*` projections are mounted
+  directly in `tgdl-server` behind session auth and use a query-only SQLite
+  pool. There is no local HTTP hop or Node fallback.
 
 ### C — write APIs, WS broadcaster, jobs, backup, cluster
 

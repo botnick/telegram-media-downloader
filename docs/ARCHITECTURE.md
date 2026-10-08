@@ -1,15 +1,25 @@
 ---
 title: "Architecture"
-description: "How the Node.js app, tgdl-core (Go) and the sidecars fit together."
+description: "How the pure-Go server, browser bundle and explicit sidecars fit together."
 nav_order: 8
 ---
 
 # Architecture
 
-Two top-level entry points share state through `data/`:
+The production entry point is the single `core-service/cmd/tgdl-server` binary.
+It serves the embedded browser bundle, owns HTTP/WebSocket/auth/SQLite state,
+and starts no JavaScript runtime. Optional media or AI workers are explicit
+external sidecars; they are never a fallback for the server.
 
-1. **CLI** (`src/index.js`) — interactive menus, ad-hoc commands.
-2. **Web server** (`src/web/server.js`) — Express + WebSocket on `:3000`, serves the SPA from `src/web/public/`.
+The browser bundle is still vanilla JavaScript and runs in the user's browser.
+The repository's Node tooling remains only for the recorded contract oracle
+while the last domains are ported; it is not part of the production process or
+container image.
+
+The server shares state through `data/`:
+
+1. **Go server** (`core-service/cmd/tgdl-server`) — HTTP + WebSocket on `:3000`, serves the embedded SPA.
+2. **Go CLI commands** — added to the same binary as domains move across.
 
 Both share state through `data/db.sqlite` (WAL mode → safe shared reads, single writer). Every runtime state surface — settings, account list, group filters, session tokens, disk-usage cache, recent-backfills history, queue-history snapshots, and the auto-update audit log — lives in SQLite tables. There is **no JSON state file in normal operation**. Legacy installs upgrading from pre-v2.8 carry `data/config.json` / `data/disk_usage.json` / `data/web-sessions.json` / `data/history-jobs.json` / `data/queue-history.json` — all auto-imported on first boot and renamed to `*.migrated` as a reversible backup. A leftover `data/logs/queue_backlog.jsonl` is deleted instead (its jobs held serialised Telegram credentials).
 
@@ -18,15 +28,15 @@ Both share state through `data/db.sqlite` (WAL mode → safe shared reads, singl
 ```mermaid
 flowchart LR
     user[Browser SPA<br/>src/web/public/]
-    server[web/server.js]
-    runtime[core/runtime.js]
-    monitor[core/monitor.js]
-    downloader[core/downloader.js]
-    forwarder[core/forwarder.js]
-    am[core/accounts.js<br/>AccountManager]
+    server[tgdl-server]
+    runtime[Go runtime]
+    monitor[Go Telegram monitor]
+    downloader[Go download manager]
+    forwarder[Go forwarder]
+    am[Go account manager]
     db[(SQLite<br/>data/db.sqlite)]
     fs[(data/downloads/)]
-    tg[(Telegram MTProto<br/>via gramJS)]
+    tg[(Telegram MTProto<br/>via gotd)]
 
     user <-- REST + WebSocket --> server
     server -- start/stop/status --> runtime

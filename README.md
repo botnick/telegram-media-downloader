@@ -179,11 +179,11 @@ npm ci && npm start
 ```mermaid
 flowchart LR
     user[Browser SPA]
-    server[web/server.js]
-    runtime[runtime.js]
-    monitor[monitor.js]
-    downloader[downloader.js]
-    forwarder[forwarder.js]
+    server[tgdl-server]
+    runtime[Go runtime]
+    monitor[Go monitor]
+    downloader[Go downloader]
+    forwarder[Go forwarder]
     am[AccountManager]
     db[(SQLite)]
     fs[(downloads/)]
@@ -191,7 +191,7 @@ flowchart LR
     faces[faces-service]
     nsfw[nsfw-service]
     seekbar[seekbar-service]
-    core[tgdl-core]
+    core[Go core libraries]
 
     user <-- REST + WS --> server
     server -- start/stop --> runtime
@@ -209,14 +209,16 @@ flowchart LR
     core -- reads --> fs
 ```
 
-The app is a Node.js server (Express, SQLite, gramJS) plus **tgdl-core**, a required Go binary, and three optional sidecars.
+The production app is one pure-Go `tgdl-server` binary with the browser bundle
+embedded inside it. It owns HTTP, WebSocket, SQLite, jobs, dedup and gotd
+Telegram connections; no Node process or runtime fallback is used.
 
-- **tgdl-core** (Go, required): hashing, integrity checks, folder walks and face clustering (DBSCAN). It is also the front server on `PORT`: it serves every media byte (`/files`, photos, thumbnails, Range requests) and proxies everything else to Node. `npm install` downloads it (checksum-verified) or builds it; the Docker image includes it.
+- **Go core** (required): hashing, integrity checks, folder walks, face clustering (DBSCAN), SQLite projections and media jobs inside `tgdl-server`.
 - **faces-service** (Python): face detection and embeddings.
 - **nsfw-service** (Python): NSFW classification.
 - **seekbar-service** (Go): video hover previews.
 
-Each sidecar runs locally or as an External one on another machine (see [External AI Sidecar](#external-ai-sidecar)); when one is missing or fails, its feature falls back to the built-in code or stays off. Details: [Architecture](docs/ARCHITECTURE.md), [tgdl-core](docs/GO-CORE.md) and the [Go migration plan](docs/GO-MIGRATION.md).
+Each sidecar runs locally or as an external worker (see [External AI Sidecar](#external-ai-sidecar)). A missing worker returns a clear feature error; it never switches the server back to Node. Details: [Architecture](docs/ARCHITECTURE.md), [Go migration plan](docs/GO-MIGRATION.md) and [Go server](core-service/README.md).
 
 ---
 
@@ -287,7 +289,7 @@ New versions need no config changes; migrations run automatically. Existing user
 ## Docker Compose profiles
 
 ```bash
-# Base (dashboard, tgdl-core and the idle update sidecar)
+# Base (dashboard and pure-Go server)
 docker compose up -d
 
 # + AI face clustering (CPU)
@@ -377,7 +379,8 @@ Built-in rate limiting (default 15 requests per minute) and FloodWait handling k
 
 ### Does it run on a Raspberry Pi or a Synology NAS?
 
-Yes on Synology (the repo ships `docker-compose.synology.yml`). The published Docker image targets linux/amd64; on ARM boards such as a Raspberry Pi, run it from source with Node.js 22+ (`npm ci && npm start`), because tgdl-core has ARMv7 and arm64 Linux builds that `npm install` fetches for you. See [Deploy](docs/DEPLOY.md) for Synology notes and low-power tuning.
+Yes on Synology and ARM boards. The multi-architecture image runs the same
+`tgdl-server` binary; bare-metal installs need Go 1.22+ only. See [Deploy](docs/DEPLOY.md).
 
 ### Can I download Stories or self-destructing media?
 
@@ -428,11 +431,10 @@ The same docs are published as a searchable site from `/docs` via GitHub Pages, 
 ## Contributing
 
 ```bash
-npm ci
-npm run build:core     # optional: build tgdl-core from source (needs Go)
-npm run lint           # biome lint
-npm test               # vitest specs
-npm run test:contract  # API contract suite
+    go test ./core-service/...
+    go test -race ./core-service/...
+    go vet ./core-service/...
+    npm run test:contract  # recorded contract oracle while porting
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.
@@ -443,5 +445,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.
 
 [MIT](LICENSE) — free for personal and commercial use.
 
-Not affiliated with Telegram. Uses the public MTProto User API via [GramJS](https://github.com/gram-js/gramjs).
-
+Not affiliated with Telegram. Uses the public MTProto User API via [gotd](https://gotd.dev/).

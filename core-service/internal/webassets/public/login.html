@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="dark light">
+    <title>Sign in — Telegram Downloader</title>
+
+    <!-- Theme bootstrap (mirrors index.html so the lock screen reads the same
+         saved choice as the dashboard and the very first paint is the right
+         theme — no flash). -->
+    <script>
+        (() => {
+            const t = localStorage.getItem('tgdl-theme') || 'auto';
+            const dark = t === 'dark' || (t === 'auto' && !window.matchMedia('(prefers-color-scheme: light)').matches);
+            document.documentElement.classList.add(dark ? 'theme-dark' : 'theme-light');
+        })();
+    </script>
+
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.0.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Theme variables — same source-of-truth contract as the dashboard.
+           Inline-CSS consumers (`.tg-input`, `.tg-btn-primary`, etc.) read
+           from these so the swap on `html.theme-light` is automatic. */
+        :root {
+            --tgdl-font-family: 'IBM Plex Sans', 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --tg-blue: #2AABEE;
+            --tg-darkBlue: #229ED9;
+            --tg-bg: #17212B;
+            --tg-sidebar: #0E1621;
+            --tg-panel: #242F3D;
+            --tg-hover: #2B5278;
+            --tg-border: #0D1117;
+            --tg-text: #F5F5F5;
+            --tg-textSecondary: #8B9BAA;
+            --tg-red: #E53935;
+            --tg-green: #4FAE4E;
+        }
+        html.theme-light {
+            --tg-blue: #0E78C2;
+            --tg-darkBlue: #0E5A86;
+            --tg-bg: #FFFFFF;
+            --tg-sidebar: #F4F4F5;
+            --tg-panel: #F0F4F7;
+            --tg-hover: #DCEDFF;
+            --tg-border: #D1D5DB;
+            --tg-text: #1F2937;
+            --tg-textSecondary: #4B5563;
+            --tg-red: #B91C1C;
+            --tg-green: #008A6E;
+        }
+
+        * { font-family: var(--tgdl-font-family); box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            background: var(--tg-bg);
+            color: var(--tg-text);
+            min-height: 100vh;
+            min-height: 100dvh;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        code { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+        /* Subtle Telegram-blue radial glow behind the card so the page
+           doesn't read as a solid wall. Lower alpha in light theme so it
+           stays a hint, not a stripe. */
+        .login-bg {
+            position: fixed; inset: 0; z-index: 0;
+            background:
+                radial-gradient(ellipse 60% 50% at 50% 0%, rgba(42,171,238,0.18), transparent 70%),
+                radial-gradient(ellipse 80% 60% at 50% 100%, rgba(42,171,238,0.10), transparent 70%);
+            pointer-events: none;
+        }
+        html.theme-light .login-bg {
+            background:
+                radial-gradient(ellipse 60% 50% at 50% 0%, rgba(14,120,194,0.10), transparent 70%),
+                radial-gradient(ellipse 80% 60% at 50% 100%, rgba(14,120,194,0.05), transparent 70%);
+        }
+
+        /* Card sits above the glow. */
+        .login-card {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 22rem;
+            background: var(--tg-panel);
+            border: 1px solid var(--tg-border);
+            border-radius: 16px;
+            padding: 32px 28px;
+            box-shadow: 0 12px 40px -12px rgba(0,0,0,0.45), 0 4px 12px -4px rgba(0,0,0,0.25);
+        }
+        html.theme-light .login-card {
+            box-shadow: 0 12px 36px -12px rgba(15,23,42,0.18), 0 4px 12px -4px rgba(15,23,42,0.10);
+        }
+
+        /* Brand mark — Telegram paper-plane on a soft blue gradient disc. */
+        .login-brand {
+            width: 64px; height: 64px;
+            border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #2AABEE 0%, #229ED9 100%);
+            color: #FFFFFF;
+            font-size: 30px;
+            box-shadow: 0 8px 20px -6px rgba(42,171,238,0.55);
+        }
+        .login-brand i { line-height: 1; transform: translateX(-2px); }
+        html.theme-light .login-brand {
+            background: linear-gradient(135deg, #0E78C2 0%, #0A5E96 100%);
+            box-shadow: 0 8px 20px -6px rgba(14,120,194,0.45);
+        }
+
+        /* Form primitives — match the dashboard's `.tg-input` / `.tg-btn` so
+           the lock screen reads as part of the same app. */
+        .tg-input {
+            width: 100%;
+            padding: 11px 14px;
+            background: var(--tg-bg);
+            border: 1px solid var(--tg-border);
+            border-radius: 10px;
+            color: var(--tg-text);
+            /* 16 px: anything smaller makes iOS Safari zoom the page on focus */
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        html.theme-light .tg-input { background: #FFFFFF; }
+        .tg-input::placeholder { color: var(--tg-textSecondary); opacity: 0.85; }
+        .tg-input:focus {
+            border-color: var(--tg-blue);
+            box-shadow: 0 0 0 3px rgba(42,171,238,0.18);
+        }
+        html.theme-light .tg-input:focus { box-shadow: 0 0 0 3px rgba(14,120,194,0.18); }
+
+        .tg-btn-primary {
+            width: 100%;
+            padding: 11px 14px;
+            background: var(--tg-blue);
+            color: #FFFFFF;
+            border: 0;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.15s ease, transform 0.05s ease;
+        }
+        .tg-btn-primary:hover { background: var(--tg-darkBlue); }
+        .tg-btn-primary:active { transform: scale(0.99); }
+        .tg-btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            filter: saturate(0.55);
+        }
+
+        .tg-btn-secondary {
+            width: 100%;
+            padding: 9px 14px;
+            background: transparent;
+            color: var(--tg-text);
+            border: 1px solid var(--tg-border);
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+        .tg-btn-secondary:hover { background: var(--tg-hover); border-color: var(--tg-hover); }
+
+        /* Forgot-password link — quiet by default, hover reveals brand colour. */
+        .tg-link {
+            color: var(--tg-textSecondary);
+            font-size: 13px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: color 0.15s ease;
+        }
+        .tg-link:hover { color: var(--tg-blue); text-decoration: underline; }
+
+        /* Reset panel: same card vocabulary, slightly tinted so it reads
+           as a sub-region of the login card rather than a separate panel. */
+        .reset-panel {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--tg-border);
+        }
+        .reset-help {
+            background: var(--tg-bg);
+            border: 1px solid var(--tg-border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: var(--tg-textSecondary);
+            line-height: 1.5;
+        }
+        html.theme-light .reset-help { background: rgba(0,0,0,0.02); }
+        .reset-help code {
+            background: var(--tg-panel);
+            padding: 1px 6px;
+            border-radius: 4px;
+            color: var(--tg-text);
+            font-size: 11px;
+        }
+
+        /* Restore keyboard focus rings (the global Tailwind reset would
+           otherwise hide them). */
+        :focus-visible {
+            outline: 2px solid var(--tg-blue);
+            outline-offset: 2px;
+            border-radius: 6px;
+        }
+        button:focus:not(:focus-visible),
+        input:focus:not(:focus-visible) { outline: none; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .tg-input, .tg-btn-primary, .tg-btn-secondary, .tg-link { transition: none; }
+            .tg-btn-primary:active { transform: none; }
+        }
+    </style>
+    <!-- Prebuilt Tailwind utilities (`npm run build:css`). Kept last in
+         <head> so utilities win same-specificity ties, exactly like the
+         old Play CDN <style> that was appended at the end of <head>. -->
+    <link rel="stylesheet" href="/css/tailwind.css">
+</head>
+
+<body class="flex items-center justify-center px-4">
+
+    <div class="login-bg" aria-hidden="true"></div>
+
+    <main class="login-card">
+        <!-- Brand block -->
+        <div class="text-center mb-7">
+            <span class="login-brand mb-4" aria-hidden="true">
+                <i class="ri-send-plane-2-fill"></i>
+            </span>
+            <h1 class="text-xl font-semibold mt-4" style="color: var(--tg-text)">Telegram Downloader</h1>
+            <p class="text-sm mt-1" style="color: var(--tg-textSecondary)">Enter your dashboard password to continue.</p>
+        </div>
+
+        <form id="loginForm" class="space-y-3" autocomplete="on">
+            <label for="password" class="sr-only">Password</label>
+            <input type="password" id="password" name="password" placeholder="Password"
+                class="tg-input" autocomplete="current-password" required>
+
+            <button type="submit" class="tg-btn-primary" id="submitBtn">
+                <i class="ri-login-circle-line align-middle mr-1.5"></i><span>Sign in</span>
+            </button>
+
+            <div id="error" class="hidden text-sm text-center"
+                style="color: var(--tg-red); padding: 8px 12px; background: rgba(229,57,53,0.10); border-radius: 8px;">
+                Invalid password
+            </div>
+
+            <div class="text-center pt-1">
+                <button type="button" id="forgotBtn" class="tg-link">
+                    Forgot password?
+                </button>
+            </div>
+        </form>
+
+        <!-- Reset flow — shown when "Forgot password?" is clicked. The user
+             clicks "Send token", reads it from `docker compose logs`,
+             pastes it back here, and chooses a new password. -->
+        <div id="resetPanel" class="hidden reset-panel space-y-3">
+            <h2 class="text-sm font-semibold" style="color: var(--tg-blue)">Reset password</h2>
+            <p class="reset-help">
+                Click <strong style="color: var(--tg-text)">Send token</strong>. The server prints a one-time, 10-minute token to its stdout — read it from
+                <code>docker compose logs telegram-downloader</code>, paste it below, and choose a new password.
+            </p>
+            <button type="button" id="resetSendBtn" class="tg-btn-secondary">
+                <i class="ri-mail-send-line align-middle mr-1"></i>Send token
+            </button>
+            <input type="text" id="resetToken" placeholder="Paste token from server logs"
+                class="tg-input" style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px;"
+                autocomplete="off">
+            <input type="password" id="resetNew" placeholder="New password (min 8 chars)" minlength="8"
+                class="tg-input">
+            <button type="button" id="resetConfirmBtn" class="tg-btn-primary">
+                <i class="ri-key-2-line align-middle mr-1.5"></i>Reset and sign in
+            </button>
+            <div id="resetMsg" class="hidden text-xs text-center" style="padding: 8px; border-radius: 6px;"></div>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+            const btn = document.getElementById('submitBtn');
+            const label = btn.querySelector('span');
+
+            btn.disabled = true;
+            label.textContent = 'Verifying…';
+            errorDiv.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    window.location.href = '/';
+                } else {
+                    errorDiv.textContent = data.error || 'Invalid password';
+                    errorDiv.classList.remove('hidden');
+                    btn.disabled = false;
+                    label.textContent = 'Sign in';
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Connection error';
+                errorDiv.classList.remove('hidden');
+                btn.disabled = false;
+                label.textContent = 'Sign in';
+            }
+        });
+
+        // ====== Forgot password / reset flow ======
+        document.getElementById('forgotBtn').addEventListener('click', () => {
+            document.getElementById('resetPanel').classList.toggle('hidden');
+        });
+
+        const resetMsg = document.getElementById('resetMsg');
+        function showResetMsg(text, kind) {
+            resetMsg.textContent = text;
+            resetMsg.classList.remove('hidden');
+            const ok = kind !== 'error';
+            resetMsg.style.color = ok ? 'var(--tg-green)' : 'var(--tg-red)';
+            resetMsg.style.background = ok ? 'rgba(79,174,78,0.10)' : 'rgba(229,57,53,0.10)';
+        }
+
+        document.getElementById('resetSendBtn').addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.textContent = 'Sending…';
+            try {
+                const res = await fetch('/api/auth/reset/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showResetMsg('Token printed to server logs. Check `docker compose logs` and paste it below.', 'ok');
+                } else {
+                    showResetMsg(data.error || 'Failed to request token', 'error');
+                }
+            } catch {
+                showResetMsg('Network error', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = orig;
+            }
+        });
+
+        document.getElementById('resetConfirmBtn').addEventListener('click', async (e) => {
+            const token = document.getElementById('resetToken').value.trim();
+            const newPassword = document.getElementById('resetNew').value;
+            if (!token || newPassword.length < 8) {
+                showResetMsg('Token + a password of at least 8 characters required', 'error');
+                return;
+            }
+            const btn = e.currentTarget;
+            const orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.textContent = 'Resetting…';
+            try {
+                const res = await fetch('/api/auth/reset/confirm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, newPassword }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showResetMsg('Password reset. Redirecting…', 'ok');
+                    setTimeout(() => { window.location.href = '/'; }, 500);
+                } else {
+                    showResetMsg(data.error || 'Reset failed', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = orig;
+                }
+            } catch {
+                showResetMsg('Network error', 'error');
+                btn.disabled = false;
+                btn.innerHTML = orig;
+            }
+        });
+    </script>
+</body>
+
+</html>

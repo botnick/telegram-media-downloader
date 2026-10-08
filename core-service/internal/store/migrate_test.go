@@ -37,3 +37,13 @@ func TestRunMigrationsIsIdempotentAndPreservesSeedSchema(t *testing.T) {
 		t.Fatalf("downloads table count = %d", n)
 	}
 }
+
+func TestOpenCreatesMissingDataDirectory(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "nested", "data")
+	db, err := Open(context.Background(), dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Writer.Close()
+	defer db.Reader.Close()
+}
