@@ -79,6 +79,10 @@ func (a *App) deleteByWhere(r *http.Request, where string, args ...any) (int64, 
 		return 0, err
 	}
 	defer tx.Rollback()
+	err = a.queueDeletedAssets(r.Context(), tx, where, args...)
+	if err != nil {
+		return 0, err
+	}
 	_, err = tx.ExecContext(r.Context(), `INSERT OR IGNORE INTO tgdl_file_cleanup(path) SELECT file_path FROM downloads WHERE file_path IS NOT NULL AND file_path<>'' AND (`+where+`)`, args...)
 	if err != nil {
 		return 0, err
@@ -94,7 +98,34 @@ func (a *App) deleteByWhere(r *http.Request, where string, args ...any) (int64, 
 	if err = tx.Commit(); err != nil {
 		return 0, err
 	}
-	return count, a.drainFileCleanup(r.Context())
+	return count, errors.Join(a.drainFileCleanup(r.Context()), a.library.CleanDerived(r.Context()))
+}
+
+func (a *App) queueDeletedAssets(ctx context.Context, tx *sql.Tx, where string, args ...any) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM downloads WHERE `+where, args...)
+	if err != nil {
+		return err
+	}
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := a.library.InvalidateDerived(ctx, tx, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func queryPaths(ctx context.Context, tx *sql.Tx, query string) ([]string, error) {

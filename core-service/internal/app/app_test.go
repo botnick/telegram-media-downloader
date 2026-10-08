@@ -434,6 +434,7 @@ func TestDeleteRoutesUseTransactions(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("bulk delete status = %d body=%s", rr.Code, rr.Body.String())
 	}
+	a.dedupWG.Wait()
 	var count int
 	if err := a.db.Writer.QueryRow(`SELECT COUNT(*) FROM downloads`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("remaining rows = %d err=%v", count, err)
@@ -468,6 +469,7 @@ func TestDeleteRoutesRemoveOnlySafeMediaFiles(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("delete status = %d body=%s", rr.Code, rr.Body.String())
 	}
+	a.dedupWG.Wait()
 	if _, err := os.Stat(media); !os.IsNotExist(err) {
 		t.Fatalf("media still exists, stat error=%v", err)
 	}

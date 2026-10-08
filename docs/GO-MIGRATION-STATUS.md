@@ -11,10 +11,16 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- Nine black-box contract files `accounts`, `auth`, `auth-password`, `auth-setup`,
-  `share`, `queue`, `chats`, `downloads` and `groups` pass against the Go executable:
-  **73 tests**. The Go WebSocket
-  writer preserves the released `{type,payload}` event envelope.
+- The latest full black-box run against the Go executable passes **197 of 324
+  tests**, with **22 of 36 files passing**. The remaining **127 failed cases in
+  14 files** are still release blockers, not waived expectations. These are
+  fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
+- Passing domains include accounts, authentication, shares, queue controls,
+  chats, downloads/groups, files/static assets, configuration, AI library reads
+  and edits, dedup, deletion, thumbnails, faststart, database/file maintenance
+  and system/session maintenance. Inventory and two Go packaging/smoke fixtures
+  are also included in the totals. Normal WebSocket messages retain
+  `{type,payload}`; released event families that use top-level fields remain flat.
 - The native chat-access projection, single-flight recheck job, gallery queries
   (including peer rows, search, paging, pinning and durations), group sidebar
   federation, per-group files/stats, cached avatars, group edits and both
@@ -24,6 +30,12 @@ functionality. Do not deploy this branch over a working library yet.
   config notifications without credentials, shared-file reference retention,
   directory traversal/symlink containment, explicit purge confirmation and
   retrying persisted file cleanup after restart.
+- Single-row deletion verifies the requested path and retains shared-file
+  references; path deletion intentionally removes all references. Bulk deletion
+  runs asynchronously, shares the duplicate finder's single-flight guard,
+  retains progress/results and joins before database shutdown. Deletions reuse
+  the ingestion outbox for durable thumbnail/seekbar cleanup. Cached seekbar
+  metadata and sprites are served through directory-confined Go handlers.
 - Native Telegram session storage uses authenticated encryption and atomic
   replacement. Tests cover reopening, wrong secrets, tampering, cancellation,
   private permissions, import preservation and corrupt-state rejection. This
@@ -113,7 +125,7 @@ migration; the current source tree is not yet free of Node dependencies.
 
 ## Required before release
 
-- Complete native Telegram login/account management, history/URL jobs,
+- Validate native Telegram login/account management on a real account; complete history/URL jobs,
   account-wide oversized-gap repair, account routing/proxies, stories and
   forwarding. Channel history gaps are repaired natively; an unresolved global
   or incomplete marker still prevents restart and must never be cleared merely
@@ -122,8 +134,10 @@ migration; the current source tree is not yet free of Node dependencies.
   and full browser interaction. Durable Go pause/resume/cancel/retry controls
   and the queue snapshot are implemented, but the complete queue workflow still
   needs browser and performance coverage.
-- Complete gallery/media/config/group/delete/purge contracts, maintenance jobs,
-  archives, AI/NSFW services, backups and cluster management. A low-level Go
+- Complete backup, cluster/peer/cluster-WebSocket, AI-job, NSFW, seekbar
+  maintenance, monitor/history, Telegram-action, recovery, purge, security,
+  update and periodic WebSocket contracts. These are the 14 failing files in
+  the latest full run. A low-level Go
   projection or helper is not a replacement for the public workflow.
 - Finish the native test runner, remove the old server sources and launchers,
   and run the full HTTP/WebSocket/browser/data-migration E2E and performance

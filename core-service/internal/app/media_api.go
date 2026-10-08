@@ -27,6 +27,8 @@ func registerMediaRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("/files/{path...}", a.requireSession(http.HandlerFunc(a.handleFile)))
 	mux.Handle("GET /api/files/token", a.requireSession(http.HandlerFunc(a.handleFileToken)))
 	mux.Handle("GET /api/thumbs/{id}", a.requireSession(http.HandlerFunc(a.handleThumb)))
+	mux.Handle("GET /api/seekbar/meta/{id}", a.requireSession(http.HandlerFunc(a.handleSeekbarMeta)))
+	mux.Handle("GET /api/seekbar/sprite/{id}", a.requireSession(http.HandlerFunc(a.handleSeekbarSprite)))
 	mux.Handle("GET /photos/{id}", a.requireSession(http.HandlerFunc(a.handlePhoto)))
 	mux.Handle("GET /api/groups/{id}/photo", a.requireSession(http.HandlerFunc(a.handleGroupPhoto)))
 }

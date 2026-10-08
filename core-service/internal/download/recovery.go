@@ -126,7 +126,7 @@ func (l *Library) Recover(ctx context.Context) error {
 			return err
 		}
 	}
-	return l.cleanDerived(ctx)
+	return l.CleanDerived(ctx)
 }
 
 type contextReader struct {

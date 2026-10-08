@@ -12,7 +12,9 @@ import (
 	"strconv"
 )
 
-func (l *Library) invalidateDerived(ctx context.Context, tx *sql.Tx, id int64) error {
+// InvalidateDerived removes analysis and journals cache cleanup in the caller's
+// writer transaction, before a download is replaced or deleted.
+func (l *Library) InvalidateDerived(ctx context.Context, tx *sql.Tx, id int64) error {
 	sum := sha256.Sum256([]byte(strconv.FormatInt(id, 10) + ":320"))
 	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO tgdl_derived_cleanup(area,path) VALUES('thumbs',?)`, hex.EncodeToString(sum[:])[:32]+".webp"); err != nil {
 		return err
@@ -49,7 +51,9 @@ func (l *Library) invalidateDerived(ctx context.Context, tx *sql.Tx, id int64) e
 	return err
 }
 
-func (l *Library) cleanDerived(ctx context.Context) error {
+// CleanDerived drains persisted cache cleanup while holding the writer lock.
+// Failed work remains queued for the next mutation or startup.
+func (l *Library) CleanDerived(ctx context.Context) error {
 	tx, err := l.writer.BeginTx(ctx, nil)
 	if err != nil {
 		return err

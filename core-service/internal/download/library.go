@@ -449,7 +449,7 @@ func (l *Library) register(ctx context.Context, item Item, media candidate, reus
 		return Record{}, err
 	}
 	if previousPath.Valid && (!previousHash.Valid || !strings.EqualFold(previousHash.String, media.sha256)) {
-		if err := l.invalidateDerived(ctx, tx, id); err != nil {
+		if err := l.InvalidateDerived(ctx, tx, id); err != nil {
 			return Record{}, err
 		}
 	}
@@ -467,5 +467,5 @@ func (l *Library) register(ctx context.Context, item Item, media candidate, reus
 	if err := tx.Commit(); err != nil {
 		return Record{}, err
 	}
-	return Record{ID: id, Path: filepath.ToSlash(media.path), SHA256: media.sha256, Reused: reused}, l.cleanDerived(ctx)
+	return Record{ID: id, Path: filepath.ToSlash(media.path), SHA256: media.sha256, Reused: reused}, l.CleanDerived(ctx)
 }

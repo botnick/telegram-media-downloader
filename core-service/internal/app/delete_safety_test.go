@@ -4,11 +4,82 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestHTTPDeleteOnlySelectedReferenceAndItsCaches(t *testing.T) {
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	files := []string{
+		filepath.Join(a.dataDir, "downloads", "gallery", "photo.jpg"),
+		thumbCachePath(filepath.Join(a.dataDir, "thumbs"), 1),
+		thumbCachePath(filepath.Join(a.dataDir, "thumbs"), 2),
+		filepath.Join(a.dataDir, "seekbar", "1.webp"),
+		filepath.Join(a.dataDir, "seekbar", "1.json"),
+	}
+	for _, file := range files {
+		if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte("fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.db.Writer.Exec(`INSERT INTO downloads(group_id,message_id,file_path) VALUES('1',1,'gallery/photo.jpg'),('2',2,'gallery\photo.jpg')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Writer.Exec(`INSERT INTO seekbar_sprites(download_id,sprite_path,meta_path,generated_at) VALUES(1,?,?,1)`, files[3], files[4]); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("DELETE", "/api/file?path="+url.QueryEscape("gallery/photo.jpg")+"&id=1", nil)
+	w := httptest.NewRecorder()
+	a.handleAPIFileDelete(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete: %d %s", w.Code, w.Body.String())
+	}
+	for i, file := range files {
+		_, err := os.Stat(file)
+		if i == 0 || i == 2 {
+			if err != nil {
+				t.Errorf("remaining owner's file lost: %s: %v", file, err)
+			}
+		} else if !os.IsNotExist(err) {
+			t.Errorf("deleted row's cache remains: %s: %v", file, err)
+		}
+	}
+	var count int
+	if err := a.db.Reader.QueryRow(`SELECT COUNT(*) FROM downloads WHERE id=2`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("other reference removed: count=%d err=%v", count, err)
+	}
+}
+
+func TestBulkDeleteRejectsOverlappingDuplicateFinderJob(t *testing.T) {
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	a.dedupMu.Lock()
+	a.dedupDeleteStatus["running"] = true
+	a.dedupMu.Unlock()
+	for _, handler := range []http.HandlerFunc{a.handleDedupDelete, a.handleAPIBulkDelete} {
+		w := httptest.NewRecorder()
+		handler(w, httptest.NewRequest("POST", "/", strings.NewReader(`{"ids":[1]}`)))
+		if w.Code != http.StatusConflict {
+			t.Fatalf("overlapping delete: %d %s", w.Code, w.Body.String())
+		}
+	}
+	a.dedupMu.Lock()
+	a.dedupDeleteStatus["running"] = false
+	a.dedupMu.Unlock()
+}
 
 func TestDeleteSharedFileKeepsRemainingOwner(t *testing.T) {
 	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir()})

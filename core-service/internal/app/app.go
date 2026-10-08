@@ -68,6 +68,8 @@ type App struct {
 	handler            http.Handler
 	configMu           sync.Mutex
 	dedupMu            sync.Mutex
+	dedupWG            sync.WaitGroup
+	dedupClosed        bool
 	dedupLastScan      map[string]any
 	dedupScanStatus    map[string]any
 	dedupDeleteStatus  map[string]any
@@ -491,6 +493,9 @@ func (a *App) Close() error {
 		return nil
 	}
 	a.closeOnce.Do(func() {
+		a.dedupMu.Lock()
+		a.dedupClosed = true
+		a.dedupMu.Unlock()
 		a.chatRecheckMu.Lock()
 		a.chatRecheckClosed = true
 		a.chatRecheckMu.Unlock()
@@ -503,6 +508,7 @@ func (a *App) Close() error {
 		a.chatRecheckWG.Wait()
 		a.groupRefreshWG.Wait()
 		a.bootWG.Wait()
+		a.dedupWG.Wait()
 		if a.accountWizard != nil {
 			a.closeErr = errors.Join(a.closeErr, a.accountWizard.Close())
 		}

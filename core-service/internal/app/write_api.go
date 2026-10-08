@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -245,7 +247,7 @@ func (a *App) handleAPIGroupSave(w http.ResponseWriter, r *http.Request) {
 }
 
 func newGroupFilters() map[string]any {
-	return map[string]any{"photos": true, "videos": true, "files": true, "links": false, "urls": true, "audio": false, "voice": false, "gifs": false, "stickers": false}
+	return map[string]any{"photos": true, "videos": true, "files": true, "links": true, "voice": false, "gifs": false, "stickers": false}
 }
 
 // decodeConfigPatch follows express.json's contract for this endpoint. The
@@ -320,44 +322,194 @@ func normalizedTopics(value any) map[string]any {
 }
 
 func (a *App) handleAPIBulkDelete(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		IDs   []int64  `json:"ids"`
-		Paths []string `json:"paths"`
-	}
-	if err := decodeBody(w, r, &body); err != nil {
+	var raw map[string]any
+	if err := decodeBody(w, r, &raw); err != nil {
 		return
 	}
-	if len(body.IDs) == 0 && len(body.Paths) == 0 {
+	var idValues []any
+	if rawIDs, present := raw["ids"]; present {
+		var ok bool
+		idValues, ok = rawIDs.([]any)
+		if !ok {
+			idValues = nil
+		}
+	}
+	var paths []string
+	if rawPaths, present := raw["paths"]; present {
+		values, ok := rawPaths.([]any)
+		if !ok {
+			writeJSONError(w, http.StatusBadRequest, "ids or paths required")
+			return
+		}
+		for _, value := range values {
+			if text, ok := value.(string); ok {
+				paths = append(paths, text)
+			}
+		}
+	}
+	idList := make([]int64, 0, len(idValues))
+	for _, value := range idValues {
+		switch v := value.(type) {
+		case float64:
+			if v == float64(int64(v)) {
+				idList = append(idList, int64(v))
+			}
+		case string:
+			if id, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+				idList = append(idList, id)
+			}
+		case nil:
+			idList = append(idList, 0)
+		}
+	}
+	if len(idList) == 0 && len(paths) == 0 {
 		writeJSONError(w, http.StatusBadRequest, "ids or paths required")
 		return
 	}
-	deleted, err := a.deleteRows(r, body.IDs, body.Paths)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "delete failed")
+	if len(idList)+len(paths) > 2000 {
+		writeJSONError(w, http.StatusRequestEntityTooLarge, "delete batch exceeds 2000 items")
 		return
 	}
-	a.hub.Broadcast(ws.Event{Type: "bulk_delete", Flat: true, Payload: map[string]any{"count": deleted}})
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "deleted": deleted, "requested": len(body.IDs) + len(body.Paths)})
+	if !a.startBulkDelete(idList, paths) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "A bulk delete is already running", "code": "ALREADY_RUNNING"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"queued": len(idList) + len(paths), "started": true, "success": true})
+}
+
+func (a *App) runBulkDelete(idList []int64, paths []string) (map[string]any, error) {
+	r := contextRequest(a.ctx)
+	ids := make([]int64, 0, len(idList))
+	seen := map[int64]bool{}
+	for _, id := range idList {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	for _, path := range paths {
+		rows, queryErr := a.db.Reader.QueryContext(r.Context(), `SELECT id FROM downloads WHERE REPLACE(file_path,char(92),'/') = ?`, strings.ReplaceAll(path, "\\", "/"))
+		if queryErr != nil {
+			return nil, queryErr
+		}
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+		rowErr := rows.Err()
+		rows.Close()
+		if rowErr != nil {
+			return nil, rowErr
+		}
+	}
+	requested := len(idList) + len(paths)
+	a.bulkDeleteProgress(map[string]any{"processed": 0, "total": requested, "stage": "deleting_files"})
+	// Record existing physical files, then count only those actually removed by
+	// the reference-aware cleanup. Unknown IDs still count as requested work.
+	existing := map[string]bool{}
+	processed := len(paths)
+	for _, id := range ids {
+		var path string
+		if a.db.Reader.QueryRowContext(r.Context(), `SELECT file_path FROM downloads WHERE id=?`, id).Scan(&path) == nil {
+			if f, err := openMedia(filepath.Join(a.dataDir, "downloads"), path); err == nil {
+				f.Close()
+				existing[strings.ReplaceAll(path, "\\", "/")] = true
+			}
+			for _, input := range idList {
+				if input == id {
+					processed++
+					break
+				}
+			}
+		}
+	}
+	deleted, err := a.deleteRows(r, ids, nil)
+	if err != nil {
+		return nil, err
+	}
+	unlinked := 0
+	for path := range existing {
+		if f, err := openMedia(filepath.Join(a.dataDir, "downloads"), path); os.IsNotExist(err) {
+			unlinked++
+		} else if err == nil {
+			f.Close()
+		}
+	}
+	if processed == requested && unlinked > 0 {
+		a.bulkDeleteProgress(map[string]any{"processed": requested, "total": requested, "stage": "deleting_files"})
+	}
+	a.bulkDeleteProgress(map[string]any{"processed": requested, "total": requested, "stage": "purging_cache"})
+	a.hub.Broadcast(ws.Event{Type: "bulk_delete", Flat: true, Payload: map[string]any{"count": len(ids), "dbDeleted": deleted, "unlinked": unlinked}})
+	return map[string]any{"dbDeleted": deleted, "requested": requested, "unlinked": unlinked}, nil
 }
 
 func (a *App) handleAPIFileDelete(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ID   int64  `json:"id"`
-		Path string `json:"path"`
-	}
-	if err := decodeBody(w, r, &body); err != nil {
+	path := strings.TrimSpace(r.URL.Query().Get("path"))
+	if path == "" {
+		writeJSONError(w, http.StatusBadRequest, "Path required")
 		return
 	}
-	if body.ID <= 0 && strings.TrimSpace(body.Path) == "" {
-		writeJSONError(w, http.StatusBadRequest, "id or path required")
+	if _, err := mediaName(path); err != nil {
+		writeJSONError(w, http.StatusForbidden, "Access denied")
 		return
 	}
-	deleted, err := a.deleteRows(r, []int64{body.ID}, []string{body.Path})
+	f, err := openMedia(filepath.Join(a.dataDir, "downloads"), path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeJSONError(w, http.StatusNotFound, "File not found")
+		} else {
+			writeJSONError(w, http.StatusForbidden, "Access denied")
+		}
+		return
+	}
+	f.Close()
+	var count int64
+	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM downloads WHERE REPLACE(file_path,char(92),'/') = ?`, strings.ReplaceAll(path, "\\", "/")).Scan(&count); err != nil || count == 0 {
+		writeJSONError(w, http.StatusNotFound, "File not found")
+		return
+	}
+	var id int64
+	if raw := r.URL.Query().Get("id"); raw != "" {
+		id, _ = strconv.ParseInt(raw, 10, 64)
+		var matches int64
+		_ = a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM downloads WHERE id = ? AND REPLACE(file_path,char(92),'/') = ?`, id, strings.ReplaceAll(path, "\\", "/")).Scan(&matches)
+		if matches == 0 {
+			id = 0
+		}
+	}
+	ids := []int64{}
+	if id > 0 {
+		ids = append(ids, id)
+	}
+	paths := []string{path}
+	if id > 0 {
+		paths = nil
+	}
+	deleted, err := a.deleteRows(r, ids, paths)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "delete failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "deleted": deleted})
+	if deleted == 0 {
+		writeJSONError(w, http.StatusNotFound, "File not found")
+		return
+	}
+	payload := map[string]any{"path": strings.ReplaceAll(path, "\\", "/")}
+	if remaining, err := openMedia(filepath.Join(a.dataDir, "downloads"), path); err == nil && id > 0 {
+		remaining.Close()
+		payload = map[string]any{"id": id}
+	} else if err == nil {
+		remaining.Close()
+	}
+	a.hub.Broadcast(ws.Event{Type: "file_deleted", Flat: true, Payload: payload})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func (a *App) handleAPIPurgeGroup(w http.ResponseWriter, r *http.Request) {

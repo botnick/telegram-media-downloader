@@ -237,6 +237,23 @@ func (a *App) handleDedupDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 400, "No valid ids supplied")
 		return
 	}
+	a.dedupMu.Lock()
+	if a.dedupClosed || a.dedupDeleteStatus["running"] == true {
+		a.dedupMu.Unlock()
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "A bulk delete is already running", "code": "ALREADY_RUNNING"})
+		return
+	}
+	a.dedupDeleteStatus["running"] = true
+	a.dedupMu.Unlock()
+	settled := false
+	defer func() {
+		if settled {
+			return
+		}
+		a.dedupMu.Lock()
+		a.dedupDeleteStatus["running"] = false
+		a.dedupMu.Unlock()
+	}()
 	started := time.Now()
 	paths := []string{}
 	totalBytes := int64(0)
@@ -277,6 +294,7 @@ func (a *App) handleDedupDelete(w http.ResponseWriter, r *http.Request) {
 	status["progress"] = map[string]any{"processed": len(body.IDs), "stage": "deleting", "total": len(body.IDs)}
 	status["result"] = result
 	a.dedupDeleteStatus = status
+	settled = true
 	a.dedupMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "dedup_delete_progress", Flat: true, Payload: map[string]any{"processed": len(body.IDs), "total": len(body.IDs)}})
 	a.hub.Broadcast(ws.Event{Type: "bulk_delete", Flat: true, Payload: map[string]any{"count": len(body.IDs)}})
