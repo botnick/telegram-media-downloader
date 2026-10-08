@@ -432,6 +432,18 @@ func TestIntegrityCandidates(t *testing.T) {
 	}
 }
 
+func TestIntegrityCheck(t *testing.T) {
+	h := NewHandler(makeDB(t), nil)
+	status, body := call(t, http.HandlerFunc(h.IntegrityCheck), map[string]any{})
+	if status != http.StatusOK || body["ok"] != true {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+	messages, ok := body["messages"].([]any)
+	if !ok || len(messages) != 1 || messages[0] != "ok" {
+		t.Fatalf("messages=%v", body["messages"])
+	}
+}
+
 func TestDedupCandidates(t *testing.T) {
 	h := NewHandler(makeDB(t), nil)
 	status, body := call(t, http.HandlerFunc(h.DedupCandidates), map[string]any{

@@ -178,3 +178,10 @@ it('reads the pending AI scan count from the real Go core without a Node query',
         pending: expected.filter((row) => row.file_type === 'photo').length,
     });
 });
+
+it('runs the SQLite integrity check in the real Go core without a Node query', async () => {
+    vi.spyOn(db, 'prepare').mockImplementation(() => { throw new Error('unexpected Node query'); });
+    const result = await core.post('/v1/db/integrity-check', {});
+    expect(result.status).toBe(200);
+    expect(result.json).toEqual({ ok: true, messages: ['ok'] });
+});

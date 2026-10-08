@@ -844,6 +844,21 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ beforeId: 99, limit: 10 });
     });
 
+    it('runs the SQLite integrity check through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/integrity-check': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { ok: true, messages: ['ok'] });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.integrityCheck()).resolves.toEqual({ ok: true, messages: ['ok'] });
+        expect(request).toEqual({});
+    });
+
     it('reads face boxes through the Go DB projection', async () => {
         let request;
         await fakeCore(

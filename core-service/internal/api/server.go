@@ -80,6 +80,8 @@
 //	                         read-only oldest unpinned catalog rows
 //	POST /v1/db/integrity-candidates
 //	                         read-only keyset-paged local file catalog
+//	POST /v1/db/integrity-check
+//	                         read-only SQLite integrity check
 //	POST /v1/db/dedup-candidates
 //	                         read-only keyset-paged unhashed file catalog
 //	POST /v1/db/dedup-groups
@@ -206,6 +208,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/faststart-stats", s.dbRead.FaststartStats)
 		private.HandleFunc("POST /v1/db/disk-rotator-candidates", s.dbRead.DiskRotatorCandidates)
 		private.HandleFunc("POST /v1/db/integrity-candidates", s.dbRead.IntegrityCandidates)
+		private.HandleFunc("POST /v1/db/integrity-check", s.dbRead.IntegrityCheck)
 		private.HandleFunc("POST /v1/db/dedup-candidates", s.dbRead.DedupCandidates)
 		private.HandleFunc("POST /v1/db/dedup-groups", s.dbRead.DedupGroups)
 		private.HandleFunc("POST /v1/db/dedup-files", s.dbRead.DedupFiles)

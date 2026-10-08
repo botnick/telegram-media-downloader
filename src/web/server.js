@@ -6917,6 +6917,13 @@ app.get('/api/maintenance/restart-monitor/status', async (req, res) => {
 app.post('/api/maintenance/db/integrity', async (req, res) => {
     const t = _jobTrackers.dbIntegrity;
     const r = t.tryStart(async () => {
+        if (gocoreClient.isAvailable('db')) {
+            try {
+                return await gocoreClient.integrityCheck({}, { timeoutMs: 30_000 });
+            } catch {
+                // Older cores and transient restarts use the local check.
+            }
+        }
         const db = getDb();
         const rows = db.prepare('PRAGMA integrity_check').all();
         const messages = rows.map((rr) => rr.integrity_check).filter(Boolean);

@@ -1547,6 +1547,33 @@ export async function integrityCandidates(
     return body;
 }
 
+/** Run SQLite's integrity check off the Node event loop through tgdl-core. */
+export async function integrityCheck(
+    _request = {},
+    { timeoutMs = 30_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/integrity-check',
+        {},
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (
+        !body ||
+        typeof body.ok !== 'boolean' ||
+        !Array.isArray(body.messages) ||
+        !body.messages.every((message) => typeof message === 'string')
+    ) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed integrity check response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read the AI maintenance counters through tgdl-core. */
 export async function aiCounts(
     { fileTypes = ['photo'] } = {},
