@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/gotd/td/tg"
 	"io"
@@ -15,6 +16,69 @@ func (a *connectingAccount) Run(ctx context.Context, ready func()) error {
 	close(a.entered)
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+type dialogCallbackAccount struct {
+	connectingAccount
+	list func(context.Context, int, bool) ([]telegram.Dialog, error)
+}
+
+func (a *dialogCallbackAccount) Dialogs(ctx context.Context, limit int, archived bool) ([]telegram.Dialog, error) {
+	return a.list(ctx, limit, archived)
+}
+
+func TestDialogsRejectsStoppedAccountsAndIncompleteFolder(t *testing.T) {
+	calls := 0
+	unreachable := errors.New("archive RPC failed")
+	account := &dialogCallbackAccount{list: func(_ context.Context, _ int, archived bool) ([]telegram.Dialog, error) {
+		calls++
+		if archived {
+			return nil, unreachable
+		}
+		return []telegram.Dialog{{ID: "42", Name: "Visible"}}, nil
+	}}
+	c := &Controller{run: &running{ctx: context.Background(), accounts: map[string]Account{"one": account}, ids: []string{"one"}}}
+	for _, state := range []string{"stopped", "starting", "stopping", "error"} {
+		c.state = state
+		if _, err := c.Dialogs(context.Background(), 500); !errors.Is(err, ErrEngineNotRunning) {
+			t.Fatalf("state=%s err=%v", state, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("called a disconnected account %d times", calls)
+	}
+	c.state = "running"
+	items, err := c.Dialogs(context.Background(), 500)
+	if !errors.Is(err, unreachable) || items != nil || calls != 2 {
+		t.Fatalf("partial archive shown as complete: %+v %v calls=%d", items, err, calls)
+	}
+}
+
+func TestDialogsCancelsWithAccountRun(t *testing.T) {
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered := make(chan struct{})
+	account := &dialogCallbackAccount{list: func(ctx context.Context, _ int, _ bool) ([]telegram.Dialog, error) {
+		close(entered)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}}
+	c := &Controller{state: "running", run: &running{ctx: runCtx, accounts: map[string]Account{"one": account}, ids: []string{"one"}}}
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Dialogs(context.Background(), 500)
+		done <- err
+	}()
+	<-entered
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("account stopped: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("dialog RPC outlived its account")
+	}
 }
 func (a *connectingAccount) Fingerprint() string { return "test-key" }
 func (a *connectingAccount) RefreshMessage(_ context.Context, m *tg.Message) (*telegram.RefreshedMessage, error) {
@@ -39,7 +103,7 @@ func (a *dialogTestAccount) Dialogs(_ context.Context, _ int, archived bool) ([]
 func TestDialogsMergeAccountsAndPreferActiveEntries(t *testing.T) {
 	accountOne := &dialogTestAccount{active: []telegram.Dialog{{ID: "-1000000000042", Name: "Fresh", Type: "channel"}}, archived: []telegram.Dialog{{ID: "-1000000000042", Name: "Old", Type: "channel", Archived: true}}}
 	accountTwo := &dialogTestAccount{active: []telegram.Dialog{{ID: "-1000000000042", Name: "Fresh", Type: "channel"}, {ID: "-9", Name: "Group", Type: "group"}}}
-	c := &Controller{run: &running{accounts: map[string]Account{"one": accountOne, "two": accountTwo}, ids: []string{"one", "two"}}}
+	c := &Controller{state: "running", run: &running{accounts: map[string]Account{"one": accountOne, "two": accountTwo}, ids: []string{"one", "two"}}}
 	items, err := c.Dialogs(context.Background(), 500)
 	if err != nil || len(items) != 2 {
 		t.Fatalf("dialogs=%+v err=%v", items, err)

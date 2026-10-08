@@ -97,6 +97,10 @@ func (c *Controller) Dialogs(ctx context.Context, limit int) ([]Dialog, error) {
 	}
 	c.mu.Lock()
 	run := c.run
+	if run == nil || c.state != "running" {
+		c.mu.Unlock()
+		return nil, ErrEngineNotRunning
+	}
 	accounts := make(map[string]Account)
 	var accountIDs []string
 	if run != nil {
@@ -108,26 +112,31 @@ func (c *Controller) Dialogs(ctx context.Context, limit int) ([]Dialog, error) {
 		}
 	}
 	c.mu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if run.ctx != nil {
+		stop := context.AfterFunc(run.ctx, cancel)
+		defer stop()
+		if err := run.ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
 	if len(accounts) == 0 {
 		return nil, errors.New("Telegram monitor is not running")
 	}
 	merged := map[string]Dialog{}
 	order := make([]string, 0)
 	accountSets := map[string]map[string]bool{}
-	var firstErr error
 	for _, id := range accountIDs {
 		account := accounts[id]
 		source, ok := account.(dialogSource)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("account %s cannot list Telegram dialogs", id)
 		}
 		for _, archived := range []bool{false, true} {
 			items, err := source.Dialogs(ctx, limit, archived)
 			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
-				continue
+				return nil, fmt.Errorf("list account %s dialogs (archived=%t): %w", id, archived, err)
 			}
 			for _, item := range items {
 				current, found := merged[item.ID]
@@ -144,8 +153,8 @@ func (c *Controller) Dialogs(ctx context.Context, limit int) ([]Dialog, error) {
 			}
 		}
 	}
-	if len(merged) == 0 && firstErr != nil {
-		return nil, firstErr
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	out := make([]Dialog, 0, len(order))
 	for _, id := range order {

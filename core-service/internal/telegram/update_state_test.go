@@ -42,3 +42,42 @@ func TestUpdateCursorDoesNotAdvanceAfterQueueFailure(t *testing.T) {
 		t.Fatalf("account cursor leaked: %v %v", found, err)
 	}
 }
+
+func TestDialogHashesAreAccountScopedAndDoNotPoisonUpdateCursor(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Reader.Close()
+	defer db.Writer.Close()
+	state := &UpdateState{Writer: db.Writer, Reader: db.Reader, AccountID: "one"}
+	if err := state.SetChannelPts(ctx, 7, 42, 10); err != nil {
+		t.Fatal(err)
+	}
+	chats := []tg.ChatClass{&tg.Channel{ID: 42, AccessHash: 1234}, &tg.Channel{ID: 43, AccessHash: 900, Min: true}}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := state.cacheDialogHashes(cancelled, 7, chats); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancel=%v", err)
+	}
+	if err := state.cacheDialogHashes(ctx, 7, chats); err != nil {
+		t.Fatalf("cancel poisoned account: %v", err)
+	}
+	if pts, found, err := state.GetChannelPts(ctx, 7, 42); err != nil || !found || pts != 10 {
+		t.Fatalf("hash cache changed cursor: %d %v %v", pts, found, err)
+	}
+	if hash, found, err := state.GetChannelAccessHash(ctx, 7, 42); err != nil || !found || hash != 1234 {
+		t.Fatalf("hash=%d found=%v err=%v", hash, found, err)
+	}
+	if _, found, err := state.GetChannelAccessHash(ctx, 7, 43); err != nil || found {
+		t.Fatalf("minimal hash accepted: %v %v", found, err)
+	}
+	other := &UpdateState{Writer: db.Writer, Reader: db.Reader, AccountID: "two"}
+	if _, found, err := other.GetChannelAccessHash(ctx, 7, 42); err != nil || found {
+		t.Fatalf("hash leaked across accounts: %v %v", found, err)
+	}
+	if err := state.SetChannelPts(ctx, 7, 42, 11); err != nil {
+		t.Fatalf("cancelled browse blocked updates: %v", err)
+	}
+}

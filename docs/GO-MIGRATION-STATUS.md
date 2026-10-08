@@ -117,6 +117,18 @@ the durable chat-access registry. The projection is covered by fixture tests;
 live Telegram dialog ordering and access failures still need an authorized
 network E2E run.
 
+Dialog reads now paginate in batches of at most 100, explicitly select both
+folder IDs (including the presence flag for zero), and match the offset message
+to its peer. A short slice is not treated as the final page. Pinned entries,
+overlapping pages and nonadvancing cursors have native regressions. A failed
+account/folder now fails the request instead of publishing an incomplete list
+as successful. Stopped accounts are rejected and in-flight reads cancel with
+their account. Reusable channel hashes are cached per account without advancing
+update cursors or poisoning ingestion on browser cancellation. The UI still
+requests at most 500 dialogs per folder/account; this bounded list is not an
+exhaustive recovery index. Recovery cleanup remains unimplemented.
+See [dialog pagination and verification](GO-DIALOGS.md).
+
 Queue control is now durable in Go. Global pause state and per-job pause flags
 are stored in SQLite, migrated into existing databases, and checked by every
 claim. Admin routes support pause/resume/cancel/retry, retry-all, batch actions,

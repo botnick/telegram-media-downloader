@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,11 +17,12 @@ import (
 type dialogAppAccount struct {
 	fixtureAccount
 	active, archived []telegram.Dialog
+	archiveErr       error
 }
 
 func (a *dialogAppAccount) Dialogs(_ context.Context, _ int, archived bool) ([]telegram.Dialog, error) {
 	if archived {
-		return a.archived, nil
+		return a.archived, a.archiveErr
 	}
 	return a.active, nil
 }
@@ -64,6 +66,44 @@ func TestDialogsHTTPReturnsNativeMultiAccountProjection(t *testing.T) {
 	}
 	if len(body.Dialogs) != 1 || body.Dialogs[0]["id"] != "-1000000000042" || body.Dialogs[0]["archived"] != false || body.Dialogs[0]["photoUrl"] != "/api/groups/-1000000000042/photo" {
 		t.Fatalf("projection=%+v", body.Dialogs)
+	}
+	if rec := monitorRequest(t, a, "/api/monitor/stop"); rec.Code != http.StatusOK {
+		t.Fatalf("stop=%d %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("stopped account appeared connected: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDialogsHTTPRejectsPartialArchiveResult(t *testing.T) {
+	factory := func(_ engine.AccountConfig, _ *telegram.UpdateState, handler func(context.Context, tg.UpdatesClass) error, _ func(int64)) (engine.Account, error) {
+		return &dialogAppAccount{
+			fixtureAccount: fixtureAccount{handle: handler},
+			active:         []telegram.Dialog{{ID: "-1000000000042", Name: "Visible", Type: "channel"}},
+			archiveErr:     errors.New("archive unavailable"),
+		}, nil
+	}
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountFactory: factory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	configureMonitor(t, a)
+	if rec := monitorRequest(t, a, "/api/monitor/start"); rec.Code != http.StatusOK {
+		t.Fatalf("start=%d %s", rec.Code, rec.Body.String())
+	}
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/dialogs", nil)
+	req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	rec := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("incomplete list appeared successful: %d %s", rec.Code, rec.Body.String())
 	}
 }
 

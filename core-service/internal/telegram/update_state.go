@@ -159,6 +159,36 @@ func (s *UpdateState) GetChannelAccessHash(ctx context.Context, userID, channelI
 	return hash, err == nil, err
 }
 
+// Browsing dialogs does not advance an update cursor. Cache its reusable hashes
+// as one batch, but never poison update ingestion when an HTTP request cancels.
+func (s *UpdateState) cacheDialogHashes(ctx context.Context, userID int64, chats []tg.ChatClass) error {
+	hashes := map[int64]int64{}
+	for _, raw := range chats {
+		if channel, ok := raw.(*tg.Channel); ok && !channel.Min && channel.AccessHash != 0 {
+			hashes[channel.ID] = channel.AccessHash
+		}
+	}
+	if len(hashes) == 0 {
+		return ctx.Err()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failed != nil {
+		return s.failed
+	}
+	tx, err := s.Writer.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for id, hash := range hashes {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO tgdl_update_channels(account_id,user_id,channel_id,access_hash) VALUES(?,?,?,?) ON CONFLICT(account_id,user_id,channel_id) DO UPDATE SET access_hash=excluded.access_hash`, s.AccountID, userID, id, hash); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *UpdateState) RecordRecovery(ctx context.Context, userID, channelID int64, pts int) error {
 	if channelID < 0 || pts < 0 {
 		return errors.New("invalid Telegram recovery cursor")
