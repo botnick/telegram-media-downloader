@@ -93,6 +93,9 @@ func TestAccountRemovalClearsOnlyOwnPinsAndSessions(t *testing.T) {
 	if _, err = db.Writer.Exec(`INSERT INTO tgdl_update_recovery(account_id,channel_id,reason,created_at) VALUES('alice',99,'gap',0)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = db.Writer.Exec(`INSERT INTO tgdl_update_recovery_state(account_id,channel_id,user_id,pts) VALUES('alice',99,7,20)`); err != nil {
+		t.Fatal(err)
+	}
 	if err = repo.Remove(ctx, "alice"); err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +120,9 @@ func TestAccountRemovalClearsOnlyOwnPinsAndSessions(t *testing.T) {
 	var gaps int
 	if err = db.Reader.QueryRow(`SELECT count(*) FROM tgdl_update_recovery WHERE account_id='alice'`).Scan(&gaps); err != nil || gaps != 0 {
 		t.Fatalf("stale recovery marker survived account removal: %d %v", gaps, err)
+	}
+	if err = db.Reader.QueryRow(`SELECT count(*) FROM tgdl_update_recovery_state WHERE account_id='alice'`).Scan(&gaps); err != nil || gaps != 0 {
+		t.Fatalf("stale recovery cursor survived account removal: %d %v", gaps, err)
 	}
 	if err = repo.Remove(ctx, "../bob"); err == nil {
 		t.Fatal("traversal accepted")

@@ -351,6 +351,9 @@ func (r *Repository) commitConfig(ctx context.Context, op operation) error {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM tgdl_update_recovery WHERE account_id=?`, op.ID); err != nil {
 			return err
 		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM tgdl_update_recovery_state WHERE account_id=?`, op.ID); err != nil {
+			return err
+		}
 	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM tgdl_account_ops WHERE id=?`, op.ID); err != nil {
 		return err
