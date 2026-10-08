@@ -57,18 +57,31 @@ func (h *Handler) AICounts(w http.ResponseWriter, r *http.Request) {
 	var out aiCountsResponse
 	query := fmt.Sprintf(`
 		WITH eligible AS (
-			SELECT ai_indexed_at FROM downloads WHERE file_type IN (%s)
+			SELECT
+				COUNT(*) AS total,
+				COALESCE(SUM(CASE WHEN ai_indexed_at IS NULL THEN 1 ELSE 0 END), 0) AS unindexed
+			  FROM downloads
+			 WHERE file_type IN (%s)
+		),
+		face_stats AS (
+			SELECT
+				COUNT(*) AS total_faces,
+				COUNT(DISTINCT download_id) AS with_faces,
+				COALESCE(SUM(CASE WHEN person_id IS NULL OR person_id = -1 THEN 1 ELSE 0 END), 0) AS noise_faces,
+				COALESCE(SUM(CASE WHEN quality_score IS NULL THEN 1 ELSE 0 END), 0) AS quality_pending
+			  FROM faces
 		)
 		SELECT
-			(SELECT COUNT(*) FROM eligible),
-			(SELECT COUNT(*) FROM eligible WHERE ai_indexed_at IS NULL),
+			eligible.total,
+			eligible.unindexed,
 			(SELECT COUNT(*) FROM image_embeddings),
-			(SELECT COUNT(DISTINCT download_id) FROM faces),
+			face_stats.with_faces,
 			(SELECT COUNT(DISTINCT download_id) FROM image_tags),
 			(SELECT COUNT(*) FROM people),
-			(SELECT COUNT(*) FROM faces),
-			(SELECT COUNT(*) FROM faces WHERE person_id IS NULL OR person_id = -1),
-			(SELECT COUNT(*) FROM faces WHERE quality_score IS NULL)`, placeholders)
+			face_stats.total_faces,
+			face_stats.noise_faces,
+			face_stats.quality_pending
+		  FROM eligible CROSS JOIN face_stats`, placeholders)
 	if err := db.QueryRowContext(r.Context(), query, args...).Scan(
 		&out.TotalEligible, &out.Unindexed, &out.WithEmbedding, &out.WithFaces,
 		&out.WithTags, &out.PeopleCount, &out.TotalFaces, &out.NoiseFaces, &out.QualityPending,

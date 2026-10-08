@@ -24,11 +24,16 @@ func (h *Handler) SeekbarStats(w http.ResponseWriter, r *http.Request) {
 	}
 	var out seekbarStatsResponse
 	err = db.QueryRowContext(r.Context(), `
-		SELECT
-			(SELECT COUNT(*) FROM seekbar_sprites),
-			COALESCE((SELECT SUM(bytes) FROM seekbar_sprites), 0),
-			(SELECT COUNT(*) FROM downloads
-			  WHERE file_type = 'video' AND file_path IS NOT NULL)
+		WITH sprite_stats AS (
+			SELECT COUNT(*) AS count, COALESCE(SUM(bytes), 0) AS bytes
+			  FROM seekbar_sprites
+		), video_stats AS (
+			SELECT COUNT(*) AS total_videos
+			  FROM downloads
+			 WHERE file_type = 'video' AND file_path IS NOT NULL
+		)
+		SELECT sprite_stats.count, sprite_stats.bytes, video_stats.total_videos
+		  FROM sprite_stats CROSS JOIN video_stats
 	`).Scan(&out.Count, &out.Bytes, &out.TotalVideos)
 	if err != nil {
 		h.queryError(w, err, "database seekbar stats query failed")
