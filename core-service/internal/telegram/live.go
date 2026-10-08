@@ -36,6 +36,12 @@ func (m *LiveMonitor) Accept(ctx context.Context, event MediaEvent, enqueue func
 	if m == nil || m.Index == nil || enqueue == nil {
 		return errors.New("live monitor is not configured")
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !event.Identity.Valid() {
+		return errors.New("invalid Telegram media identity")
+	}
 	if !m.Index.Reserve(event.Identity) {
 		return ErrEventDuplicate
 	}

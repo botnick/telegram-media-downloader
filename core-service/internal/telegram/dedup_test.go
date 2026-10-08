@@ -27,3 +27,29 @@ func TestDedupIdentityIncludesSizeAndKind(t *testing.T) {
 		t.Fatal("kind must participate in identity")
 	}
 }
+
+func TestDedupRejectsBlankAndAmbiguousIdentities(t *testing.T) {
+	for _, id := range []MediaIdentity{{Kind: "", ID: "123", Size: 1}, {Kind: "photo", ID: "  ", Size: 1}, {Kind: "photo", ID: "a\x00b", Size: 1}, {Kind: "photo", ID: "123", Size: -1}} {
+		if NewDedupIndex().Reserve(id) {
+			t.Errorf("invalid identity accepted: %#v", id)
+		}
+	}
+}
+
+func TestQueueReleaseCannotClearActiveOrCompletedIdentity(t *testing.T) {
+	index := NewDedupIndex()
+	id := MediaIdentity{Kind: "photo", ID: "5", Size: 1}
+	if !index.Reserve(id) || !index.Claim(id) {
+		t.Fatal("claim failed")
+	}
+	index.Release(id)
+	if index.Reserve(id) || index.Claim(id) {
+		t.Fatal("active download was released by queue")
+	}
+	index.Complete(id)
+	index.Release(id)
+	index.AbortClaim(id)
+	if index.Reserve(id) {
+		t.Fatal("completed download was released")
+	}
+}

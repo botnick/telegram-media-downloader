@@ -21,6 +21,11 @@ functionality. Do not deploy this branch over a working library yet.
   replacement. Tests cover reopening, wrong secrets, tampering, cancellation,
   private permissions, import preservation and corrupt-state rejection. This
   verifies the adapter/storage layer; it is not a live Telegram E2E run.
+- The download handoff exclusively claims each queued identity before network
+  I/O, checks the declared media size, honors cancellation, and publishes with
+  an OS-level exclusive rename. Race regressions cover competing workers and
+  a destination created during the download. Identity retention is still
+  in-memory; this does not yet provide restart-safe dedup or library registration.
 
 The contract runner still uses development-time JavaScript dependencies to
 compare the Go server with frozen responses. It does not launch a Node server
@@ -33,8 +38,8 @@ migration; the current source tree is not yet free of Node dependencies.
   history, queue cancellation/recovery and monitor lifecycle into the app.
   The current monitor endpoint reports stopped; the adapter alone does not
   start a downloader.
-- Persist Telegram media identities, exclusively claim queued work, validate
-  downloaded size, and publish without overwriting another download.
+- Persist Telegram media identities and integrate library registration with
+  the download handoff and cleanup writer; add restart and cross-account E2E.
 - Complete gallery/media/config/group/delete/purge contracts, maintenance jobs,
   archives, AI/NSFW services, backups and cluster management. A low-level Go
   projection or helper is not a replacement for the public workflow.
@@ -63,3 +68,9 @@ Go CI workflows use the same toolchain. Other API references:
 [SQLite driver](https://pkg.go.dev/modernc.org/sqlite),
 [gotd](https://gotd.dev/docs/intro/),
 [Telegram API](https://core.telegram.org/api).
+
+Exclusive media publication uses Linux `renameat2(RENAME_NOREPLACE)`, macOS
+`renamex_np(RENAME_EXCL)` and Windows `MoveFileExW` without replacement or
+cross-volume copy flags. No unsafe overwrite or copy path is attempted when
+the OS/filesystem refuses it. See [Go syscall wrappers](https://pkg.go.dev/golang.org/x/sys/unix#Renameat2)
+and [Windows MoveFileExW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw).
