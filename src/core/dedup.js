@@ -89,14 +89,27 @@ export async function findDuplicates(opts = {}) {
     // "This database connection is busy executing a query".
     // With keyset paging the `.all()` call opens and closes the statement
     // synchronously, so the connection is free during the async hash work.
-    const total = db
-        .prepare(`
-        SELECT COUNT(*) AS n FROM downloads
-         WHERE file_hash IS NULL
-           AND file_path IS NOT NULL
-           AND COALESCE(file_size, 0) > 0
-    `)
-        .get().n;
+    let total;
+    if (gocoreClient.isAvailable('db')) {
+        try {
+            // The dashboard and this scan share the same eligibility
+            // predicate. Keep the aggregate on Go's read-only pool so a
+            // large library does not make the first scan tick block Node.
+            total = (await gocoreClient.dedupStats({ timeoutMs: 5_000, signal })).missing;
+        } catch {
+            // Older cores and transient restarts use the local query below.
+        }
+    }
+    if (!Number.isSafeInteger(total) || total < 0) {
+        total = db
+            .prepare(`
+            SELECT COUNT(*) AS n FROM downloads
+             WHERE file_hash IS NULL
+               AND file_path IS NOT NULL
+               AND COALESCE(file_size, 0) > 0
+        `)
+            .get().n;
+    }
 
     const update = db.prepare('UPDATE downloads SET file_hash = ? WHERE id = ?');
     // Hashing is async, but the resulting writes are kept in a short SQLite
