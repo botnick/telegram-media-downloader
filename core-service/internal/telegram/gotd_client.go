@@ -85,6 +85,8 @@ func ensureConvertedSession(cfg GotdConfig, storage session.Storage) error {
 			_ = file.Close()
 		} else if !os.IsExist(markerErr) {
 			return fmt.Errorf("mark imported Telegram session: %w", markerErr)
+		} else {
+			markerErr = nil
 		}
 		if markerErr != nil {
 			return fmt.Errorf("mark imported Telegram session: %w", markerErr)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
@@ -19,6 +20,12 @@ type UpdateState struct {
 	OnFailure      func(error)
 	mu             sync.Mutex
 	failed         error
+}
+
+type RecoveryRecord struct {
+	ChannelID int64
+	UserID    int64
+	Pts       int
 }
 
 var _ updates.StateStorage = (*UpdateState)(nil)
@@ -144,4 +151,59 @@ func (s *UpdateState) GetChannelAccessHash(ctx context.Context, userID, channelI
 		return 0, false, nil
 	}
 	return hash, err == nil, err
+}
+
+func (s *UpdateState) RecordRecovery(ctx context.Context, userID, channelID int64, pts int) error {
+	if channelID < 0 || pts < 0 {
+		return errors.New("invalid Telegram recovery cursor")
+	}
+	tx, err := s.Writer.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `INSERT INTO tgdl_update_recovery(account_id,channel_id,reason,created_at) VALUES(?,?,?,?) ON CONFLICT(account_id,channel_id) DO UPDATE SET reason=excluded.reason,created_at=excluded.created_at`, s.AccountID, channelID, "Telegram update difference exceeded retention", time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO tgdl_update_recovery_state(account_id,channel_id,user_id,pts) VALUES(?,?,?,?) ON CONFLICT(account_id,channel_id) DO UPDATE SET user_id=excluded.user_id,pts=excluded.pts`, s.AccountID, channelID, userID, pts); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *UpdateState) PendingRecovery(ctx context.Context) ([]RecoveryRecord, error) {
+	rows, err := s.Reader.QueryContext(ctx, `SELECT r.channel_id,COALESCE(s.user_id,0),COALESCE(s.pts,0) FROM tgdl_update_recovery r LEFT JOIN tgdl_update_recovery_state s ON s.account_id=r.account_id AND s.channel_id=r.channel_id WHERE r.account_id=? ORDER BY r.channel_id`, s.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var records []RecoveryRecord
+	for rows.Next() {
+		var record RecoveryRecord
+		if err := rows.Scan(&record.ChannelID, &record.UserID, &record.Pts); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (s *UpdateState) CompleteRecovery(ctx context.Context, record RecoveryRecord) error {
+	return s.guard(ctx, func() error {
+		tx, err := s.Writer.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err = tx.ExecContext(ctx, `INSERT INTO tgdl_update_channels(account_id,user_id,channel_id,pts) VALUES(?,?,?,?) ON CONFLICT(account_id,user_id,channel_id) DO UPDATE SET pts=excluded.pts`, s.AccountID, record.UserID, record.ChannelID, record.Pts); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM tgdl_update_recovery WHERE account_id=? AND channel_id=?`, s.AccountID, record.ChannelID); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM tgdl_update_recovery_state WHERE account_id=? AND channel_id=?`, s.AccountID, record.ChannelID); err != nil {
+			return err
+		}
+		return tx.Commit()
+	})
 }

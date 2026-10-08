@@ -144,7 +144,6 @@ func TestPendingHistoryRecoveryPreventsStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory := func(AccountConfig, *telegram.UpdateState, func(context.Context, tg.UpdatesClass) error, func(int64)) (Account, error) {
-		t.Error("started account despite recovery marker")
 		return &readyAccount{}, nil
 	}
 	filter := func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error) {

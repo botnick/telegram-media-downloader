@@ -76,6 +76,14 @@ when Telegram's optional hint request fails and treats gotd's nil-on-cancel
 result as a terminal error. HTTP integration reopens the encrypted gotd session;
 the frozen accounts contract is green. Live Telegram E2E remains unverified.
 
+Channel update gaps now persist a recovery marker together with the remote PTS.
+On the next authenticated account start, Go paginates `messages.getHistory` for
+the affected channel, feeds every recovered message through the normal filter,
+queue and dedup path, then advances the channel cursor and removes the marker in
+one durable completion step. Missing access hashes, incomplete markers and
+global account-wide `updates.getDifferenceTooLong` still stop startup with the
+marker intact; they are not silently treated as healthy.
+
 The contract runner still uses development-time JavaScript dependencies to
 compare the Go server with frozen responses. It does not launch a Node server
 for these Go-target tests. Removing this test tooling remains part of the
@@ -120,6 +128,8 @@ Go CI workflows use the same toolchain. Other API references:
 [gotd](https://gotd.dev/docs/intro/),
 [Telegram API](https://core.telegram.org/api),
 [update ordering and differences](https://core.telegram.org/api/updates).
+Channel gap repair uses [messages.getHistory](https://core.telegram.org/method/messages.getHistory)
+with the account's persisted channel access hash.
 The adapter targets [gotd v0.115.0 update internals](https://github.com/gotd/td/tree/v0.115.0/telegram/updates):
 `state_channel.go` asynchronously dispatches difference edits before saving PTS,
 so a handler-only persistence latch is insufficient. `update_api.go` commits

@@ -153,8 +153,11 @@ func (a *Account) Run(ctx context.Context, ready func()) error {
 		if !status.Authorized || status.User == nil {
 			return errors.New("Telegram session expired; sign in again in Accounts")
 		}
-		api := durableUpdateAPI{API: a.API(), state: a.state, handle: a.handle, onGap: a.onGap}
 		a.selfID = status.User.ID
+		if err := a.recoverPending(ctx, status.User.ID); err != nil {
+			return err
+		}
+		api := durableUpdateAPI{API: a.API(), state: a.state, handle: a.handle, onGap: a.onGap, userID: status.User.ID}
 		return a.updates.Run(ctx, api, status.User.ID, updates.AuthOptions{IsBot: status.User.Bot, OnStart: func(context.Context) { ready() }})
 	})
 }

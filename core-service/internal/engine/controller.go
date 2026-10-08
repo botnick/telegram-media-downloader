@@ -19,6 +19,7 @@ type Account interface {
 	Fingerprint() string
 	RefreshMessage(context.Context, *tg.Message) (*telegram.RefreshedMessage, error)
 }
+type historyRecoverable interface{ SupportsHistoryRecovery() bool }
 type AccountConfig struct {
 	ID, Name string
 	Telegram telegram.GotdConfig
@@ -116,6 +117,7 @@ func (c *Controller) Start(request, parent context.Context, accounts []AccountCo
 		}
 	}()
 	seen := map[string]bool{}
+	recoveryPending := false
 	for _, config := range accounts {
 		if config.ID == "" || run.accounts[config.ID] != nil {
 			return errors.New("duplicate or empty account ID")
@@ -125,9 +127,8 @@ func (c *Controller) Start(request, parent context.Context, accounts []AccountCo
 		if err := c.reader.QueryRowContext(request, `SELECT count(*) FROM tgdl_update_recovery WHERE account_id=?`, config.ID).Scan(&gaps); err != nil {
 			return err
 		}
-		if gaps > 0 {
-			return fmt.Errorf("account %s has pending Telegram history recovery", config.ID)
-		}
+		pendingRecovery := gaps > 0
+		recoveryPending = recoveryPending || pendingRecovery
 		state := &telegram.UpdateState{Writer: c.writer, Reader: c.reader, AccountID: config.ID, OnFailure: func(err error) { cancel(fmt.Errorf("account %s update persistence: %w", config.ID, err)) }}
 		handler := func(ctx context.Context, u tg.UpdatesClass) error { return c.accept(ctx, run, config.ID, u) }
 		gap := func(channelID int64) {
@@ -143,6 +144,12 @@ func (c *Controller) Start(request, parent context.Context, accounts []AccountCo
 		account, err := c.factory(config, state, handler, gap)
 		if err != nil {
 			return fmt.Errorf("account %s: %w", config.ID, err)
+		}
+		if pendingRecovery {
+			recoverable, ok := account.(historyRecoverable)
+			if !ok || !recoverable.SupportsHistoryRecovery() {
+				return fmt.Errorf("account %s has pending Telegram history recovery", config.ID)
+			}
 		}
 		fingerprint := account.Fingerprint()
 		if fingerprint == "" || seen[fingerprint] {
@@ -205,7 +212,14 @@ func (c *Controller) Start(request, parent context.Context, accounts []AccountCo
 	// Publish the run before waiting on the network so Stop can cancel startup.
 	c.opMu.Unlock()
 	locked = false
-	startup := time.NewTimer(30 * time.Second)
+	startupBudget := 30 * time.Second
+	if recoveryPending {
+		// History repair can legitimately fetch many bounded pages. A normal
+		// login startup deadline would cancel it repeatedly before it can
+		// advance the durable cursor.
+		startupBudget = 30 * time.Minute
+	}
+	startup := time.NewTimer(startupBudget)
 	defer startup.Stop()
 	for range accounts {
 		select {

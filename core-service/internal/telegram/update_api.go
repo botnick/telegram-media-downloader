@@ -16,9 +16,17 @@ type durableUpdateAPI struct {
 	state  *UpdateState
 	handle func(context.Context, tg.UpdatesClass) error
 	onGap  func(int64)
+	userID int64
 }
 
-func (a durableUpdateAPI) gap(ctx context.Context, channel int64) error {
+func (a durableUpdateAPI) gap(ctx context.Context, channel int64, pts int) error {
+	if err := a.state.RecordRecovery(ctx, a.userID, channel, pts); err != nil {
+		// A recovery marker is part of the same safety boundary as cursor
+		// persistence. If it cannot be written, latch the failure so gotd
+		// cannot keep retrying a gap while the controller reports healthy.
+		_ = a.state.guard(ctx, func() error { return err })
+		return err
+	}
 	if a.onGap != nil {
 		a.onGap(channel)
 	}
@@ -52,7 +60,7 @@ func (a durableUpdateAPI) UpdatesGetDifference(ctx context.Context, r *tg.Update
 	case *tg.UpdatesDifferenceSlice:
 		err = a.accept(ctx, d.NewMessages, d.OtherUpdates, d.Users, d.Chats, false, d.IntermediateState.Pts)
 	case *tg.UpdatesDifferenceTooLong:
-		err = a.gap(ctx, 0)
+		err = a.gap(ctx, 0, d.Pts)
 	}
 	if err != nil {
 		return nil, err
@@ -73,7 +81,11 @@ func (a durableUpdateAPI) UpdatesGetChannelDifference(ctx context.Context, r *tg
 		if !ok {
 			return nil, fmt.Errorf("unexpected recovery channel %T", r.Channel)
 		}
-		err = a.gap(ctx, channel.ChannelID)
+		pts := 0
+		if dialog, ok := d.Dialog.(*tg.Dialog); ok {
+			pts, _ = dialog.GetPts()
+		}
+		err = a.gap(ctx, channel.ChannelID, pts)
 	}
 	if err != nil {
 		return nil, err
