@@ -2,7 +2,10 @@ package app
 
 import (
 	"database/sql"
+	"encoding/json"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/auth"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -122,95 +125,130 @@ func (a *App) handleAPIGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	config, _ := a.config.Load(r.Context())
-	configured := map[string]map[string]any{}
-	if groups, ok := config["groups"].([]any); ok {
-		for _, raw := range groups {
-			if group, ok := raw.(map[string]any); ok {
-				id := strings.TrimSpace(toString(group["id"]))
-				if id != "" {
-					configured[id] = group
-				}
-			}
-		}
+	configured := configuredGroups(config)
+	access := a.loadDialogAccess(r)
+	guest := false
+	if session, ok := auth.SessionFromContext(r.Context()); ok {
+		guest = session.Role == "guest"
 	}
 	out := make([]map[string]any, 0, len(rows)+len(configured))
 	seen := map[string]bool{}
+	rowByID := map[string]groupAggregate{}
 	for _, row := range rows {
-		item := map[string]any{"id": row.id, "name": row.name, "type": "group", "enabled": false, "peerId": nil, "peerName": nil, "photoUrl": nil}
-		if group := configured[row.id]; group != nil {
-			for key, value := range group {
-				item[key] = value
-			}
-			if _, ok := item["name"]; !ok || strings.TrimSpace(toString(item["name"])) == "" {
-				item["name"] = row.name
-			}
-		}
-		out = append(out, item)
-		seen[row.id] = true
+		rowByID[row.id] = row
 	}
-	for id, group := range configured {
-		if seen[id] {
+	// Preserve the configured order so the web client sees the same stable
+	// ordering as the Node implementation and the user's config file.
+	for _, group := range configuredGroupList(config) {
+		id := strings.TrimSpace(toString(group["id"]))
+		if id == "" {
 			continue
 		}
-		item := map[string]any{"id": id, "name": id, "type": "group", "enabled": false, "peerId": nil, "peerName": nil, "photoUrl": nil}
+		row := rowByID[id]
+		name := toString(group["name"])
+		if name == "" {
+			name = row.name
+		}
+		if (name == "" || name == "Unknown" || strings.HasPrefix(name, "Group ")) && strings.HasPrefix(id, "-") {
+			name = "Unknown chat (#" + id + ")"
+		}
+		item := map[string]any{"id": id, "name": name, "type": nil, "enabled": false, "peerId": nil, "peerName": nil, "photoUrl": nil}
 		for key, value := range group {
 			item[key] = value
 		}
+		item["name"] = name
+		if _, ok := group["type"]; !ok {
+			item["type"] = nil
+		}
+		item["filters"] = normalizedGroupFilters(group["filters"])
+		if st, statErr := os.Stat(filepath.Join(a.dataDir, "photos", id+".jpg")); statErr == nil && !st.IsDir() {
+			item["photoUrl"] = "/photos/" + id + ".jpg"
+		} else {
+			item["photoUrl"] = nil
+		}
+		if state := access[id]; state != nil {
+			item["access"] = state
+		} else {
+			item["access"] = legacyDialogAccess(group)
+		}
+		if guest {
+			if state, ok := item["access"].(map[string]any); ok {
+				if _, exists := state["accounts"]; exists {
+					state["accounts"] = []map[string]any{}
+				}
+			}
+		}
 		out = append(out, item)
+		seen[id] = true
+	}
+	if !guest {
+		out = a.appendPeerGroups(r, out, seen)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (a *App) handleAPIDownloadsAll(w http.ResponseWriter, r *http.Request) {
-	page, limit := pageLimit(r.URL.Query(), 500)
-	files, total, err := a.queryFiles(r, "", page, limit)
+func (a *App) appendPeerGroups(r *http.Request, out []map[string]any, seen map[string]bool) []map[string]any {
+	rows, err := a.db.Reader.QueryContext(r.Context(), `SELECT pg.peer_id, pg.payload, COALESCE(p.name, pg.peer_id) FROM peer_groups pg LEFT JOIN peers p ON p.peer_id = pg.peer_id LIMIT 5000`)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "database downloads query failed")
-		return
+		return out
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"files": files, "total": total, "page": page, "totalPages": pages(total, limit)})
+	defer rows.Close()
+	for rows.Next() {
+		var peerID, payload, peerName string
+		if rows.Scan(&peerID, &payload, &peerName) != nil {
+			continue
+		}
+		var body map[string]any
+		if json.Unmarshal([]byte(payload), &body) != nil {
+			continue
+		}
+		groups, _ := body["groups"].([]any)
+		for _, raw := range groups {
+			group, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			id := toString(group["id"])
+			if id == "" {
+				continue
+			}
+			if seen[id] {
+				for _, item := range out {
+					if toString(item["id"]) == id {
+						mirrors, _ := item["mirroredOn"].([]any)
+						if !containsAny(mirrors, peerID) {
+							item["mirroredOn"] = append(mirrors, peerID)
+						}
+						break
+					}
+				}
+				continue
+			}
+			item := map[string]any{"id": group["id"], "name": group["name"], "enabled": group["enabled"], "peerId": peerID, "peerName": peerName, "photoUrl": nil, "type": nil}
+			out = append(out, item)
+			seen[id] = true
+		}
+	}
+	return out
 }
 
-func (a *App) handleAPIDownloadsGroup(w http.ResponseWriter, r *http.Request) {
-	groupID := strings.TrimSpace(r.PathValue("id"))
-	if groupID == "" || groupID == "all" || groupID == "search" {
-		http.NotFound(w, r)
-		return
+func containsAny(values []any, want string) bool {
+	for _, value := range values {
+		if toString(value) == want {
+			return true
+		}
 	}
-	page, limit := pageLimit(r.URL.Query(), 500)
-	files, total, err := a.queryFiles(r, groupID, page, limit)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "database downloads query failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"files": files, "total": total, "page": page, "totalPages": pages(total, limit)})
+	return false
 }
 
-func (a *App) handleAPIDownloadsSearch(w http.ResponseWriter, r *http.Request) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	page, limit := pageLimit(r.URL.Query(), 200)
-	if q == "" {
-		writeJSON(w, http.StatusOK, map[string]any{"files": []any{}, "total": 0, "page": page, "totalPages": 0, "q": q})
-		return
+func normalizedGroupFilters(raw any) map[string]any {
+	filters := map[string]any{"photos": true, "videos": true, "files": true, "links": true, "urls": true, "audio": false, "voice": false, "gifs": false, "stickers": false}
+	if configured, ok := raw.(map[string]any); ok {
+		for key, value := range configured {
+			filters[key] = value
+		}
 	}
-	offset := (page - 1) * limit
-	pattern := "%" + q + "%"
-	var total int64
-	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM downloads WHERE COALESCE(file_name,'') LIKE ? OR COALESCE(group_name,'') LIKE ?`, pattern, pattern).Scan(&total); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "database search count failed")
-		return
-	}
-	rows, err := a.db.Reader.QueryContext(r.Context(), `SELECT id, CAST(group_id AS TEXT), group_name, file_name, file_path, file_size, file_type, CAST(created_at AS TEXT), pending_until, rescued_at, pinned FROM downloads WHERE COALESCE(file_name,'') LIKE ? OR COALESCE(group_name,'') LIKE ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, pattern, pattern, limit, offset)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "database search query failed")
-		return
-	}
-	files, err := scanFiles(rows)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "database search read failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"files": files, "total": total, "page": page, "totalPages": pages(total, limit), "q": q})
+	return filters
 }
 
 func (a *App) handleAPIGroupStats(w http.ResponseWriter, r *http.Request) {
@@ -222,19 +260,47 @@ func (a *App) handleAPIGroupStats(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "database group stats query failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"totalFiles": totalFiles, "totalBytes": totalBytes, "byType": map[string]int64{}, "firstMessageId": nullableInt(first), "lastMessageId": nullableInt(last), "lastDownloadAt": nullableString(lastAt)})
+	byType := map[string]int64{}
+	rows, _ := a.db.Reader.QueryContext(r.Context(), `SELECT file_type, COUNT(*) FROM downloads WHERE group_id = ? GROUP BY file_type`, groupID)
+	if rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var kind string
+			var count int64
+			if rows.Scan(&kind, &count) == nil {
+				byType[kind] = count
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "totalFiles": totalFiles, "totalBytes": totalBytes, "byType": byType, "firstMessageId": nullableInt(first), "lastMessageId": nullableInt(last), "lastDownloadAt": nullableString(lastAt)})
 }
 
 func (a *App) handleAPIGroupFiles(w http.ResponseWriter, r *http.Request) {
 	page, limit := pageLimit(r.URL.Query(), 500)
 	groupID := r.PathValue("id")
 	offset := (page - 1) * limit
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+	where := "group_id = ?"
+	args := []any{groupID}
+	switch r.URL.Query().Get("type") {
+	case "photo", "video", "audio", "document":
+		where += " AND file_type = ?"
+		args = append(args, r.URL.Query().Get("type"))
+	case "images":
+		where += " AND file_type = 'photo'"
+	case "videos":
+		where += " AND file_type = 'video'"
+	}
 	var total int64
-	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM downloads WHERE group_id = ?`, groupID).Scan(&total); err != nil {
+	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM downloads WHERE `+where, args...).Scan(&total); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "database group files count failed")
 		return
 	}
-	rows, err := a.db.Reader.QueryContext(r.Context(), `SELECT id, message_id, file_name, file_path, file_type, file_size, CAST(created_at AS TEXT), nsfw_score FROM downloads WHERE group_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, groupID, limit, offset)
+	rows, err := a.db.Reader.QueryContext(r.Context(), `SELECT id, message_id, file_name, file_path, file_type, file_size, CAST(created_at AS TEXT), nsfw_score FROM downloads WHERE `+where+` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, append(args, limit, offset)...)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "database group files query failed")
 		return
@@ -252,7 +318,7 @@ func (a *App) handleAPIGroupFiles(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, map[string]any{"id": id, "message_id": messageID, "file_name": nullableString(name), "file_path": nullableString(filePath), "file_type": nullableString(kind), "file_size": nullableInt(size), "created_at": nullableString(created), "nsfw_score": nullableFloat(score)})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"files": out, "rows": out, "total": total, "limit": limit, "offset": offset, "hasMore": offset+len(out) < int(total)})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "rows": out, "total": total, "limit": limit, "offset": offset, "hasMore": offset+len(out) < int(total)})
 }
 
 type groupAggregate struct {
@@ -279,70 +345,6 @@ func (a *App) groupAggregates(r *http.Request) ([]groupAggregate, error) {
 	return out, rows.Err()
 }
 
-func (a *App) queryFiles(r *http.Request, groupID string, page, limit int) ([]map[string]any, int64, error) {
-	query := `SELECT COUNT(*) FROM downloads`
-	args := []any{}
-	if groupID != "" {
-		query += ` WHERE group_id = ?`
-		args = append(args, groupID)
-	}
-	var total int64
-	if err := a.db.Reader.QueryRowContext(r.Context(), query, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	query = `SELECT id, CAST(group_id AS TEXT), group_name, file_name, file_path, file_size, file_type, CAST(created_at AS TEXT), pending_until, rescued_at, pinned FROM downloads`
-	if groupID != "" {
-		query += ` WHERE group_id = ?`
-	}
-	query += ` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
-	args = append(args, limit, (page-1)*limit)
-	rows, err := a.db.Reader.QueryContext(r.Context(), query, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	files, err := scanFiles(rows)
-	return files, total, err
-}
-
-func scanFiles(rows *sql.Rows) ([]map[string]any, error) {
-	defer rows.Close()
-	out := make([]map[string]any, 0, 50)
-	for rows.Next() {
-		var id, pinned int64
-		var groupID, groupName, name, filePath, kind, created sql.NullString
-		var size, pending, rescued sql.NullInt64
-		if err := rows.Scan(&id, &groupID, &groupName, &name, &filePath, &size, &kind, &created, &pending, &rescued, &pinned); err != nil {
-			return nil, err
-		}
-		fileName := stringValue(name)
-		fileType := stringValue(kind)
-		folder := "documents"
-		switch fileType {
-		case "photo":
-			folder = "images"
-		case "video":
-			folder = "videos"
-		case "audio":
-			folder = "audio"
-		case "sticker":
-			folder = "stickers"
-		}
-		stored := strings.ReplaceAll(stringValue(filePath), "\\", "/")
-		fullPath := stored
-		if fullPath == "" {
-			fullPath = strings.TrimSpace(stringValue(groupName)) + "/" + folder + "/" + strings.TrimSpace(fileName)
-		}
-		out = append(out, map[string]any{
-			"id": id, "groupId": nullableString(groupID), "groupName": nullableString(groupName),
-			"name": fileName, "path": nullableString(filePath), "fullPath": fullPath,
-			"size": nullableInt(size), "sizeFormatted": formatBytes(nullableInt64(size)),
-			"type": folder, "extension": filepath.Ext(fileName), "modified": nullableString(created),
-			"pendingUntil": nullableInt(pending), "rescuedAt": nullableInt(rescued), "pinned": pinned == 1,
-		})
-	}
-	return out, rows.Err()
-}
-
 func pageLimit(values url.Values, cap int) (int, int) {
 	page, _ := strconv.Atoi(values.Get("page"))
 	if page < 1 {
@@ -362,7 +364,7 @@ func pages(total int64, limit int) int {
 	if total == 0 {
 		return 0
 	}
-	return int((total + int64(limit) - 1) / int64(limit))
+	return int(math.Ceil(float64(total) / float64(limit)))
 }
 
 func formatBytes(value int64) string {
@@ -404,6 +406,10 @@ func toString(value any) string {
 		return v
 	case float64:
 		return strconv.FormatInt(int64(v), 10)
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
 	default:
 		return ""
 	}

@@ -140,5 +140,5 @@ func (a *App) monitorEvent(state string, err error) {
 	if err != nil {
 		cause = err.Error()
 	}
-	a.hub.Broadcast(ws.Event{Type: "monitor_state", Payload: map[string]any{"state": state, "error": cause}})
+	a.hub.Broadcast(ws.Event{Type: "monitor_state", Flat: true, Payload: map[string]any{"state": state, "error": cause}})
 }

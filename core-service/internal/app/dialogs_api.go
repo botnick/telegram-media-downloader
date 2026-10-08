@@ -159,6 +159,8 @@ func legacyDialogAccess(group map[string]any) map[string]any {
 			code = reason[index+1:]
 			if code == "USER_NOT_PARTICIPANT" {
 				state = "left"
+			} else if code == "CHANNEL_PRIVATE" {
+				state = "private"
 			}
 		}
 	}

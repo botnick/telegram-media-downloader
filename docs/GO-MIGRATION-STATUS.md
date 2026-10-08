@@ -11,9 +11,15 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- Six black-box contract files `accounts`, `auth`, `auth-password`, `auth-setup`,
-  `share` and `queue` pass against the Go executable: **39 tests**. The Go WebSocket
+- Nine black-box contract files `accounts`, `auth`, `auth-password`, `auth-setup`,
+  `share`, `queue`, `chats`, `downloads` and `groups` pass against the Go executable:
+  **73 tests**. The Go WebSocket
   writer preserves the released `{type,payload}` event envelope.
+- The native chat-access projection, single-flight recheck job, gallery queries
+  (including peer rows, search, paging, pinning and durations), group sidebar
+  federation, per-group files/stats, cached avatars, group edits and both
+  refresh jobs match their frozen HTTP/WebSocket contracts. Refresh jobs retain
+  terminal status in memory and join their workers during shutdown.
 - Focused Go regressions exercise secret redaction, partial config saves,
   config notifications without credentials, shared-file reference retention,
   directory traversal/symlink containment, explicit purge confirmation and

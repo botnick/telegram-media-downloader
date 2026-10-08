@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,23 +56,32 @@ type App struct {
 	closeOnce        sync.Once
 	closeErr         error
 
-	db            *store.DB
-	library       *download.Library
-	sessions      *auth.SessionStore
-	hub           *ws.Hub
-	read          *dbread.Handler
-	config        auth.ConfigStore
-	jobs          *jobs.Tracker
-	dataDir       string
-	pairing       *cluster.PairingStore
-	loginRL       *rateLimiter
-	handler       http.Handler
-	configMu      sync.Mutex
-	setupRL       *rateLimiter
-	secureCookies bool
-	output        io.Writer
-	resetMu       sync.Mutex
-	resetTokens   map[string]time.Time
+	db                 *store.DB
+	library            *download.Library
+	sessions           *auth.SessionStore
+	hub                *ws.Hub
+	read               *dbread.Handler
+	config             auth.ConfigStore
+	jobs               *jobs.Tracker
+	dataDir            string
+	pairing            *cluster.PairingStore
+	loginRL            *rateLimiter
+	handler            http.Handler
+	configMu           sync.Mutex
+	setupRL            *rateLimiter
+	secureCookies      bool
+	output             io.Writer
+	resetMu            sync.Mutex
+	resetTokens        map[string]time.Time
+	chatRecheckMu      sync.Mutex
+	chatRecheck        chatRecheckState
+	chatRecheckWG      sync.WaitGroup
+	chatRecheckClosed  bool
+	groupRefreshMu     sync.Mutex
+	groupRefreshInfo   groupRefreshState
+	groupRefreshPhotos groupRefreshState
+	groupRefreshWG     sync.WaitGroup
+	groupRefreshClosed bool
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -152,6 +162,8 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerQueueRoutes(mux, a)
 	registerAccountRoutes(mux, a)
 	registerDialogRoutes(mux, a)
+	registerChatAccessRoutes(mux, a)
+	registerGroupRefreshRoutes(mux, a)
 	registerGalleryRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
@@ -284,16 +296,16 @@ func (a *App) handlePin(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "Invalid id")
 		return
 	}
-	var body struct {
-		Pinned *bool `json:"pinned"`
-	}
-	if err := decodeBody(w, r, &body); err != nil || body.Pinned == nil {
-		if err == nil {
-			writeJSONError(w, http.StatusBadRequest, "Body must include `pinned` (boolean)")
-		}
+	body, ok := readAuthBody(w, r)
+	if !ok {
 		return
 	}
-	result, err := a.db.Writer.ExecContext(r.Context(), `UPDATE downloads SET pinned = ? WHERE id = ?`, boolInt(*body.Pinned), id)
+	pinned, valid := body["pinned"].(bool)
+	if !valid {
+		writeJSONError(w, http.StatusBadRequest, "Body must include `pinned` (boolean)")
+		return
+	}
+	result, err := a.db.Writer.ExecContext(r.Context(), `UPDATE downloads SET pinned = ? WHERE id = ?`, boolInt(pinned), id)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "Update failed")
 		return
@@ -302,36 +314,55 @@ func (a *App) handlePin(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "Not found")
 		return
 	}
-	a.hub.Broadcast(ws.Event{Type: "download_pinned", Payload: map[string]any{"id": id, "pinned": *body.Pinned}})
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "id": id, "pinned": *body.Pinned})
+	a.hub.Broadcast(ws.Event{Type: "download_pinned", Flat: true, Payload: map[string]any{"id": id, "pinned": pinned}})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "id": id, "pinned": pinned})
 }
 
 func (a *App) handleBatchPin(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		IDs    []int64 `json:"ids"`
-		Pinned *bool   `json:"pinned"`
+	body, ok := readAuthBody(w, r)
+	if !ok {
+		return
 	}
-	if err := decodeBody(w, r, &body); err != nil || body.Pinned == nil || len(body.IDs) == 0 {
-		if err == nil {
-			writeJSONError(w, http.StatusBadRequest, "ids and pinned are required")
+	pinned, valid := body["pinned"].(bool)
+	if !valid {
+		writeJSONError(w, http.StatusBadRequest, "Body must include `pinned` (boolean)")
+		return
+	}
+	rawIDs, valid := body["ids"].([]any)
+	if !valid || len(rawIDs) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "`ids` must be a non-empty array")
+		return
+	}
+	if len(rawIDs) > 5000 {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "Too many ids in one request (max 5000)", "max": 5000})
+		return
+	}
+	ids := make([]int64, 0, len(rawIDs))
+	seen := map[int64]bool{}
+	for _, raw := range rawIDs {
+		var id int64
+		switch value := raw.(type) {
+		case float64:
+			id = int64(value)
+		case string:
+			id, _ = strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 		}
-		return
-	}
-	if len(body.IDs) > 5000 {
-		writeJSONError(w, http.StatusRequestEntityTooLarge, "Too many ids in one request")
-		return
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
 	}
 	tx, err := a.db.Writer.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "Update failed")
 		return
 	}
-	updated := make([]int64, 0, len(body.IDs))
-	for _, id := range body.IDs {
+	updated := make([]int64, 0, len(ids))
+	for _, id := range ids {
 		if id <= 0 {
 			continue
 		}
-		result, err := tx.ExecContext(r.Context(), `UPDATE downloads SET pinned = ? WHERE id = ?`, boolInt(*body.Pinned), id)
+		result, err := tx.ExecContext(r.Context(), `UPDATE downloads SET pinned = ? WHERE id = ?`, boolInt(pinned), id)
 		if err != nil {
 			_ = tx.Rollback()
 			writeJSONError(w, http.StatusInternalServerError, "Update failed")
@@ -345,8 +376,10 @@ func (a *App) handleBatchPin(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "Update failed")
 		return
 	}
-	a.hub.Broadcast(ws.Event{Type: "downloads_pinned", Payload: map[string]any{"ids": updated, "pinned": *body.Pinned}})
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "pinned": *body.Pinned, "ids": updated, "updated": len(updated)})
+	if len(updated) > 0 {
+		a.hub.Broadcast(ws.Event{Type: "downloads_pinned", Flat: true, Payload: map[string]any{"ids": updated, "pinned": pinned}})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "pinned": pinned, "ids": updated, "updated": len(updated)})
 }
 
 func (a *App) handleJobs(w http.ResponseWriter, _ *http.Request) {
@@ -435,9 +468,17 @@ func (a *App) Close() error {
 		return nil
 	}
 	a.closeOnce.Do(func() {
+		a.chatRecheckMu.Lock()
+		a.chatRecheckClosed = true
+		a.chatRecheckMu.Unlock()
+		a.groupRefreshMu.Lock()
+		a.groupRefreshClosed = true
+		a.groupRefreshMu.Unlock()
 		if a.cancel != nil {
 			a.cancel()
 		}
+		a.chatRecheckWG.Wait()
+		a.groupRefreshWG.Wait()
 		a.bootWG.Wait()
 		if a.accountWizard != nil {
 			a.closeErr = errors.Join(a.closeErr, a.accountWizard.Close())

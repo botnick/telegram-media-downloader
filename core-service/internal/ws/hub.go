@@ -10,11 +10,30 @@ type Event struct {
 	Type    string
 	Roles   []string
 	Payload any
+	Flat    bool
 }
 
-// Dashboard events use the stable {type,payload} wire shape. Routing roles
-// are internal metadata and must never go onto the wire.
+// Dashboard events preserve the released wire shape for each event family.
+// Most runtime events use {type,payload}; a few legacy broadcasts put their
+// fields beside type. Routing roles are internal metadata and never go wire.
 func (e Event) MarshalJSON() ([]byte, error) {
+	if e.Flat {
+		fields := map[string]json.RawMessage{}
+		if e.Payload != nil {
+			raw, err := json.Marshal(e.Payload)
+			if err != nil {
+				return nil, err
+			}
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				return nil, err
+			}
+		}
+		if fields == nil {
+			fields = map[string]json.RawMessage{}
+		}
+		fields["type"], _ = json.Marshal(e.Type)
+		return json.Marshal(fields)
+	}
 	return json.Marshal(struct {
 		Type    string `json:"type"`
 		Payload any    `json:"payload,omitempty"`
