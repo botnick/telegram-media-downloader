@@ -287,41 +287,52 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                     : ['photo'];
             const db = getDb();
 
+            const scanVideos = facesCfgIn.scanVideos === true;
             // Phase A — detect faces on every photo we haven't visited yet.
             // Visited = "ai_indexed_at IS NOT NULL"; even photos that yield
             // zero faces get stamped so the next pass doesn't re-decode.
-            const phaseATotal = db
-                .prepare(`
-                    SELECT COUNT(*) AS n FROM downloads
-                     WHERE file_type IN (${fileTypes.map(() => '?').join(',')})
-                       AND ai_indexed_at IS NULL
-                `)
-                .get(...fileTypes).n;
-            const scanVideos = facesCfgIn.scanVideos === true;
-            const videoTotal = scanVideos
-                ? db
-                      .prepare(
-                          `SELECT COUNT(*) AS n FROM downloads WHERE file_type = 'video' AND ai_indexed_at IS NULL`,
-                      )
-                      .get().n
-                : 0;
-            // Keep the denominator tied to the live queue. New downloads may
-            // arrive while a scan is running; recomputing from the remaining
-            // unindexed rows prevents scanned/total from ever exceeding 100%.
-            const progressTypes = [...new Set(scanVideos ? [...fileTypes, 'video'] : fileTypes)];
-            const countPendingForProgress = () => {
-                const placeholders = progressTypes.map(() => '?').join(',');
+            // Keep this count separate from the richer AI status projection:
+            // it is refreshed after every batch and must stay cheap.
+            const localPendingCount = (types) => {
+                const placeholders = types.map(() => '?').join(',');
                 return db
                     .prepare(
                         `SELECT COUNT(*) AS n FROM downloads
                           WHERE file_type IN (${placeholders}) AND ai_indexed_at IS NULL`,
                     )
-                    .get(...progressTypes).n;
+                    .get(...types).n;
             };
-            const refreshProgressTotal = () => {
-                state.total = Math.max(state.scanned, state.scanned + countPendingForProgress());
+            let useGoPending = gocoreClient.isAvailable('db');
+            const pendingCount = async (types) => {
+                if (signal.aborted) return 0;
+                if (useGoPending) {
+                    try {
+                        return (
+                            await gocoreClient.aiPending(
+                                { fileTypes: types },
+                                { timeoutMs: 5_000, signal },
+                            )
+                        ).pending;
+                    } catch {
+                        // Old cores and transient restarts use the local
+                        // query. Disable retries for this scan to avoid a
+                        // request storm while the core is restarting.
+                        useGoPending = false;
+                    }
+                }
+                return localPendingCount(types);
             };
-            refreshProgressTotal();
+            const phaseATotal = await pendingCount(fileTypes);
+            const videoTotal = scanVideos ? await pendingCount(['video']) : 0;
+            // Keep the denominator tied to the live queue. New downloads may
+            // arrive while a scan is running; recomputing from the remaining
+            // unindexed rows prevents scanned/total from ever exceeding 100%.
+            const progressTypes = [...new Set(scanVideos ? [...fileTypes, 'video'] : fileTypes)];
+            const refreshProgressTotal = async () => {
+                const pending = await pendingCount(progressTypes);
+                state.total = Math.max(state.scanned, state.scanned + pending);
+            };
+            await refreshProgressTotal();
             bump();
             log(
                 'info',
@@ -548,7 +559,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 }
                 state.scanned +=
                     skipItems.length + nullItems.length + results.size + givenUp.length;
-                refreshProgressTotal();
+                await refreshProgressTotal();
                 bump();
 
                 if (state.scanned >= _nextStatLog) {
@@ -597,7 +608,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                         _vNull++;
                         setAiIndexedAt(row.id);
                         state.scanned += 1;
-                        refreshProgressTotal();
+                        await refreshProgressTotal();
                         bump();
                         continue;
                     }
@@ -621,7 +632,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                         if (noteFailure(row, abs, outage, true)) {
                             _vNull++;
                             state.scanned += 1;
-                            refreshProgressTotal();
+                            await refreshProgressTotal();
                             bump();
                         }
                         await ensureSidecar(outage?.message || String(outage));
@@ -638,7 +649,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                     }
                     await _writeTx(db, () => _persistDetection(row.id, detected));
                     state.scanned += 1;
-                    refreshProgressTotal();
+                    await refreshProgressTotal();
                     bump();
                     if (!outage) await _throttleSleep(Date.now() - _tv0, throttleRatio);
                     await _yield();

@@ -213,6 +213,25 @@ func TestAICandidates(t *testing.T) {
 	}
 }
 
+func TestAIPending(t *testing.T) {
+	path := makeDB(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("UPDATE downloads SET ai_indexed_at = NULL WHERE id = 1"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHandler(path, nil)
+	status, body := call(t, http.HandlerFunc(h.AIPending), map[string]any{
+		"fileTypes": []string{"photo"},
+	})
+	if status != http.StatusOK || body["pending"] != float64(1) {
+		t.Fatalf("status=%d body=%v", status, body)
+	}
+}
+
 func TestQualityCandidates(t *testing.T) {
 	path := makeDB(t)
 	db, err := sql.Open("sqlite", path)
@@ -229,8 +248,8 @@ func TestQualityCandidates(t *testing.T) {
 	}
 	h := NewHandler(path, nil)
 	status, body := call(t, http.HandlerFunc(h.QualityCandidates), map[string]any{
-		"afterId":     0,
-		"limit":       1,
+		"afterId":      0,
+		"limit":        1,
 		"includeTotal": true,
 	})
 	if status != http.StatusOK {

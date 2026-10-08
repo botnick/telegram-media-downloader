@@ -1004,6 +1004,23 @@ describe('answers from a (fake) tgdl-core', () => {
         expect(request).toEqual({ fileTypes: ['photo', 'video'], limit: 12 });
     });
 
+    it('reads the lightweight pending AI scan count through the Go DB projection', async () => {
+        let request;
+        await fakeCore(
+            {
+                '/v1/db/ai-pending': (req, raw, res) => {
+                    request = JSON.parse(raw);
+                    json(res, 200, { pending: 7 });
+                },
+            },
+            { features: ['db'] },
+        );
+        await expect(client.aiPending({ fileTypes: ['photo', 'video'] })).resolves.toEqual({
+            pending: 7,
+        });
+        expect(request).toEqual({ fileTypes: ['photo', 'video'] });
+    });
+
     it('reads bounded AI quality candidates with their pending face boxes', async () => {
         let request;
         await fakeCore(

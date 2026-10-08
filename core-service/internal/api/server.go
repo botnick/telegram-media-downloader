@@ -48,6 +48,8 @@
 //	                         read-only AI maintenance counters
 //	POST /v1/db/ai-candidates
 //	                         read-only bounded AI indexing queue
+//	POST /v1/db/ai-pending
+//	                         read-only pending AI scan count
 //	POST /v1/db/quality-candidates
 //	                         read-only bounded AI quality queue with face boxes
 //	POST /v1/db/recovery-stats
@@ -188,6 +190,7 @@ func (s *Server) Handler() http.Handler {
 		private.HandleFunc("POST /v1/db/face-embeddings", s.dbRead.FaceEmbeddings)
 		private.HandleFunc("POST /v1/db/ai-counts", s.dbRead.AICounts)
 		private.HandleFunc("POST /v1/db/ai-candidates", s.dbRead.AICandidates)
+		private.HandleFunc("POST /v1/db/ai-pending", s.dbRead.AIPending)
 		private.HandleFunc("POST /v1/db/quality-candidates", s.dbRead.QualityCandidates)
 		private.HandleFunc("POST /v1/db/recovery-stats", s.dbRead.RecoveryStats)
 		private.HandleFunc("POST /v1/db/cluster-downloads", s.dbRead.ClusterDownloads)

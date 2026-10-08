@@ -169,3 +169,12 @@ it('reads pending AI quality rows and face boxes from the real Go core', async (
     expect(tail.status).toBe(200);
     expect(tail.json.rows).toEqual([]);
 });
+
+it('reads the pending AI scan count from the real Go core without a Node query', async () => {
+    vi.spyOn(db, 'prepare').mockImplementation(() => { throw new Error('unexpected Node query'); });
+    const result = await core.post('/v1/db/ai-pending', { fileTypes: ['photo'] });
+    expect(result.status).toBe(200);
+    expect(result.json).toEqual({
+        pending: expected.filter((row) => row.file_type === 'photo').length,
+    });
+});

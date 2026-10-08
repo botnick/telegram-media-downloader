@@ -1609,6 +1609,28 @@ export async function aiCandidates(
     return body;
 }
 
+/** Read the lightweight pending AI scan count through tgdl-core. */
+export async function aiPending(
+    { fileTypes = ['photo'] } = {},
+    { timeoutMs = 5_000, readyWaitMs, signal } = {},
+) {
+    const feature = 'db';
+    const { status, body } = await _call(
+        feature,
+        'POST',
+        '/v1/db/ai-pending',
+        { fileTypes: Array.isArray(fileTypes) ? fileTypes : ['photo'] },
+        { timeoutMs, readyWaitMs, signal },
+    );
+    if (status !== 200) throw _errorFor(feature, status, body);
+    if (!body || !Number.isSafeInteger(body.pending) || body.pending < 0) {
+        _count(feature, 'error');
+        throw new GoCoreError('protocol', 'malformed AI pending response', { status });
+    }
+    _count(feature, 'ok');
+    return body;
+}
+
 /** Read the bounded AI quality-backfill queue through tgdl-core. */
 export async function qualityCandidates(
     { afterId = 0, limit = 100, includeTotal = false } = {},
