@@ -164,6 +164,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerChatAccessRoutes(mux, a)
 	registerGroupRefreshRoutes(mux, a)
 	registerGalleryRoutes(mux, a)
+	registerAIRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
 	registerArchiveRoutes(mux, a)
