@@ -51,6 +51,18 @@ func (a *App) gateway(next http.Handler) http.Handler {
 			}
 			return
 		}
+		// File bearer tokens intentionally authorize only the media mount. They
+		// are checked before the normal cookie path so a shared file can be
+		// opened without exposing any API or dashboard session.
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && strings.HasPrefix(r.URL.Path, "/files/") {
+			if role, ok := a.fileTokenRole(r.Context(), r.URL.Query().Get("token")); ok {
+				// The route only needs the role. Keep the synthetic context free of
+				// a cookie token so it can never be renewed or revoked as a session.
+				r = r.WithContext(auth.WithSession(r.Context(), auth.Session{Role: role}))
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
 		sess, err := a.sessionFromRequest(r)
 		if err != nil {
 			if strings.HasPrefix(r.URL.Path, "/api/") || upgrade || strings.HasPrefix(r.URL.Path, "/v1/") {
@@ -71,6 +83,10 @@ func (a *App) gateway(next http.Handler) http.Handler {
 			a.setSessionCookie(w, sess.Token, ttl)
 		}
 		r = r.WithContext(auth.WithSession(r.Context(), sess))
+		if strings.HasPrefix(r.URL.Path, "/files/") && strings.TrimPrefix(r.URL.Path, "/files/") == "" {
+			fileMountNotFound(w, r)
+			return
+		}
 		if upgrade && (r.URL.Path == "/" || r.URL.Path == "/ws") {
 			a.handleWebSocket(w, r)
 			return
@@ -204,6 +220,9 @@ func redirect(w http.ResponseWriter, r *http.Request, location string) {
 	w.Header().Set("Vary", "Accept, Accept-Encoding")
 	if strings.HasPrefix(r.URL.Path, "/files/") {
 		w.Header().Set("Cache-Control", "private, max-age=2592000, immutable")
+		w.Header().Set("Vary", "Accept")
+	} else if strings.HasPrefix(r.URL.Path, "/photos/") {
+		w.Header().Set("Cache-Control", "private, max-age=86400, stale-while-revalidate=604800")
 		w.Header().Set("Vary", "Accept")
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

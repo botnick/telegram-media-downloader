@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -64,8 +65,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func serve(ctx context.Context, server *http.Server) error {
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		return err
+	}
 	done := make(chan error, 1)
-	go func() { done <- server.ListenAndServe() }()
+	go func() { done <- server.Serve(sanitizeListener{Listener: listener}) }()
 	select {
 	case err := <-done:
 		return err

@@ -22,6 +22,7 @@ var jsImport = regexp.MustCompile(`(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"]
 type staticBody struct {
 	data             []byte
 	tag, contentType string
+	modTime          time.Time
 	rewritten        bool
 }
 
@@ -41,6 +42,14 @@ func newStaticHandler(files fs.FS) http.Handler {
 		if name == "" || name == "." {
 			name = "index.html"
 		}
+		setStaticCacheHeaders(w, name, r.URL.Query().Get("v") != "")
+		if strings.Contains(r.URL.Path, "..") && (strings.HasPrefix(r.URL.Path, "/js/") || strings.HasPrefix(r.URL.Path, "/css/") || strings.HasPrefix(r.URL.Path, "/locales/") || strings.HasPrefix(r.URL.Path, "/icons/")) {
+			if strings.HasPrefix(r.URL.Path, "/js/") {
+				w.Header().Set("Cache-Control", "public, max-age=3600")
+			}
+			writeNotFound(w, r)
+			return
+		}
 		cached, ok := cache.Load(name)
 		if !ok {
 			data, err := fs.ReadFile(files, name)
@@ -48,7 +57,10 @@ func newStaticHandler(files fs.FS) http.Handler {
 				writeNotFound(w, r)
 				return
 			}
-			body := staticBody{data: data}
+			if strings.HasPrefix(name, "icons/") {
+				w.Header().Del("Vary")
+			}
+			body := staticBody{data: data, modTime: time.Now().UTC()}
 			switch name {
 			case "index.html", "login.html", "setup-needed.html", "add-account.html":
 				body.rewritten = true
@@ -66,22 +78,36 @@ func newStaticHandler(files fs.FS) http.Handler {
 					return []byte(string(parts[1]) + string(parts[2]) + string(parts[3]) + "?v=" + version.AppVersion + string(parts[4]))
 				})
 			}
-			body.tag = weakETag(body.data)
+			if name == "CHANGELOG.md" {
+				body.rewritten = true
+			}
+			if body.contentType == "" {
+				body.contentType = staticContentType(name)
+			}
+			if body.rewritten {
+				body.tag = weakETag(body.data)
+			} else {
+				body.tag = `W/"` + strconv.FormatInt(int64(len(body.data)), 16) + `-` + strconv.FormatInt(body.modTime.UnixMilli(), 16) + `"`
+			}
 			cached = body
 			cache.Store(name, body)
 		}
 		body := cached.(staticBody)
-		if strings.HasPrefix(name, "js/") || strings.HasPrefix(name, "css/") || strings.HasPrefix(name, "locales/") {
-			w.Header().Set("Cache-Control", "public, max-age=3600")
-			if r.URL.Query().Get("v") != "" {
-				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-			}
+		if strings.HasPrefix(name, "icons/") {
+			w.Header().Del("Vary")
 		}
 		w.Header().Set("ETag", body.tag)
+		if !body.rewritten {
+			w.Header().Set("Accept-Ranges", "bytes")
+		}
+		if !body.rewritten {
+			w.Header().Set("Last-Modified", body.modTime.Format(http.TimeFormat))
+		}
 		if body.contentType != "" {
 			w.Header().Set("Content-Type", body.contentType)
 		}
 		if r.Header.Get("If-None-Match") == body.tag {
+			w.Header().Del("Vary")
 			w.WriteHeader(304)
 			return
 		}
@@ -91,6 +117,57 @@ func newStaticHandler(files fs.FS) http.Handler {
 			}
 			return
 		}
-		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(body.data))
+		http.ServeContent(w, r, name, body.modTime, bytes.NewReader(body.data))
 	})
+}
+
+func setStaticCacheHeaders(w http.ResponseWriter, name string, immutable bool) {
+	switch {
+	case name == "sw.js":
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Service-Worker-Allowed", "/")
+	case name == "share-error.html":
+		w.Header().Set("Cache-Control", "public, max-age=0")
+	case name == "CHANGELOG.md":
+		w.Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
+	case strings.HasPrefix(name, "locales/"):
+		w.Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
+	case strings.HasPrefix(name, "js/") || strings.HasPrefix(name, "css/") || strings.HasPrefix(name, "icons/") || name == "manifest.webmanifest" || name == "CHANGELOG.md":
+		if immutable {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+		}
+	}
+}
+
+func staticContentType(name string) string {
+	switch {
+	case name == "sw.js":
+		return "application/javascript; charset=utf-8"
+	case name == "manifest.webmanifest":
+		return "application/manifest+json; charset=utf-8"
+	case name == "CHANGELOG.md":
+		return "text/markdown; charset=utf-8"
+	case strings.HasSuffix(name, ".html"):
+		return "text/html; charset=UTF-8"
+	case strings.HasSuffix(name, ".js"):
+		return "application/javascript; charset=UTF-8"
+	case strings.HasSuffix(name, ".css"):
+		return "text/css; charset=UTF-8"
+	case strings.HasSuffix(name, ".json"):
+		return "application/json; charset=UTF-8"
+	case strings.HasSuffix(name, ".webmanifest"):
+		return "application/manifest+json; charset=UTF-8"
+	case strings.HasSuffix(name, ".md"):
+		return "text/markdown; charset=UTF-8"
+	case strings.HasSuffix(name, ".png"):
+		return "image/png"
+	case strings.HasSuffix(name, ".jpg") || strings.HasSuffix(name, ".jpeg"):
+		return "image/jpeg"
+	case strings.HasSuffix(name, ".ico"):
+		return "image/x-icon"
+	default:
+		return "application/octet-stream"
+	}
 }

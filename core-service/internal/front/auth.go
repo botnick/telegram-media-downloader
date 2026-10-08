@@ -161,6 +161,13 @@ func fileTokenRole(secret []byte, token string) (string, bool) {
 	return "", false
 }
 
+// FileTokenRole verifies the bearer token used by the public media handler.
+// It is exported so the application gateway and the standalone front server
+// share exactly the same signature, expiry, and legacy-token rules.
+func FileTokenRole(secret []byte, token string) (string, bool) {
+	return fileTokenRole(secret, token)
+}
+
 func fileTokenSig(secret []byte, payload string) string {
 	m := hmac.New(sha256.New, secret)
 	m.Write([]byte(payload))

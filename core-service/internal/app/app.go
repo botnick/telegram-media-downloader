@@ -28,7 +28,6 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/jobs"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/store"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
-	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 	"github.com/gorilla/websocket"
 )
@@ -167,13 +166,12 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerGalleryRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
+	registerArchiveRoutes(mux, a)
 	registerShareRoutes(mux, a)
 	registerReadRoutes(mux, read, a.requireSession)
 	mux.HandleFunc("GET /ws", a.handleWebSocket)
 	mux.Handle("/", newStaticHandler(cfg.Static))
-	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"version": version.AppVersion, "commit": "dev", "builtAt": nil})
-	})
+	registerPublicAPIRoutes(mux, a)
 
 	a.handler = securityHeaders(a.gateway(mux))
 	stored, err := a.config.Load(ctx)
