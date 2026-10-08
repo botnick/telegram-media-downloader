@@ -1185,13 +1185,34 @@ export async function buildAllThumbnails(opts = {}) {
     const typeFilter =
         types && types.length ? `AND file_type IN (${types.map(() => '?').join(',')})` : '';
     const typeArgs = types && types.length ? types : [];
-    const total = db
+    const PAGE_SIZE = 50;
+    // The Go page already carries the exact total on its first response.
+    // Ask for that page before falling back to a synchronous Node COUNT so
+    // the normal path avoids blocking the event loop before the sweep starts.
+    let total;
+    let initialGoPage = null;
+    if (gocoreClient.isAvailable('db')) {
+        try {
+            initialGoPage = await gocoreClient.thumbsList({
+                limit: PAGE_SIZE,
+                cursor: null,
+                kind,
+                cachedOnly: false,
+                cacheRoot: THUMBS_DIR,
+            });
+            if (Number.isSafeInteger(initialGoPage.total) && initialGoPage.total >= 0) {
+                total = initialGoPage.total;
+            }
+        } catch {
+            // Older cores and transient restarts use the local query.
+        }
+    }
+    total ??= db
         .prepare(`
         SELECT COUNT(*) AS n FROM downloads
          WHERE file_path IS NOT NULL ${typeFilter}
     `)
         .get(...typeArgs).n;
-    const PAGE_SIZE = 50;
     const pageStmt = db.prepare(`
         SELECT id FROM downloads
          WHERE file_path IS NOT NULL ${typeFilter}
@@ -1213,18 +1234,18 @@ export async function buildAllThumbnails(opts = {}) {
     let beforeId = Number.MAX_SAFE_INTEGER;
     while (true) {
         if (signal?.aborted) break;
-        let page = null;
-        if (gocoreClient.isAvailable('db')) {
+        let page = initialGoPage?.rows || null;
+        initialGoPage = null;
+        if (!page && gocoreClient.isAvailable('db')) {
             try {
-                page = (
-                    await gocoreClient.thumbsList({
-                        limit: PAGE_SIZE,
-                        cursor: beforeId < Number.MAX_SAFE_INTEGER ? beforeId : null,
-                        kind,
-                        cachedOnly: false,
-                        cacheRoot: THUMBS_DIR,
-                    })
-                ).rows;
+                const response = await gocoreClient.thumbsList({
+                    limit: PAGE_SIZE,
+                    cursor: beforeId < Number.MAX_SAFE_INTEGER ? beforeId : null,
+                    kind,
+                    cachedOnly: false,
+                    cacheRoot: THUMBS_DIR,
+                });
+                page = response.rows;
             } catch {
                 // Older cores and transient restarts use the local query.
             }
