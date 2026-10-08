@@ -66,3 +66,29 @@ func TestRunMigrationsAddsDurableQueuePauseState(t *testing.T) {
 		t.Fatalf("queue schema paused=%d state=%d", paused, queueState)
 	}
 }
+
+func TestRunMigrationsPreservesQueueWhenAddingRefreshRequirement(t *testing.T) {
+	db, err := Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Writer.Close()
+	defer db.Reader.Close()
+	if _, err := db.Writer.Exec(`ALTER TABLE tgdl_work DROP COLUMN refresh_required;
+INSERT INTO tgdl_work(account_id,group_id,group_name,message_id,version,identity,media_type,file_name,file_size,body,created_at,updated_at) VALUES('one','42','Media',1,1,'document:1','document','file',4,X'01',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := RunMigrations(context.Background(), db.Writer); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var account string
+	var refresh int
+	if err := db.Reader.QueryRow(`SELECT account_id,refresh_required FROM tgdl_work`).Scan(&account, &refresh); err != nil {
+		t.Fatal(err)
+	}
+	if account != "one" || refresh != 0 {
+		t.Fatalf("migration changed existing work: %q %d", account, refresh)
+	}
+}

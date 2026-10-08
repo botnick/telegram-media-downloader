@@ -645,7 +645,7 @@ func (c *Controller) worker(run *running) {
 			message, err = work.Message()
 		}
 		attemptCtx, finishAttempt := context.WithTimeout(ctx, c.attemptLimit(work.FileSize))
-		if err == nil && (work.Attempts > 1 || time.Since(time.UnixMilli(work.CreatedAt)) > time.Minute) {
+		if err == nil && (work.ForceRefresh || work.Attempts > 1 || time.Since(time.UnixMilli(work.CreatedAt)) > time.Minute) {
 			var fresh *telegram.RefreshedMessage
 			fresh, err = run.accounts[work.AccountID].RefreshMessage(attemptCtx, message)
 			if err == nil && (fresh == nil || fresh.Message == nil) {

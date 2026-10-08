@@ -17,6 +17,7 @@ import (
 type WorkStore struct{ writer, reader *sql.DB }
 
 var errFiltered = errors.New("queued message no longer matches download filters")
+var ErrFiltered = errFiltered
 
 func NewWorkStore(writer, reader *sql.DB) *WorkStore {
 	return &WorkStore{writer: writer, reader: reader}
@@ -28,6 +29,7 @@ type Work struct {
 	FileSize                                           int64
 	Attempts                                           int
 	CreatedAt                                          int64
+	ForceRefresh                                       bool
 	body                                               []byte
 }
 
@@ -70,7 +72,7 @@ func (s *WorkStore) Enqueue(ctx context.Context, accountID string, target Target
  ON CONFLICT(group_id,message_id) DO UPDATE SET
  account_id=excluded.account_id,group_name=excluded.group_name,version=excluded.version,source_pts=excluded.source_pts,identity=excluded.identity,
  media_type=excluded.media_type,file_name=excluded.file_name,file_size=excluded.file_size,body=excluded.body,
- generation=tgdl_work.generation+1,attempts=0,retry_at=0,error=NULL,updated_at=excluded.updated_at,
+ generation=tgdl_work.generation+1,attempts=0,retry_at=0,error=NULL,refresh_required=0,updated_at=excluded.updated_at,
  status=CASE WHEN tgdl_work.status='processing' THEN 'processing' ELSE 'pending' END
  WHERE excluded.version>tgdl_work.version OR (excluded.version=tgdl_work.version AND excluded.identity<>tgdl_work.identity
  AND excluded.source_pts>tgdl_work.source_pts AND (? OR excluded.account_id=tgdl_work.account_id))
@@ -101,9 +103,9 @@ func (s *WorkStore) Claim(ctx context.Context, accounts []string, now time.Time)
 	args = append(args, now.UnixMilli())
 	row := s.writer.QueryRowContext(ctx, `UPDATE tgdl_work SET status='processing',claim_generation=generation,attempts=attempts+1,updated_at=?
 	 WHERE id=(SELECT id FROM tgdl_work WHERE status='pending' AND paused=0 AND (SELECT paused FROM tgdl_queue_state WHERE id=1)=0 AND account_id IN (`+strings.Join(marks, ",")+`) AND retry_at<=? ORDER BY id LIMIT 1)
- RETURNING id,account_id,group_id,group_name,message_id,generation,media_type,file_name,file_size,body,attempts,created_at`, args...)
+ RETURNING id,account_id,group_id,group_name,message_id,generation,media_type,file_name,file_size,body,attempts,created_at,refresh_required`, args...)
 	w := new(Work)
-	if err := row.Scan(&w.ID, &w.AccountID, &w.GroupID, &w.GroupName, &w.MessageID, &w.Generation, &w.MediaType, &w.FileName, &w.FileSize, &w.body, &w.Attempts, &w.CreatedAt); err != nil {
+	if err := row.Scan(&w.ID, &w.AccountID, &w.GroupID, &w.GroupName, &w.MessageID, &w.Generation, &w.MediaType, &w.FileName, &w.FileSize, &w.body, &w.Attempts, &w.CreatedAt, &w.ForceRefresh); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -166,7 +168,7 @@ func (s *WorkStore) Refresh(ctx context.Context, w *Work, message *tg.Message) (
 	err = s.writer.QueryRowContext(ctx, `UPDATE tgdl_work SET
  generation=generation+CASE WHEN identity<>? THEN 1 ELSE 0 END,
  attempts=CASE WHEN identity<>? THEN 0 ELSE attempts END,
- version=MAX(version,?),identity=?,media_type=?,file_name=?,file_size=?,body=?,updated_at=?
+ version=MAX(version,?),identity=?,media_type=?,file_name=?,file_size=?,body=?,refresh_required=0,updated_at=?
  WHERE id=? AND generation=? AND claim_generation=? AND status='processing' RETURNING generation`,
 		media.Identity.Key(), media.Identity.Key(), max(message.Date, message.EditDate), media.Identity.Key(), media.Type, media.Name, media.Identity.Size, buf.Buf, time.Now().UnixMilli(), w.ID, w.Generation, w.Generation).Scan(&generation)
 	if errors.Is(err, sql.ErrNoRows) {

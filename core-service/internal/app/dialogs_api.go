@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -109,10 +110,15 @@ func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) loadDialogAccess(r *http.Request) map[string]map[string]any {
+	result, _ := a.readDialogAccess(r.Context())
+	return result
+}
+
+func (a *App) readDialogAccess(ctx context.Context) (map[string]map[string]any, error) {
 	result := map[string]map[string]any{}
-	rows, err := a.db.Reader.QueryContext(r.Context(), `SELECT chat_id,state,code,detail,migrated_to,first_seen_at,checked_at,next_check_at,checks,accounts FROM chat_access LIMIT 50000`)
+	rows, err := a.db.Reader.QueryContext(ctx, `SELECT chat_id,state,code,detail,migrated_to,first_seen_at,checked_at,next_check_at,checks,accounts FROM chat_access`)
 	if err != nil {
-		return result
+		return result, err
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -121,7 +127,7 @@ func (a *App) loadDialogAccess(r *http.Request) map[string]map[string]any {
 		var firstSeen, checked, nextCheck sql.NullInt64
 		var checks int
 		if err := rows.Scan(&id, &state, &code, &detail, &migrated, &firstSeen, &checked, &nextCheck, &checks, &accountsJSON); err != nil {
-			continue
+			return result, err
 		}
 		accounts := []map[string]any{}
 		var accountMap map[string]struct {
@@ -145,7 +151,7 @@ func (a *App) loadDialogAccess(r *http.Request) map[string]map[string]any {
 		access := map[string]any{"state": state, "code": dialogNullableString(code), "detail": dialogNullableString(detail), "migratedTo": dialogNullableString(migrated), "firstSeenAt": dialogNullableInt(firstSeen), "checkedAt": dialogNullableInt(checked), "nextCheckAt": dialogNullableInt(nextCheck), "checks": checks, "accounts": accounts}
 		result[id] = access
 	}
-	return result
+	return result, rows.Err()
 }
 
 func legacyDialogAccess(group map[string]any) map[string]any {

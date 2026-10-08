@@ -123,6 +123,15 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 		return 0, fmt.Errorf("create engine schema: %w", err)
 	}
 	var pausedColumn int
+	var refreshColumn int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('tgdl_work') WHERE name='refresh_required'`).Scan(&refreshColumn); err != nil {
+		return 0, err
+	}
+	if refreshColumn == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_work ADD COLUMN refresh_required INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return 0, err
+		}
+	}
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('tgdl_work') WHERE name='paused'`).Scan(&pausedColumn); err != nil {
 		return 0, fmt.Errorf("inspect queue schema: %w", err)
 	}

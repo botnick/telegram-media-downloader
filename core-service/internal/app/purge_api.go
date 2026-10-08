@@ -134,6 +134,10 @@ func (a *App) handleAPIPurgeAll(w http.ResponseWriter, r *http.Request) {
 func (a *App) acceptPurge(w http.ResponseWriter, r *http.Request, id string, all, filesOnly bool) bool {
 	a.purgeMu.Lock()
 	defer a.purgeMu.Unlock()
+	if a.recoveryWriting {
+		writeJSON(w, 409, map[string]any{"error": "Recovery is changing groups", "code": "ALREADY_RUNNING"})
+		return false
+	}
 	if a.purgeClosed || a.ctx.Err() != nil {
 		writeJSONError(w, 503, "server is stopping")
 		return false
@@ -272,11 +276,15 @@ func (a *App) purgeProgress(ctx context.Context, p *purgeRecord, fields map[stri
 }
 
 func (a *App) runPurge(ctx context.Context, p purgeRecord, recovering bool) (runErr error) {
+	a.monitorOp.Lock()
+	defer a.monitorOp.Unlock()
+	return a.runPurgeLocked(ctx, p, recovering)
+}
+
+func (a *App) runPurgeLocked(ctx context.Context, p purgeRecord, recovering bool) (runErr error) {
 	if recovering {
 		p.Status["running"], p.Status["error"], p.Status["finishedAt"] = true, nil, 0
 	}
-	a.monitorOp.Lock()
-	defer a.monitorOp.Unlock()
 	defer func() {
 		if runErr == nil {
 			return

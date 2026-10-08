@@ -135,7 +135,22 @@ func (a *App) handleMonitorRestart(w http.ResponseWriter, r *http.Request) {
 	a.writeMonitorResult(w, r, err)
 }
 func (a *App) ingestWork(ctx context.Context, work *engine.Work, message *tg.Message, transport telegram.MediaDownloader) error {
-	_, err := a.ingestTelegram(ctx, message, work.GroupID, work.GroupName, work.AccountID, transport)
+	cfg, err := a.config.Load(ctx)
+	if err != nil {
+		return err
+	}
+	allowed := false
+	for _, group := range configuredGroupList(cfg) {
+		if toString(group["id"]) == work.GroupID {
+			pin := toString(group["monitorAccount"])
+			allowed = group["enabled"] == true && group["suspended"] != true && (pin == "" || pin == work.AccountID)
+			break
+		}
+	}
+	if !allowed {
+		return engine.ErrFiltered
+	}
+	_, err = a.ingestTelegram(ctx, message, work.GroupID, work.GroupName, work.AccountID, transport)
 	return err
 }
 func (a *App) monitorEvent(state string, err error) {

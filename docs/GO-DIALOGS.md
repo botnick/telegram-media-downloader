@@ -28,8 +28,10 @@ The native implementation now:
 The HTTP projection and its authentication requirements remain the same. The UI
 still requests 500 entries per folder/account. That cap is intentional for this
 existing route and must not be used as proof that an unknown group is absent
-from Telegram. The recovery workflow still needs its own complete search and
-readability probe before changing IDs or account assignments.
+from Telegram. The [native recovery workflow](GO-RECOVERY.md) now uses its own
+complete enumeration and readability probe before changing IDs or account
+assignments. It uses the same pager without the UI cap; exceeding 100,000 dialogs
+per folder/account or the operation deadline is an error, never a partial success.
 
 ## Verification
 
@@ -41,8 +43,8 @@ unchanged update cursors and HTTP rejection of partial/stopped results.
 `go test -race -timeout 120s ./...`, `go vet ./...` and the Linux server build
 pass. These use injected Telegram RPC/account fixtures; live Telegram and
 browser E2E remain release requirements. The latest full frozen contract result
-is still 203/324, from the preceding purge checkpoint; this increment does not
-claim to implement the eight remaining recovery contract cases.
+is 210/324 after the recovery increment, whose frozen suite passes 8/9. The
+remaining recovery difference deliberately fixes the old file-cleanup bug.
 
 ## References
 

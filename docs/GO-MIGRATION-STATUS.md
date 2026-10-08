@@ -11,8 +11,8 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the Go executable passes **203 of 324
-  tests**, with **22 of 36 files passing**. The remaining **121 failed cases in
+- The latest full black-box run against the Go executable passes **210 of 324
+  tests**, with **22 of 36 files passing**. The remaining **114 failed cases in
   14 files** are still release blockers, not waived expectations. These are
   fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
 - Passing domains include accounts, authentication, shares, queue controls,
@@ -126,8 +126,25 @@ as successful. Stopped accounts are rejected and in-flight reads cancel with
 their account. Reusable channel hashes are cached per account without advancing
 update cursors or poisoning ingestion on browser cancellation. The UI still
 requests at most 500 dialogs per folder/account; this bounded list is not an
-exhaustive recovery index. Recovery cleanup remains unimplemented.
+  exhaustive recovery index. Native recovery now uses a separate complete
+  enumeration with the same pager and explicit error bounds.
 See [dialog pagination and verification](GO-DIALOGS.md).
+
+Recovery cleanup now has native list/count/status/resolve/disable/ignore/
+unignore/reassign/delete routes. The resolver enumerates active and archived
+dialogs, resolves public usernames when necessary and probes history readability
+before changing a group. Explicit account pins are enforced; ambiguous names,
+target collisions and concurrently changed configuration are preserved for
+inspection instead of being silently merged. Config, media/queue IDs, ingest
+journals and queue history change transactionally per group, retaining physical
+file paths. Reassignment joins active transfers and forces account-specific
+message refresh before the next download. Native HTTP/SQLite/byte-transfer tests
+cover these paths, rollback and shutdown. Purging through recovery reuses durable
+cleanup, retains shared files and supports retry after failure. The unchanged
+frozen recovery suite passes 8/9: its final difference is the correction from
+leaving a file behind/counting zero to actually deleting it/counting one.
+See [native recovery behavior and evidence](GO-RECOVERY.md). Live network/browser
+E2E remains unverified.
 
 Queue control is now durable in Go. Global pause state and per-job pause flags
 are stored in SQLite, migrated into existing databases, and checked by every

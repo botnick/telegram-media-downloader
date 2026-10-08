@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS tgdl_work (
  claim_generation INTEGER,
  status TEXT NOT NULL DEFAULT 'pending',
  paused INTEGER NOT NULL DEFAULT 0,
+ refresh_required INTEGER NOT NULL DEFAULT 0,
  attempts INTEGER NOT NULL DEFAULT 0,
  retry_at INTEGER NOT NULL DEFAULT 0,
  error TEXT,

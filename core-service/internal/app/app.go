@@ -75,6 +75,9 @@ type App struct {
 	purgeWG            sync.WaitGroup
 	purgeClosed        bool
 	purgeResume        bool
+	recoveryWriting    bool
+	recoveryMu         sync.Mutex
+	recoveryStatus     map[string]any
 	purges             map[string]purgeRecord
 	maintenanceJobMu   sync.Mutex
 	maintenanceJobWG   sync.WaitGroup
@@ -201,6 +204,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerMaintenanceRoutes(mux, a)
 	registerSystemRoutes(mux, a)
 	registerPurgeRoutes(mux, a)
+	registerRecoveryRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
 	registerArchiveRoutes(mux, a)

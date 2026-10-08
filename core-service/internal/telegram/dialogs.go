@@ -12,12 +12,24 @@ import (
 )
 
 type Dialog struct {
+	peer     tg.InputPeerClass
 	ID       string
 	Name     string
 	Username string
 	Type     string
 	Archived bool
 	Members  *int
+}
+
+// Recovery must distinguish an absent peer from one beyond the UI's limit.
+func (a *Account) RecoveryDialogs(ctx context.Context, archived bool) ([]Dialog, error) {
+	folder := 0
+	if archived {
+		folder = 1
+	}
+	return fetchDialogPages(ctx, a.API(), -1, folder, func(ctx context.Context, chats []tg.ChatClass) error {
+		return a.state.cacheDialogHashes(ctx, a.selfID, chats)
+	})
 }
 
 type dialogsAPI interface {
@@ -45,20 +57,23 @@ func fetchDialogs(ctx context.Context, api dialogsAPI, limit, folder int) ([]Dia
 // slice even when fewer than the requested number of dialogs fit in the page.
 // Never interpret a partial or malformed page as a complete recovery index.
 func fetchDialogPages(ctx context.Context, api dialogsAPI, limit, folder int, observe func(context.Context, []tg.ChatClass) error) ([]Dialog, error) {
-	if limit <= 0 || limit > 1000 {
+	if limit != -1 && (limit <= 0 || limit > 1000) {
 		limit = 500
 	}
 	req := tg.MessagesGetDialogsRequest{OffsetPeer: &tg.InputPeerEmpty{}}
 	// folder_id=0 needs its presence flag too, otherwise both folders are read.
 	req.SetFolderID(folder)
-	out := make([]Dialog, 0, min(limit, 100))
+	out := make([]Dialog, 0, 100)
 	seen := make(map[string]bool)
 	cursors := make(map[string]bool)
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		req.Limit = min(100, limit-len(out))
+		req.Limit = 100
+		if limit > 0 {
+			req.Limit = min(100, limit-len(out))
+		}
 		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		result, err := api.MessagesGetDialogs(callCtx, &req)
 		cancel()
@@ -88,12 +103,15 @@ func fetchDialogPages(ctx context.Context, api dialogsAPI, limit, folder int, ob
 			if !seen[item.ID] {
 				seen[item.ID] = true
 				out = append(out, item)
+				if len(out) > 100000 {
+					return nil, errors.New("Telegram recovery dialog index exceeded safety bound")
+				}
 				if len(out) == limit {
 					break
 				}
 			}
 		}
-		if complete || len(rawDialogs) == 0 || len(out) >= limit {
+		if complete || len(rawDialogs) == 0 || limit > 0 && len(out) >= limit {
 			sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 			return out, nil
 		}
@@ -234,6 +252,7 @@ func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg
 		if item.Name == "" {
 			item.Name = item.ID
 		}
+		item.peer, _ = dialogOffsetPeer(dialog.Peer, chats, users)
 		out = append(out, item)
 	}
 	return out
