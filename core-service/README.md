@@ -46,21 +46,30 @@ Useful commands:
 ## Data safety
 
 SQLite uses WAL, `synchronous=NORMAL`, `busy_timeout=5000` and foreign keys.
-Schema creation is embedded and idempotent. Media downloads reserve the
-Telegram identity before network I/O, write beside the destination as a
-`.part` file, fsync, and atomically rename. A cancelled or failed transfer
-removes the partial file and releases the reservation.
+Schema creation is embedded and idempotent. Application ingestion looks up
+Telegram identities in the existing catalog before network I/O, retaining a
+separate message reference for each forward. Verified hashes include OS file
+identity/change metadata; active coordination is bounded by the worker limit.
+Transfers write a sibling `.part` file, sync it, then publish through directory
+handles with an exclusive rename. A durable journal recovers completed files
+when registration fails, and message generations prevent stale recovery from
+reverting edits. Cancelled transfers remove their partial files.
 
 Backups use SQLite `VACUUM INTO` and publish a timestamped file only after the
 snapshot is complete; each result includes byte count and SHA-256.
 
 ## Telegram engine boundary
 
-`internal/telegram` contains the gotd adapter and the live identity index.
-`internal/download` accepts a fakeable client interface for deterministic
-unit tests and uses the same atomic handoff in production. The adapter does
-not dial while being constructed; network activity starts only from its
-context-cancellable `Run` method.
+`internal/telegram` extracts photo/document metadata directly from MTProto
+messages and provides an account-bound gotd media transport. `App.IngestTelegram`
+connects that metadata to the durable library, existing gallery files and
+WebSocket events. Integration tests use a fixture byte transport. The adapter
+does not dial during construction; network activity starts from `Run`.
+
+Account ownership, login, update recovery, durable work queues and monitor
+lifecycle still need to call this boundary. The server does not yet start a
+working Telegram monitor. See the [migration status](../docs/GO-MIGRATION-STATUS.md)
+for the remaining release gates and reproducible ingestion benchmark.
 
 References:
 

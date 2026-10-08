@@ -21,6 +21,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/backup"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/cluster"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/dbread"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/download"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/jobs"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/store"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
@@ -39,6 +40,7 @@ type Config struct {
 }
 type App struct {
 	db            *store.DB
+	library       *download.Library
 	sessions      *auth.SessionStore
 	hub           *ws.Hub
 	read          *dbread.Handler
@@ -84,6 +86,15 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	}
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
 	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute), loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time)}
+	a.library, err = download.NewLibrary(db.Writer, db.Reader, filepath.Join(cfg.DataDir, "downloads"), 4)
+	if err != nil {
+		a.Close()
+		return nil, err
+	}
+	if err = a.library.Recover(ctx); err != nil {
+		a.Close()
+		return nil, fmt.Errorf("recover media ingestion: %w", err)
+	}
 	if err := a.drainFileCleanup(ctx); err != nil && cfg.Output != nil {
 		fmt.Fprintf(cfg.Output, "Media cleanup remains pending: %v\n", err)
 	}

@@ -24,6 +24,8 @@ type Client interface {
 type Manager struct {
 	Client Client
 	Index  *telegram.DedupIndex
+	// prepared records durable recovery metadata after sync, before publication.
+	prepared func() error
 }
 
 func NewManager(client Client, index *telegram.DedupIndex) *Manager {
@@ -83,50 +85,105 @@ func (m *Manager) downloadReserved(ctx context.Context, identity telegram.MediaI
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create media directory: %w", err)
 	}
-	if _, err := os.Stat(finalPath); err == nil {
-		return "", fmt.Errorf("final file already exists: %w", ErrDuplicate)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("check final file: %w", err)
-	}
-	tmp, err := os.CreateTemp(dir, ".tgdl-*.part")
+	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return "", fmt.Errorf("create partial file: %w", err)
-	}
-	tmpPath := tmp.Name()
-	defer func() {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-	}()
-	writer := &mediaWriter{ctx: ctx, dst: tmp, remaining: identity.Size}
-	if err := m.Client.Download(ctx, identity, writer); err != nil {
-		return "", fmt.Errorf("download Telegram media: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	if writer.remaining != 0 {
-		return "", fmt.Errorf("Telegram media size mismatch: expected %d, received %d", identity.Size, identity.Size-writer.remaining)
-	}
-	if err := tmp.Sync(); err != nil {
-		return "", fmt.Errorf("sync partial file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return "", fmt.Errorf("close partial file: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
+	defer root.Close()
+	if err := m.transfer(ctx, identity, root, filepath.Base(finalPath)); err != nil {
 		return "", err
-	}
-	// The OS performs an exclusive rename: a competing file must never be
-	// replaced, even if it appeared after the initial existence check.
-	if err := publishExclusive(tmpPath, finalPath); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return "", fmt.Errorf("final file already exists: %w", ErrDuplicate)
-		}
-		return "", fmt.Errorf("publish media file: %w", err)
 	}
 	committed = true
 	m.Index.Complete(identity)
 	return finalPath, nil
+}
+
+// DownloadInRoot keeps creation, cleanup and publication relative to open
+// directory handles. The supplied root must outlive the call.
+func (m *Manager) DownloadInRoot(ctx context.Context, identity telegram.MediaIdentity, root *os.Root, relative string) (string, error) {
+	if m == nil || m.Client == nil || m.Index == nil || root == nil {
+		return "", errors.New("download manager is not configured")
+	}
+	if !identity.Valid() {
+		return "", ErrInvalidIdentity
+	}
+	if !filepath.IsLocal(relative) || filepath.Clean(relative) == "." {
+		return "", os.ErrPermission
+	}
+	if !m.Index.Reserve(identity) || !m.Index.Claim(identity) {
+		return "", ErrDuplicate
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			m.Index.AbortClaim(identity)
+		}
+	}()
+	dir := filepath.Dir(relative)
+	if err := root.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	parent, err := root.OpenRoot(dir)
+	if err != nil {
+		return "", err
+	}
+	defer parent.Close()
+	if err = m.transfer(ctx, identity, parent, filepath.Base(relative)); err != nil {
+		return "", err
+	}
+	committed = true
+	m.Index.Complete(identity)
+	return relative, nil
+}
+
+func (m *Manager) transfer(ctx context.Context, identity telegram.MediaIdentity, root *os.Root, finalName string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	tmpName := partName(finalName)
+	tmp, err := root.OpenFile(tmpName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("create partial file: %w", err)
+	}
+	defer func() { tmp.Close(); root.Remove(tmpName) }()
+	writer := &mediaWriter{ctx: ctx, dst: tmp, remaining: identity.Size}
+	if err := m.Client.Download(ctx, identity, writer); err != nil {
+		return fmt.Errorf("download Telegram media: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if writer.remaining != 0 {
+		return fmt.Errorf("Telegram media size mismatch: expected %d, received %d", identity.Size, identity.Size-writer.remaining)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("sync partial file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close partial file: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if m.prepared != nil {
+		if err := m.prepared(); err != nil {
+			return err
+		}
+	}
+	// The OS performs an exclusive rename: a competing file must never be
+	// replaced, even if it appeared after the initial existence check.
+	dir, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	if err := publishExclusiveAt(dir, tmpName, finalName); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("final file already exists: %w", ErrDuplicate)
+		}
+		return fmt.Errorf("publish media file: %w", err)
+	}
+	return nil
 }
 
 type mediaWriter struct {
@@ -146,3 +203,5 @@ func (w *mediaWriter) Write(p []byte) (int, error) {
 	w.remaining -= int64(n)
 	return n, err
 }
+
+func partName(final string) string { return ".tgdl-" + final + ".part" }

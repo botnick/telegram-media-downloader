@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 
@@ -158,5 +159,44 @@ func TestManagerReleasesIdentityOnFailure(t *testing.T) {
 	}
 	if m.Index.Has(identity) {
 		t.Fatal("failed download kept dedup reservation")
+	}
+}
+
+func TestRootedDownloadCannotBeRedirectedDuringTransfer(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not allow this ancestor rename with open handles")
+	}
+	base := t.TempDir()
+	outside := t.TempDir()
+	dir := filepath.Join(base, "group")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	m := NewManager(clientFunc(func(_ context.Context, _ telegram.MediaIdentity, w io.Writer) error {
+		if err := os.Rename(dir, filepath.Join(base, "moved")); err != nil {
+			return err
+		}
+		if err := os.Symlink(outside, dir); err != nil {
+			return err
+		}
+		_, err := w.Write([]byte("test"))
+		return err
+	}), nil)
+	_, err = m.DownloadInRoot(context.Background(), telegram.MediaIdentity{Kind: "document", ID: "1", Size: 4}, root, "group/test.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(base, "moved/test.bin"))
+	if err != nil || string(data) != "test" {
+		t.Fatalf("data=%s error=%v", data, err)
+	}
+	files, err := os.ReadDir(outside)
+	if err != nil || len(files) != 0 {
+		t.Fatalf("outside changed: %v error=%v", files, err)
 	}
 }

@@ -136,7 +136,7 @@ func (a *App) drainFileCleanup(ctx context.Context) error {
 	rootPath := filepath.Join(a.dataDir, "downloads")
 	root, err := os.OpenRoot(rootPath)
 	if os.IsNotExist(err) {
-		_, err = tx.ExecContext(ctx, `DELETE FROM tgdl_file_cleanup`)
+		_, err = tx.ExecContext(ctx, `DELETE FROM tgdl_file_cleanup; DELETE FROM tgdl_verified_media`)
 		if err != nil {
 			return err
 		}
@@ -173,6 +173,11 @@ func (a *App) drainFileCleanup(ctx context.Context) error {
 		if pathErr != nil && !os.IsNotExist(pathErr) {
 			failures = append(failures, fmt.Errorf("media cleanup pending for %q: %w", path, pathErr))
 			continue
+		}
+		if (pathErr == nil || os.IsNotExist(pathErr)) && !keep[key(name)] {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM tgdl_verified_media WHERE REPLACE(path,char(92),'/')=?`, filepath.ToSlash(name)); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM tgdl_file_cleanup WHERE path=?`, path); err != nil {
 			return err

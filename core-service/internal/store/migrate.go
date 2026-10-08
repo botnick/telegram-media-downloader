@@ -98,6 +98,23 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_file_cleanup (path TEXT PRIMARY KEY NOT NULL)`); err != nil {
 		return 0, fmt.Errorf("create file cleanup queue: %w", err)
 	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_verified_media (
+		path TEXT PRIMARY KEY NOT NULL, size INTEGER NOT NULL, mtime_ns INTEGER NOT NULL, sha256 TEXT NOT NULL, fingerprint TEXT NOT NULL
+	)`); err != nil {
+		return 0, fmt.Errorf("create verified media cache: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_ingest_files (
+        path TEXT PRIMARY KEY NOT NULL, item TEXT NOT NULL, generation INTEGER NOT NULL, sha256 TEXT NOT NULL DEFAULT ''
+    )`); err != nil {
+		return 0, fmt.Errorf("create ingest journal: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_derived_cleanup (area TEXT NOT NULL,path TEXT NOT NULL,PRIMARY KEY(area,path))`); err != nil {
+		return 0, err
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_message_generations (
+      group_id TEXT NOT NULL,message_id INTEGER NOT NULL,generation INTEGER NOT NULL,PRIMARY KEY(group_id,message_id))`); err != nil {
+		return 0, err
+	}
 	var version int
 	if err := db.QueryRowContext(ctx, `SELECT version FROM tgdl_schema_meta LIMIT 1`).Scan(&version); err != nil {
 		return 0, fmt.Errorf("read schema version: %w", err)
