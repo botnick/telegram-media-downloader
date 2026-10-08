@@ -308,3 +308,92 @@ func TestBackupAndPairingRoutes(t *testing.T) {
 		t.Fatalf("pairing status = %d body=%s", pair.Code, pair.Body.String())
 	}
 }
+
+func TestGalleryReadRoutesAreServedByGo(t *testing.T) {
+	a, err := New(context.Background(), Config{DataDir: t.TempDir(), Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if _, err := a.db.Writer.Exec(`INSERT INTO downloads(group_id, group_name, message_id, file_name, file_path, file_size, file_type, created_at)
+		VALUES ('-1', 'Gallery', 1, 'photo.jpg', 'Gallery/images/photo.jpg', 12, 'photo', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/stats", "/api/downloads", "/api/downloads/all", "/api/downloads/search?q=photo", "/api/groups"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+		rr := httptest.NewRecorder()
+		a.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("%s status = %d body=%s", path, rr.Code, rr.Body.String())
+		}
+	}
+	groupReq := httptest.NewRequest(http.MethodGet, "/api/downloads/-1", nil)
+	groupReq.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	group := httptest.NewRecorder()
+	a.Handler().ServeHTTP(group, groupReq)
+	if group.Code != http.StatusOK {
+		t.Fatalf("group gallery status = %d body=%s", group.Code, group.Body.String())
+	}
+}
+
+func TestConfigAndGroupWritesCommitToKV(t *testing.T) {
+	a, err := New(context.Background(), Config{DataDir: t.TempDir(), Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	configReq := httptest.NewRequest(http.MethodPost, "/api/config", bytes.NewReader([]byte(`{"groups":[{"id":"-5","name":"New"}]}`)))
+	configReq.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	configRR := httptest.NewRecorder()
+	a.Handler().ServeHTTP(configRR, configReq)
+	if configRR.Code != http.StatusOK {
+		t.Fatalf("config status = %d body=%s", configRR.Code, configRR.Body.String())
+	}
+	groupReq := httptest.NewRequest(http.MethodPut, "/api/groups/-5", bytes.NewReader([]byte(`{"name":"Renamed","enabled":true}`)))
+	groupReq.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	groupRR := httptest.NewRecorder()
+	a.Handler().ServeHTTP(groupRR, groupReq)
+	if groupRR.Code != http.StatusOK {
+		t.Fatalf("group status = %d body=%s", groupRR.Code, groupRR.Body.String())
+	}
+	var raw string
+	if err := a.db.Writer.QueryRow(`SELECT value FROM kv WHERE key='config'`).Scan(&raw); err != nil || !strings.Contains(raw, "Renamed") {
+		t.Fatalf("stored config = %q err=%v", raw, err)
+	}
+}
+
+func TestDeleteRoutesUseTransactions(t *testing.T) {
+	a, err := New(context.Background(), Config{DataDir: t.TempDir(), Port: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if _, err := a.db.Writer.Exec(`INSERT INTO downloads(group_id, message_id) VALUES ('-1', 1), ('-1', 2)`); err != nil {
+		t.Fatal(err)
+	}
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := bytes.NewBufferString(`{"ids":[1]}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/downloads/bulk-delete", body)
+	req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	rr := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("bulk delete status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var count int
+	if err := a.db.Writer.QueryRow(`SELECT COUNT(*) FROM downloads`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("remaining rows = %d err=%v", count, err)
+	}
+}

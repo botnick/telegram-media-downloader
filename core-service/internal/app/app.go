@@ -103,6 +103,9 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("POST /api/jobs/{id}/cancel", a.requireAdmin(http.HandlerFunc(a.handleJobCancel)))
 	mux.Handle("POST /api/maintenance/db/backup", a.requireAdmin(http.HandlerFunc(a.handleBackup)))
 	mux.Handle("POST /api/cluster/pairing-code", a.requireAdmin(http.HandlerFunc(a.handlePairingCode)))
+	registerGalleryRoutes(mux, a)
+	registerConfigWriteRoutes(mux, a)
+	registerMediaRoutes(mux, a)
 	registerReadRoutes(mux, read, a.requireSession)
 	mux.HandleFunc("GET /ws", a.handleWebSocket)
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
