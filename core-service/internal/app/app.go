@@ -188,6 +188,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerFaststartRoutes(mux, a)
 	registerThumbRoutes(mux, a)
 	registerMaintenanceRoutes(mux, a)
+	registerSystemRoutes(mux, a)
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
 	registerArchiveRoutes(mux, a)

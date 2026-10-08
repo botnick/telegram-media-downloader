@@ -93,6 +93,16 @@ func (h *Hub) Remove(c *Client) {
 	}
 	h.mu.Unlock()
 }
+
+// Count reports currently connected dashboard clients for the health surface.
+func (h *Hub) Count() int {
+	if h == nil {
+		return 0
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}
 func (h *Hub) Broadcast(e Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

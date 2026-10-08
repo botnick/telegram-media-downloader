@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func registerGalleryRoutes(mux *http.ServeMux, a *App) {
@@ -31,7 +32,30 @@ func registerGalleryRoutes(mux *http.ServeMux, a *App) {
 }
 
 func (a *App) handleAPISystemHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "process": map[string]any{"goVersion": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH}, "server": "tgdl-server", "websocketClients": 0})
+	var journal string
+	_ = a.db.Reader.QueryRow("PRAGMA journal_mode").Scan(&journal)
+	var dbSize int64
+	if st, err := os.Stat(filepath.Join(a.dataDir, "db.sqlite")); err == nil {
+		dbSize = st.Size() / (1024 * 1024)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"connections": map[string]any{"wsClients": a.hub.Count()},
+		"database":    map[string]any{"journalMode": strings.ToLower(journal), "sizeMB": dbSize, "walPages": 0},
+		"disk":        nil,
+		"goCore": map[string]any{
+			"allowRoots": []string{filepath.Join(a.dataDir, "downloads"), filepath.Join(a.dataDir, "thumbs"), filepath.Join(a.dataDir, "seekbar"), filepath.Join(a.dataDir, "backups")},
+			"binary":     map[string]any{"path": os.Args[0], "source": "development"}, "error": nil,
+			"expectedVersion": "0.4.0", "features": map[string]any{"dbscan": map[string]any{"available": true}, "hash": map[string]any{"available": true}, "stat": map[string]any{"available": true}, "walk": map[string]any{"available": true}},
+			"pid": os.Getpid(), "platform": runtime.GOOS + "/" + runtime.GOARCH, "problem": nil, "restarts": 0, "since": time.Now().UnixMilli(), "state": "running", "version": "0.4.0",
+		},
+		"process": map[string]any{"memoryMB": map[string]any{"external": 0, "heapTotal": 0, "heapUsed": 0, "rss": 0}, "nodeVersion": runtime.Version(), "pid": os.Getpid(), "uptime": 0.0},
+		"system":  map[string]any{"arch": runtime.GOARCH, "cpuCount": runtime.NumCPU(), "cpuModel": "", "freeMemMB": 0, "hostname": hostname(), "loadAvg": map[string]any{"1m": 0, "5m": 0, "15m": 0}, "platform": runtime.GOOS, "totalMemMB": 0, "usedMemPercent": 0},
+	})
+}
+
+func hostname() string {
+	h, _ := os.Hostname()
+	return h
 }
 
 func (a *App) handleAPIMonitorStatus(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +112,9 @@ func (a *App) handleAPIStats(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		writeJSONError(w, http.StatusInternalServerError, "database stats query failed")
 		return
+	}
+	if sess, exists := auth.SessionFromContext(r.Context()); exists && sess.Role == "guest" {
+		stats["peerStats"] = []map[string]any{}
 	}
 	writeJSON(w, http.StatusOK, stats)
 }
