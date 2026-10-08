@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS tgdl_work (
  status TEXT NOT NULL DEFAULT 'pending',
  paused INTEGER NOT NULL DEFAULT 0,
  refresh_required INTEGER NOT NULL DEFAULT 0,
+ origin TEXT NOT NULL DEFAULT 'live',
  attempts INTEGER NOT NULL DEFAULT 0,
  retry_at INTEGER NOT NULL DEFAULT 0,
  error TEXT,
@@ -57,3 +58,10 @@ CREATE TABLE IF NOT EXISTS tgdl_account_ops (
 CREATE TABLE IF NOT EXISTS tgdl_purge_jobs (
  id TEXT PRIMARY KEY NOT NULL,payload TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tgdl_history_jobs (
+ id TEXT PRIMARY KEY NOT NULL,
+ group_id TEXT NOT NULL,
+ state TEXT NOT NULL,
+ payload TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tgdl_history_running ON tgdl_history_jobs(group_id) WHERE state='running';

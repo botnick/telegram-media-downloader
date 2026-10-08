@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
@@ -60,17 +61,20 @@ type Controller struct {
 	attemptLimit   func(int64) time.Duration
 }
 type running struct {
-	ctx         context.Context
-	cancel      context.CancelCauseFunc
-	done        chan struct{}
-	wake        chan struct{}
-	accounts    map[string]Account
-	ids         []string
-	workers     int
-	maxAttempts int
-	mu          sync.Mutex
-	active      map[int64]context.CancelFunc
-	progress    map[int64]*transferStats
+	observing    atomic.Bool
+	jobUsers     atomic.Int64
+	ctx          context.Context
+	cancel       context.CancelCauseFunc
+	done         chan struct{}
+	wake         chan struct{}
+	accounts     map[string]Account
+	ids          []string
+	workers      int
+	maxAttempts  int
+	mu           sync.Mutex
+	active       map[int64]context.CancelFunc
+	activeOrigin map[int64]string
+	progress     map[int64]*transferStats
 }
 
 func New(writer, reader *sql.DB, dataDir string, factory Factory, filter Filter, sink Sink, notify func(string, error)) *Controller {
@@ -85,8 +89,9 @@ func (c *Controller) setState(state string, cause error) {
 	c.mu.Lock()
 	c.state = state
 	c.lastError = cause
+	manual := c.run != nil && !c.run.observing.Load()
 	c.mu.Unlock()
-	if c.notify != nil {
+	if c.notify != nil && !manual {
 		c.notify(state, cause)
 	}
 }
@@ -313,6 +318,14 @@ func (c *Controller) ClearFinished(ctx context.Context) error {
 	return c.work.ClearFinished(ctx)
 }
 func (c *Controller) Start(request, parent context.Context, accounts []AccountConfig, workers, maxAttempts int) error {
+	return c.start(request, parent, accounts, workers, maxAttempts, true)
+}
+
+func (c *Controller) StartJobs(request, parent context.Context, accounts []AccountConfig, workers, maxAttempts int) error {
+	return c.start(request, parent, accounts, workers, maxAttempts, false)
+}
+
+func (c *Controller) start(request, parent context.Context, accounts []AccountConfig, workers, maxAttempts int, observing bool) error {
 	c.opMu.Lock()
 	locked := true
 	defer func() {
@@ -322,11 +335,25 @@ func (c *Controller) Start(request, parent context.Context, accounts []AccountCo
 	}()
 	c.mu.Lock()
 	old := c.run
+	state := c.state
 	c.mu.Unlock()
 	if old != nil {
 		select {
 		case <-old.done:
 		default:
+			if state == "running" && old.ctx.Err() == nil {
+				if !observing {
+					return nil
+				}
+				if !old.observing.Swap(true) {
+					c.mu.Lock()
+					c.started = time.Now()
+					c.mu.Unlock()
+					c.setState("running", nil)
+					c.wake(old)
+					return nil
+				}
+			}
 			return errors.New("Runtime already running")
 		}
 	}
@@ -345,6 +372,8 @@ func (c *Controller) Start(request, parent context.Context, accounts []AccountCo
 	}
 	ctx, cancel := context.WithCancelCause(parent)
 	run := &running{ctx: ctx, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), accounts: make(map[string]Account), workers: workers, maxAttempts: maxAttempts, active: make(map[int64]context.CancelFunc), progress: make(map[int64]*transferStats)}
+	run.observing.Store(observing)
+	run.activeOrigin = map[int64]string{}
 	failed := true
 	defer func() {
 		if failed {
@@ -522,6 +551,9 @@ func (c *Controller) Status(ctx context.Context) (map[string]any, error) {
 	c.mu.Lock()
 	state, cause, started, run := c.state, c.lastError, c.started, c.run
 	c.mu.Unlock()
+	if run != nil && !run.observing.Load() {
+		state, cause, started = "stopped", nil, time.Time{}
+	}
 	var errorValue any
 	if cause != nil {
 		errorValue = cause.Error()
@@ -545,6 +577,9 @@ func (c *Controller) Status(ctx context.Context) (map[string]any, error) {
 }
 
 func (c *Controller) accept(ctx context.Context, run *running, accountID string, u tg.UpdatesClass) error {
+	if !run.observing.Load() && !telegram.IsHistoryRecovery(ctx) {
+		return nil
+	}
 	var list []tg.UpdateClass
 	switch update := u.(type) {
 	case *tg.Updates:
@@ -613,7 +648,7 @@ func (c *Controller) worker(run *running) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for run.ctx.Err() == nil {
-		work, err := c.work.Claim(run.ctx, run.ids, time.Now())
+		work, err := c.work.Claim(run.ctx, run.ids, time.Now(), !run.observing.Load())
 		if err != nil {
 			if run.ctx.Err() == nil {
 				run.cancel(fmt.Errorf("claim work: %w", err))
@@ -630,9 +665,14 @@ func (c *Controller) worker(run *running) {
 			continue
 		}
 		ctx, cancel := context.WithCancel(run.ctx)
+		ctx = WithOrigin(ctx, work.Origin)
 		progress := &transferStats{started: time.Now()}
 		run.mu.Lock()
 		run.active[work.ID] = cancel
+		run.activeOrigin[work.ID] = work.Origin
+		if work.Origin == "live" && !run.observing.Load() {
+			cancel()
+		}
 		run.progress[work.ID] = progress
 		run.mu.Unlock()
 		current, err := c.work.IsCurrent(ctx, work)
@@ -676,6 +716,7 @@ func (c *Controller) worker(run *running) {
 		cancel()
 		run.mu.Lock()
 		delete(run.active, work.ID)
+		delete(run.activeOrigin, work.ID)
 		delete(run.progress, work.ID)
 		run.mu.Unlock()
 		retry := time.Time{}

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/store"
 	"github.com/gotd/td/tg"
 	"testing"
@@ -16,6 +17,88 @@ func testStore(t *testing.T) *WorkStore {
 	}
 	t.Cleanup(func() { db.Reader.Close(); db.Writer.Close() })
 	return NewWorkStore(db.Writer, db.Reader)
+}
+
+func BenchmarkAtomicHistoryEnqueue(b *testing.B) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer db.Reader.Close()
+	defer db.Writer.Close()
+	if _, err = db.Writer.Exec(`INSERT INTO tgdl_history_jobs(id,group_id,state,payload) VALUES('bench','-1000000000042','running','{}')`); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tx, err := db.Writer.BeginTx(ctx, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, _, err = enqueueWork(ctx, tx, "one", Target{}, testMessage(i+1, 0, int64(i+1)), 0, "history"); err == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE tgdl_history_jobs SET payload=? WHERE id='bench'`, fmt.Sprintf(`{"cursor":%d,"processed":%d}`, i+1, i+1))
+		}
+		if err == nil {
+			err = tx.Commit()
+		}
+		tx.Rollback()
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestManualQueueSharesDedupPriorityAndAtomicCheckpoints(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if _, _, err := enqueueWork(ctx, s.writer, "one", Target{}, testMessage(10, 0, 10), 0, "history"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Enqueue(ctx, "one", Target{}, testMessage(11, 0, 11)); err != nil {
+		t.Fatal(err)
+	}
+	work, err := s.Claim(ctx, []string{"one"}, time.Now())
+	if err != nil || work == nil || work.MessageID != 11 {
+		t.Fatalf("live priority: %+v %v", work, err)
+	}
+	if err = s.Finish(ctx, work, nil, false, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	work, err = s.Claim(ctx, []string{"one"}, time.Now(), true)
+	if err != nil || work == nil || work.Origin != "history" {
+		t.Fatalf("manual claim: %+v %v", work, err)
+	}
+	if err = s.Finish(ctx, work, nil, false, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, changed, err := enqueueWork(ctx, s.writer, "two", Target{}, testMessage(10, 0, 10), 0, "history"); err != nil || changed {
+		t.Fatalf("manual dedup changed=%t %v", changed, err)
+	}
+	tx, err := s.writer.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = enqueueWork(ctx, tx, "one", Target{}, testMessage(12, 0, 12), 0, "history"); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	var rows int
+	if err = s.reader.QueryRow(`SELECT count(*) FROM tgdl_work WHERE message_id=12`).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("rolled back checkpoint left work: %d %v", rows, err)
+	}
+	if _, _, err = s.Enqueue(ctx, "one", Target{}, testMessage(13, 0, 13)); err != nil {
+		t.Fatal(err)
+	}
+	if work, err = s.Claim(ctx, []string{"one"}, time.Now(), true); err != nil || work != nil {
+		t.Fatalf("jobs-only claimed live work: %+v %v", work, err)
+	}
+	if _, changed, err := enqueueWork(ctx, s.writer, "one", Target{}, testMessage(13, 0, 13), 0, "history"); err != nil || !changed {
+		t.Fatalf("manual request did not promote queued live work: %t %v", changed, err)
+	}
 }
 func testMessage(id, edit int, media int64) *tg.Message {
 	return &tg.Message{ID: id, Date: 1, EditDate: edit, PeerID: &tg.PeerChannel{ChannelID: 42}, Media: &tg.MessageMediaDocument{Document: &tg.Document{ID: media, Size: 4, DCID: 2}}}

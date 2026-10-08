@@ -30,6 +30,7 @@ type Work struct {
 	Attempts                                           int
 	CreatedAt                                          int64
 	ForceRefresh                                       bool
+	Origin                                             string
 	body                                               []byte
 }
 
@@ -45,6 +46,19 @@ func (w *Work) Message() (*tg.Message, error) {
 // updates from multiple accounts keep the original source account. A newer
 // edit replaces the payload but keeps a running claim until it is released.
 func (s *WorkStore) Enqueue(ctx context.Context, accountID string, target Target, message *tg.Message, updatePTS ...int) (int64, bool, error) {
+	pts := 0
+	if len(updatePTS) > 0 {
+		pts = updatePTS[0]
+	}
+	return enqueueWork(ctx, s.writer, accountID, target, message, pts, "live")
+}
+
+type queueWriter interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func enqueueWork(ctx context.Context, db queueWriter, accountID string, target Target, message *tg.Message, pts int, origin string, repair ...bool) (int64, bool, error) {
 	media, err := telegram.MessageAttachment(message)
 	if err != nil {
 		return 0, false, err
@@ -60,28 +74,29 @@ func (s *WorkStore) Enqueue(ctx context.Context, accountID string, target Target
 		target.ID = media.GroupID
 	}
 	version := max(message.Date, message.EditDate)
-	pts := 0
-	if len(updatePTS) != 0 {
-		pts = updatePTS[0]
-	}
 	_, channel := message.PeerID.(*tg.PeerChannel)
 	now := time.Now().UnixMilli()
+	verifyExisting := len(repair) > 0 && repair[0] && origin != "live"
 	var id int64
-	err = s.writer.QueryRowContext(ctx, `INSERT INTO tgdl_work(account_id,group_id,group_name,message_id,version,source_pts,identity,media_type,file_name,file_size,body,created_at,updated_at)
- VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+	err = db.QueryRowContext(ctx, `INSERT INTO tgdl_work(account_id,group_id,group_name,message_id,version,source_pts,identity,media_type,file_name,file_size,body,created_at,updated_at,origin)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(group_id,message_id) DO UPDATE SET
  account_id=excluded.account_id,group_name=excluded.group_name,version=excluded.version,source_pts=excluded.source_pts,identity=excluded.identity,
  media_type=excluded.media_type,file_name=excluded.file_name,file_size=excluded.file_size,body=excluded.body,
  generation=tgdl_work.generation+1,attempts=0,retry_at=0,error=NULL,refresh_required=0,updated_at=excluded.updated_at,
+ origin=CASE WHEN tgdl_work.origin<>'live' THEN tgdl_work.origin ELSE excluded.origin END,
  status=CASE WHEN tgdl_work.status='processing' THEN 'processing' ELSE 'pending' END
  WHERE excluded.version>tgdl_work.version OR (excluded.version=tgdl_work.version AND excluded.identity<>tgdl_work.identity
  AND excluded.source_pts>tgdl_work.source_pts AND (? OR excluded.account_id=tgdl_work.account_id))
- RETURNING id`, accountID, target.ID, target.Name, media.MessageID, version, pts, media.Identity.Key(), media.Type, media.Name, media.Identity.Size, buffer.Buf, now, now, channel).Scan(&id)
+ OR (excluded.origin<>'live' AND excluded.version=tgdl_work.version AND excluded.identity=tgdl_work.identity
+ AND tgdl_work.origin='live' AND tgdl_work.status='pending')
+ OR (? AND excluded.version=tgdl_work.version AND excluded.identity=tgdl_work.identity AND tgdl_work.status IN ('completed','skipped','failed'))
+ RETURNING id`, accountID, target.ID, target.Name, media.MessageID, version, pts, media.Identity.Key(), media.Type, media.Name, media.Identity.Size, buffer.Buf, now, now, origin, channel, verifyExisting).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A repeated identity can still carry a newer ordering watermark. Keep
 		// it without requeueing, otherwise an intermediate delayed edit could
 		// replace a later observation of the current attachment.
-		_, err = s.writer.ExecContext(ctx, `UPDATE tgdl_work SET source_pts=MAX(source_pts,?)
+		_, err = db.ExecContext(ctx, `UPDATE tgdl_work SET source_pts=MAX(source_pts,?)
  WHERE group_id=? AND message_id=? AND version=? AND identity=? AND (? OR account_id=?)`, pts, target.ID, media.MessageID, version, media.Identity.Key(), channel, accountID)
 		return 0, false, err
 	}
@@ -90,7 +105,7 @@ func (s *WorkStore) Enqueue(ctx context.Context, accountID string, target Target
 
 // Claim changes pending -> processing in one SQLite statement. Only accounts
 // whose authenticated Run callback is active can claim their own work.
-func (s *WorkStore) Claim(ctx context.Context, accounts []string, now time.Time) (*Work, error) {
+func (s *WorkStore) Claim(ctx context.Context, accounts []string, now time.Time, manualOnly ...bool) (*Work, error) {
 	if len(accounts) == 0 {
 		return nil, nil
 	}
@@ -101,11 +116,15 @@ func (s *WorkStore) Claim(ctx context.Context, accounts []string, now time.Time)
 		args = append(args, id)
 	}
 	args = append(args, now.UnixMilli())
+	originClause := ""
+	if len(manualOnly) > 0 && manualOnly[0] {
+		originClause = " AND origin<>'live'"
+	}
 	row := s.writer.QueryRowContext(ctx, `UPDATE tgdl_work SET status='processing',claim_generation=generation,attempts=attempts+1,updated_at=?
-	 WHERE id=(SELECT id FROM tgdl_work WHERE status='pending' AND paused=0 AND (SELECT paused FROM tgdl_queue_state WHERE id=1)=0 AND account_id IN (`+strings.Join(marks, ",")+`) AND retry_at<=? ORDER BY id LIMIT 1)
- RETURNING id,account_id,group_id,group_name,message_id,generation,media_type,file_name,file_size,body,attempts,created_at,refresh_required`, args...)
+	 WHERE id=(SELECT id FROM tgdl_work WHERE status='pending' AND paused=0 AND (SELECT paused FROM tgdl_queue_state WHERE id=1)=0 AND account_id IN (`+strings.Join(marks, ",")+`) AND retry_at<=?`+originClause+` ORDER BY CASE origin WHEN 'history' THEN 1 ELSE 0 END,id LIMIT 1)
+ RETURNING id,account_id,group_id,group_name,message_id,generation,media_type,file_name,file_size,body,attempts,created_at,refresh_required,origin`, args...)
 	w := new(Work)
-	if err := row.Scan(&w.ID, &w.AccountID, &w.GroupID, &w.GroupName, &w.MessageID, &w.Generation, &w.MediaType, &w.FileName, &w.FileSize, &w.body, &w.Attempts, &w.CreatedAt, &w.ForceRefresh); err != nil {
+	if err := row.Scan(&w.ID, &w.AccountID, &w.GroupID, &w.GroupName, &w.MessageID, &w.Generation, &w.MediaType, &w.FileName, &w.FileSize, &w.body, &w.Attempts, &w.CreatedAt, &w.ForceRefresh, &w.Origin); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}

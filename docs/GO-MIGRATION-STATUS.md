@@ -11,8 +11,8 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the Go executable passes **210 of 324
-  tests**, with **22 of 36 files passing**. The remaining **114 failed cases in
+- The latest full black-box run against the Go executable passes **213 of 324
+  tests**, with **22 of 36 files passing**. The remaining **111 failed cases in
   14 files** are still release blockers, not waived expectations. These are
   fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
 - Passing domains include accounts, authentication, shares, queue controls,
@@ -117,8 +117,12 @@ IDs, and rejects a nonadvancing cursor. Service messages and deleted-message
 placeholders advance pagination without entering the media queue. Native tests
 interrupt both a later RPC and the ingestion sink, reopen SQLite, and verify
 that the old cursor and recovery marker survive until all pages are accepted.
-This repairs automatic channel-gap recovery; the public manual history and URL
-job workflows are still incomplete.
+This repairs automatic channel-gap recovery. Public history start, status,
+cancellation, deletion and restart resumption now also run through the shared
+Go accounts and queue. Jobs-only runs do not enable live subscriptions; their
+cursor checkpoints commit with accepted work. Rescan verifies existing bytes
+and repairs missing files. Direct URL jobs and text-link extraction/export
+remain incomplete. See [history behavior and evidence](GO-HISTORY.md).
 
 Media subscription filters now use the UI's `files` key and distinguish voice
 messages from music using Telegram's audio `voice` attribute. Both remain
@@ -185,7 +189,7 @@ migration; the current source tree is not yet free of Node dependencies.
 
 ## Required before release
 
-- Validate native Telegram login/account management on a real account; complete history/URL jobs,
+- Validate native Telegram login/account management and history on a real account; complete URL jobs,
   account-wide oversized-gap repair, account routing/proxies, stories and
   forwarding. Channel history gaps are repaired natively; an unresolved global
   or incomplete marker still prevents restart and must never be cleared merely
@@ -218,7 +222,7 @@ single atomic transaction. The durable queue makes interrupted cleanup
 recoverable. See the [Go traversal-resistant file APIs](https://go.dev/blog/osroot)
 and [os.Root reference](https://pkg.go.dev/os#Root).
 
-The module requires Go 1.25 or newer and selects Go 1.26.8. Docker and the main
+The module requires Go 1.26 or newer and selects Go 1.26.8. Docker and the main
 Go CI workflows use the same toolchain. Other API references:
 [net/http](https://pkg.go.dev/net/http),
 [SQLite driver](https://pkg.go.dev/modernc.org/sqlite),

@@ -313,9 +313,11 @@ func (a *App) runPurgeLocked(ctx context.Context, p purgeRecord, recovering bool
 		if err := savePurge(ctx, a.db.Writer, p); err != nil {
 			return err
 		}
-		if err := a.monitor.Stop(ctx); err != nil {
-			return err
-		}
+	}
+	// Jobs-only accounts and workers are active even when the public live
+	// monitor state is stopped. Always join them before changing library data.
+	if err := a.monitor.Stop(ctx); err != nil {
+		return err
 	}
 	a.mediaMu.Lock()
 	locked := true
@@ -427,6 +429,8 @@ func purgeQueueHistory(ctx context.Context, tx *sql.Tx, groupID string, all bool
 func (a *App) commitPurge(ctx context.Context, p *purgeRecord) error {
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
+	a.historyMu.Lock()
+	defer a.historyMu.Unlock()
 	config, err := a.config.Load(ctx)
 	if err != nil {
 		return err
@@ -527,6 +531,17 @@ func (a *App) commitPurge(ctx context.Context, p *purgeRecord) error {
 	if err := purgeQueueHistory(ctx, tx, p.GroupID, p.All); err != nil {
 		return err
 	}
+	// Unresolved jobs have no verified group yet. Cancel those concurrent
+	// requests as well, so they cannot register a purged group after reset.
+	historyWhere := "state='running'"
+	historyArgs := []any{}
+	if !p.All {
+		historyWhere += " AND (group_id=? OR json_extract(payload,'$.initialized')=0)"
+		historyArgs = append(historyArgs, p.GroupID)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tgdl_history_jobs WHERE `+historyWhere, historyArgs...); err != nil {
+		return err
+	}
 	journalWhere := "1=1"
 	if !p.All {
 		journalWhere = `json_extract(item,'$.GroupID')=?`
@@ -585,6 +600,14 @@ func (a *App) commitPurge(ctx context.Context, p *purgeRecord) error {
 	if err := tx.Commit(); err != nil {
 		p.Phase = "queued"
 		return err
+	}
+	for id, job := range a.historyJobs {
+		if job.State == "running" && (p.All || job.GroupID == p.GroupID || !job.initialized) {
+			if cancel := a.historyCancel[id]; cancel != nil {
+				cancel()
+			}
+			delete(a.historyJobs, id)
+		}
 	}
 	return nil
 }

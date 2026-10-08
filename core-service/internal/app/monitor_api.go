@@ -24,6 +24,10 @@ func registerMonitorRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("POST /api/monitor/restart", a.requireAdmin(http.HandlerFunc(a.handleMonitorRestart)))
 }
 func (a *App) startMonitor(ctx context.Context) error {
+	return a.startTelegramEngine(ctx, true)
+}
+
+func (a *App) startTelegramEngine(ctx context.Context, observe bool) error {
 	if a.purgePending() {
 		return errors.New("a purge must finish before the monitor can start")
 	}
@@ -67,6 +71,9 @@ func (a *App) startMonitor(ctx context.Context) error {
 		specs = append(specs, engine.AccountConfig{ID: saved.ID, Name: names[saved.ID], Telegram: telegram.GotdConfig{AppID: appID, AppHash: appHash, SessionPath: saved.NativePath, EncryptedSessionPath: saved.ImportPath, SessionSecret: strings.TrimSpace(string(secret))}})
 	}
 	download, _ := cfg["download"].(map[string]any)
+	if !observe {
+		return a.monitor.StartJobs(ctx, a.ctx, specs, int(number(download["concurrent"], 10)), int(number(download["retries"], 5)))
+	}
 	return a.monitor.Start(ctx, a.ctx, specs, int(number(download["concurrent"], 10)), int(number(download["retries"], 5)))
 }
 func (a *App) setAutoStart(ctx context.Context, value bool) error {
@@ -109,13 +116,13 @@ func (a *App) handleMonitorStart(w http.ResponseWriter, r *http.Request) {
 }
 func (a *App) handleMonitorStop(w http.ResponseWriter, r *http.Request) {
 	// Cancel first so an operator can stop an in-progress startup promptly.
-	err := a.monitor.Stop(r.Context())
+	err := a.monitor.StopObserving(r.Context())
 	a.monitorOp.Lock()
 	defer a.monitorOp.Unlock()
 	// A concurrent start may still have been preparing settings when the first
 	// cancellation ran. Serialize a second stop after that preparation finishes.
 	if err == nil {
-		err = a.monitor.Stop(r.Context())
+		err = a.monitor.StopObserving(r.Context())
 	}
 	if err == nil {
 		err = a.setAutoStart(r.Context(), false)
@@ -143,7 +150,7 @@ func (a *App) ingestWork(ctx context.Context, work *engine.Work, message *tg.Mes
 	for _, group := range configuredGroupList(cfg) {
 		if toString(group["id"]) == work.GroupID {
 			pin := toString(group["monitorAccount"])
-			allowed = group["enabled"] == true && group["suspended"] != true && (pin == "" || pin == work.AccountID)
+			allowed = (group["enabled"] == true || work.Origin == "history") && group["suspended"] != true && (pin == "" || pin == work.AccountID)
 			break
 		}
 	}

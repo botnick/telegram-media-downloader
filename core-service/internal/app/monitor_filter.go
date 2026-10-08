@@ -50,7 +50,7 @@ func (a *App) monitorFilter(ctx context.Context, accountID string, message *tg.M
 			}
 		}
 	}
-	if group == nil || group["enabled"] != true || group["suspended"] == true {
+	if group == nil || (group["enabled"] != true && engine.Origin(ctx) != "history") || group["suspended"] == true {
 		return engine.Target{}, false, nil
 	}
 	if pin := toString(group["monitorAccount"]); pin != "" && pin != accountID {

@@ -7,6 +7,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +35,7 @@ func Open(ctx context.Context, dataDir string) (*DB, error) {
 		return nil, fmt.Errorf("create data directory: %w", err)
 	}
 	dbPath := filepath.Join(dataDir, "db.sqlite")
-	writer, err := sql.Open("sqlite", dbPath)
+	writer, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("open writer: %w", err)
 	}
@@ -48,7 +49,7 @@ func Open(ctx context.Context, dataDir string) (*DB, error) {
 		writer.Close()
 		return nil, err
 	}
-	reader, err := sql.Open("sqlite", dbPath)
+	reader, err := sql.Open("sqlite", sqliteDSN(dbPath))
 	if err != nil {
 		writer.Close()
 		return nil, fmt.Errorf("open reader: %w", err)
@@ -61,6 +62,19 @@ func Open(ctx context.Context, dataDir string) (*DB, error) {
 		return nil, err
 	}
 	return &DB{Writer: writer, Reader: reader}, nil
+}
+
+// PRAGMAs belong to each connection, including new pool entries and replacement
+// connections after cancellation. Configuring just the first connection leaves
+// subsequent readers/writers without the intended busy timeout or constraints.
+func sqliteDSN(path string) string {
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	q := url.Values{}
+	q.Add("_pragma", "busy_timeout(5000)")
+	q.Add("_pragma", "foreign_keys(1)")
+	q.Add("_pragma", "synchronous(NORMAL)")
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func configure(ctx context.Context, db *sql.DB) error {
@@ -123,6 +137,18 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 		return 0, fmt.Errorf("create engine schema: %w", err)
 	}
 	var pausedColumn int
+	var originColumn int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('tgdl_work') WHERE name='origin'`).Scan(&originColumn); err != nil {
+		return 0, err
+	}
+	if originColumn == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_work ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'`); err != nil {
+			return 0, err
+		}
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tgdl_work_priority ON tgdl_work(status,paused,CASE origin WHEN 'history' THEN 1 ELSE 0 END,id)`); err != nil {
+		return 0, err
+	}
 	var refreshColumn int
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('tgdl_work') WHERE name='refresh_required'`).Scan(&refreshColumn); err != nil {
 		return 0, err

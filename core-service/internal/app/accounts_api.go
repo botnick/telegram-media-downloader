@@ -207,13 +207,11 @@ func (a *App) publishAccount(ctx context.Context, p accounts.PendingAccount) (st
 	// it running until publication has committed, so a collision or any other
 	// publication error cannot take healthy existing accounts offline.
 	a.hub.Broadcast(ws.Event{Type: "config_updated"})
-	if restart {
-		if err = a.monitor.Stop(ctx); err != nil {
-			if a.output != nil {
-				fmt.Fprintf(a.output, "Account saved; monitor stop for refresh failed: %v\n", err)
-			}
-			return id, nil
+	if err = a.monitor.Stop(ctx); err != nil {
+		if a.output != nil {
+			fmt.Fprintf(a.output, "Account saved; monitor stop for refresh failed: %v\n", err)
 		}
+		return id, nil
 	}
 	a.restartAfterAccountsChange(restart)
 	return id, nil
@@ -253,11 +251,8 @@ func (a *App) handleAccountRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	restart := status["state"] == "running"
-	stopped := !restart
-	if restart {
-		err = a.monitor.Stop(r.Context())
-		stopped = err == nil
-	}
+	err = a.monitor.Stop(r.Context())
+	stopped := err == nil
 	if err == nil {
 		err = a.accounts.Recover(r.Context())
 	}

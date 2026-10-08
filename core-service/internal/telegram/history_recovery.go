@@ -29,6 +29,10 @@ const recoveryPageSize = 100
 const recoveryMaxPages = 1000
 const recoveryDifferenceLimit = 100
 
+type recoveryContextKey struct{}
+
+func IsHistoryRecovery(ctx context.Context) bool { return ctx.Value(recoveryContextKey{}) == true }
+
 func (a *Account) SupportsHistoryRecovery() bool { return true }
 
 func (a *Account) recoverPending(ctx context.Context, userID int64) error {
@@ -36,6 +40,7 @@ func (a *Account) recoverPending(ctx context.Context, userID int64) error {
 }
 
 func recoverPendingHistory(ctx context.Context, api historyRecoveryAPI, state *UpdateState, userID int64, handle func(context.Context, tg.UpdatesClass) error) error {
+	ctx = context.WithValue(ctx, recoveryContextKey{}, true)
 	records, err := state.PendingRecovery(ctx)
 	if err != nil {
 		return err

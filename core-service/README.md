@@ -2,7 +2,7 @@
 
 `cmd/tgdl-server` is the Go backend under development. It serves the embedded
 SPA and implemented HTTP/WebSocket routes directly. Packaging selects it,
-but login/history workflows and public API parity remain incomplete.
+but live Telegram verification and public API parity remain incomplete.
 See [verified coverage and remaining release work](../docs/GO-MIGRATION-STATUS.md).
 The executable does not start or proxy to a Node server.
 
@@ -42,6 +42,9 @@ Useful commands:
   a query-only pool and require a valid session.
 - Pin mutations, job status/cancellation, SQLite backup and cluster pairing
   are owned by Go and commit before broadcasting their event.
+- `/api/history` runs native durable backfills using the shared account/queue
+  engine, including jobs-only operation, cancellation and restart resumption.
+  See [history limits, semantics and validation](../docs/GO-HISTORY.md).
 
 ## Data safety
 

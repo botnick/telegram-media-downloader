@@ -48,6 +48,10 @@ type App struct {
 	accounts         *accounts.Repository
 	accountWizard    *accounts.Wizard
 	monitorOp        sync.Mutex
+	historyMu        sync.Mutex
+	historyJobs      map[string]*historyJob
+	historyCancel    map[string]context.CancelFunc
+	historyDrain     bool
 	ctx              context.Context
 	cancel           context.CancelFunc
 	bootWG           sync.WaitGroup
@@ -191,6 +195,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("POST /api/maintenance/db/backup", a.requireAdmin(http.HandlerFunc(a.handleBackup)))
 	mux.Handle("POST /api/cluster/pairing-code", a.requireAdmin(http.HandlerFunc(a.handlePairingCode)))
 	registerMonitorRoutes(mux, a)
+	registerHistoryRoutes(mux, a)
 	registerQueueRoutes(mux, a)
 	registerAccountRoutes(mux, a)
 	registerDialogRoutes(mux, a)
@@ -218,6 +223,10 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	if err := a.recoverPurges(ctx); err != nil {
 		a.Close()
 		return nil, fmt.Errorf("recover purge jobs: %w", err)
+	}
+	if err := a.recoverHistoryJobs(ctx); err != nil {
+		a.Close()
+		return nil, fmt.Errorf("recover history jobs: %w", err)
 	}
 	stored, err := a.config.Load(ctx)
 	if err != nil {
