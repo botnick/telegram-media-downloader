@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestWireEventOmitsRolesAndFlattensPayload(t *testing.T) {
+func TestWireEventUsesPayloadEnvelopeAndOmitsRoles(t *testing.T) {
 	raw, err := json.Marshal(Event{Type: "file_deleted", Roles: []string{"admin"}, Payload: map[string]any{"id": 5}})
 	if err != nil {
 		t.Fatal(err)
@@ -15,7 +15,8 @@ func TestWireEventOmitsRolesAndFlattensPayload(t *testing.T) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if len(decoded) != 2 || decoded["id"] != float64(5) || decoded["type"] != "file_deleted" {
+	payload, ok := decoded["payload"].(map[string]any)
+	if len(decoded) != 2 || decoded["type"] != "file_deleted" || !ok || payload["id"] != float64(5) {
 		t.Fatalf("wire event: %s", raw)
 	}
 }

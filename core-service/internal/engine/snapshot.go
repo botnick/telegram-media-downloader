@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"io"
 	"strconv"
 	"sync/atomic"
@@ -45,7 +46,7 @@ func (c *Controller) Snapshot(ctx context.Context) (map[string]any, error) {
 	c.mu.Unlock()
 	active, queued, recent := []map[string]any{}, []map[string]any{}, []map[string]any{}
 	// Active workers <=64; pending and history views are independently bounded.
-	rows, err := c.reader.QueryContext(ctx, `SELECT id,group_id,group_name,message_id,media_type,file_name,file_size,account_id,status,created_at,updated_at,error,
+	rows, err := c.reader.QueryContext(ctx, `SELECT id,group_id,group_name,message_id,media_type,file_name,file_size,account_id,status,paused,created_at,updated_at,error,
  (SELECT file_path FROM downloads WHERE group_id=tgdl_work.group_id AND message_id=tgdl_work.message_id LIMIT 1)
  FROM tgdl_work WHERE status='processing' OR id IN (SELECT id FROM tgdl_work WHERE status='pending' ORDER BY id LIMIT 1000)
  OR id IN (SELECT id FROM tgdl_work WHERE status IN ('completed','failed','skipped') ORDER BY updated_at DESC LIMIT 100)
@@ -57,8 +58,9 @@ func (c *Controller) Snapshot(ctx context.Context) (map[string]any, error) {
 	for rows.Next() {
 		var id, msg, size, added, updated int64
 		var group, name, media, file, account, state string
+		var paused bool
 		var detail, filePath sql.NullString
-		if err = rows.Scan(&id, &group, &name, &msg, &media, &file, &size, &account, &state, &added, &updated, &detail, &filePath); err != nil {
+		if err = rows.Scan(&id, &group, &name, &msg, &media, &file, &size, &account, &state, &paused, &added, &updated, &detail, &filePath); err != nil {
 			return nil, err
 		}
 		item := map[string]any{"key": group + "_" + strconv.FormatInt(msg, 10), "groupId": group, "groupName": name, "mediaType": media, "messageId": msg, "fileName": file, "fileSize": size, "accountId": account, "accountName": nil, "addedAt": added, "progress": 0, "received": 0, "total": size, "bps": 0, "eta": nil}
@@ -68,6 +70,9 @@ func (c *Controller) Snapshot(ctx context.Context) (map[string]any, error) {
 		switch state {
 		case "processing":
 			item["status"] = "active"
+			if paused {
+				item["status"] = "paused"
+			}
 			if run != nil {
 				run.mu.Lock()
 				stats := run.progress[id]
@@ -89,6 +94,9 @@ func (c *Controller) Snapshot(ctx context.Context) (map[string]any, error) {
 			active = append(active, item)
 		case "pending":
 			item["status"] = "queued"
+			if paused {
+				item["status"] = "paused"
+			}
 			queued = append(queued, item)
 		default:
 			item["status"] = "failed"
@@ -110,5 +118,25 @@ func (c *Controller) Snapshot(ctx context.Context) (map[string]any, error) {
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	return map[string]any{"active": active, "queued": queued, "recent": recent, "globalPaused": false, "pausedCount": 0, "workers": status["workers"], "pending": status["queue"], "engineRunning": status["state"] == "running", "maxSpeed": nil}, nil
+	globalPaused, err := c.work.QueuePaused(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pausedCount, err := c.work.PausedCount(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(recent) == 0 {
+		var historyJSON string
+		if err := c.reader.QueryRowContext(ctx, `SELECT value FROM kv WHERE key='queue_history'`).Scan(&historyJSON); err == nil {
+			var history []map[string]any
+			if json.Unmarshal([]byte(historyJSON), &history) == nil {
+				if len(history) > 100 {
+					history = history[:100]
+				}
+				recent = history
+			}
+		}
+	}
+	return map[string]any{"active": active, "queued": queued, "recent": recent, "globalPaused": globalPaused, "pausedCount": pausedCount, "workers": status["workers"], "pending": status["queue"], "engineRunning": status["state"] == "running", "maxSpeed": nil}, nil
 }

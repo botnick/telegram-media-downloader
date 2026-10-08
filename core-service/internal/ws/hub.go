@@ -12,21 +12,13 @@ type Event struct {
 	Payload any
 }
 
-// Dashboard events have a lowercase type and top-level payload fields.
-// Routing roles are internal metadata and must never go onto the wire.
+// Dashboard events use the stable {type,payload} wire shape. Routing roles
+// are internal metadata and must never go onto the wire.
 func (e Event) MarshalJSON() ([]byte, error) {
-	fields := map[string]any{}
-	if e.Payload != nil {
-		raw, err := json.Marshal(e.Payload)
-		if err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(raw, &fields); err != nil {
-			return nil, err
-		}
-	}
-	fields["type"] = e.Type
-	return json.Marshal(fields)
+	return json.Marshal(struct {
+		Type    string `json:"type"`
+		Payload any    `json:"payload,omitempty"`
+	}{Type: e.Type, Payload: e.Payload})
 }
 
 type Client struct {

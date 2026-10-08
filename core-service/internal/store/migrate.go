@@ -122,6 +122,15 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 	if _, err = db.ExecContext(ctx, string(engineSchema)); err != nil {
 		return 0, fmt.Errorf("create engine schema: %w", err)
 	}
+	var pausedColumn int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('tgdl_work') WHERE name='paused'`).Scan(&pausedColumn); err != nil {
+		return 0, fmt.Errorf("inspect queue schema: %w", err)
+	}
+	if pausedColumn == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_work ADD COLUMN paused INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return 0, fmt.Errorf("add queue pause state: %w", err)
+		}
+	}
 	var version int
 	if err := db.QueryRowContext(ctx, `SELECT version FROM tgdl_schema_meta LIMIT 1`).Scan(&version); err != nil {
 		return 0, fmt.Errorf("read schema version: %w", err)

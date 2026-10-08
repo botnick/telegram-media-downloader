@@ -100,7 +100,7 @@ func (s *WorkStore) Claim(ctx context.Context, accounts []string, now time.Time)
 	}
 	args = append(args, now.UnixMilli())
 	row := s.writer.QueryRowContext(ctx, `UPDATE tgdl_work SET status='processing',claim_generation=generation,attempts=attempts+1,updated_at=?
- WHERE id=(SELECT id FROM tgdl_work WHERE status='pending' AND account_id IN (`+strings.Join(marks, ",")+`) AND retry_at<=? ORDER BY id LIMIT 1)
+	 WHERE id=(SELECT id FROM tgdl_work WHERE status='pending' AND paused=0 AND (SELECT paused FROM tgdl_queue_state WHERE id=1)=0 AND account_id IN (`+strings.Join(marks, ",")+`) AND retry_at<=? ORDER BY id LIMIT 1)
  RETURNING id,account_id,group_id,group_name,message_id,generation,media_type,file_name,file_size,body,attempts,created_at`, args...)
 	w := new(Work)
 	if err := row.Scan(&w.ID, &w.AccountID, &w.GroupID, &w.GroupName, &w.MessageID, &w.Generation, &w.MediaType, &w.FileName, &w.FileSize, &w.body, &w.Attempts, &w.CreatedAt); err != nil {
@@ -197,4 +197,106 @@ func (s *WorkStore) Counts(ctx context.Context) (map[string]int, error) {
 		out[status] = count
 	}
 	return out, rows.Err()
+}
+
+func (s *WorkStore) QueuePaused(ctx context.Context) (bool, error) {
+	var paused bool
+	err := s.reader.QueryRowContext(ctx, `SELECT paused<>0 FROM tgdl_queue_state WHERE id=1`).Scan(&paused)
+	return paused, err
+}
+
+func (s *WorkStore) SetQueuePaused(ctx context.Context, paused bool) error {
+	value := 0
+	if paused {
+		value = 1
+	}
+	now := time.Now().UnixMilli()
+	if _, err := s.writer.ExecContext(ctx, `UPDATE tgdl_queue_state SET paused=?,updated_at=? WHERE id=1`, value, now); err != nil {
+		return err
+	}
+	if !paused {
+		// The Node queue's resume-all action also clears individual pauses. Keep
+		// that durable behavior so a restart cannot leave a row unexpectedly
+		// hidden after the operator resumed the whole queue.
+		_, err := s.writer.ExecContext(ctx, `UPDATE tgdl_work SET paused=0,updated_at=? WHERE paused<>0 AND status IN ('pending','processing')`, now)
+		return err
+	}
+	return nil
+}
+
+func (s *WorkStore) PausedCount(ctx context.Context) (int, error) {
+	var count int
+	err := s.reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM tgdl_work WHERE paused<>0 AND status IN ('pending','processing')`).Scan(&count)
+	return count, err
+}
+
+func (s *WorkStore) PauseJob(ctx context.Context, key string) (bool, error) {
+	result, err := s.writer.ExecContext(ctx, `UPDATE tgdl_work SET paused=1,updated_at=? WHERE group_id||'_'||message_id=? AND status IN ('pending','processing')`, time.Now().UnixMilli(), key)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n > 0, err
+}
+
+func (s *WorkStore) ResumeJob(ctx context.Context, key string) (bool, error) {
+	result, err := s.writer.ExecContext(ctx, `UPDATE tgdl_work SET paused=0,updated_at=? WHERE group_id||'_'||message_id=? AND paused<>0 AND status IN ('pending','processing')`, time.Now().UnixMilli(), key)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n > 0, err
+}
+
+func (s *WorkStore) CancelAllQueued(ctx context.Context) (int, error) {
+	result, err := s.writer.ExecContext(ctx, `UPDATE tgdl_work SET status='skipped',paused=0,claim_generation=NULL,body=X'',error='cancelled by queue action',updated_at=? WHERE status='pending'`, time.Now().UnixMilli())
+	if err != nil {
+		return 0, err
+	}
+	n, err := result.RowsAffected()
+	return int(n), err
+}
+
+func (s *WorkStore) CancelJob(ctx context.Context, key string) (bool, error) {
+	result, err := s.writer.ExecContext(ctx, `UPDATE tgdl_work SET status='skipped',paused=0,claim_generation=NULL,body=X'',error='cancelled by queue action',updated_at=? WHERE group_id||'_'||message_id=? AND status IN ('pending','processing')`, time.Now().UnixMilli(), key)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n > 0, err
+}
+
+func (s *WorkStore) RetryJob(ctx context.Context, key string) (bool, error) {
+	result, err := s.writer.ExecContext(ctx, `UPDATE tgdl_work SET status='pending',paused=0,claim_generation=NULL,attempts=0,retry_at=0,error=NULL,updated_at=? WHERE group_id||'_'||message_id=? AND status='failed' AND length(body)>0`, time.Now().UnixMilli(), key)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n > 0, err
+}
+
+func (s *WorkStore) RetryAll(ctx context.Context) (int, error) {
+	result, err := s.writer.ExecContext(ctx, `UPDATE tgdl_work SET status='pending',paused=0,claim_generation=NULL,attempts=0,retry_at=0,error=NULL,updated_at=? WHERE status='failed' AND length(body)>0`, time.Now().UnixMilli())
+	if err != nil {
+		return 0, err
+	}
+	n, err := result.RowsAffected()
+	return int(n), err
+}
+
+func (s *WorkStore) DismissJob(ctx context.Context, key string) (bool, error) {
+	result, err := s.writer.ExecContext(ctx, `DELETE FROM tgdl_work WHERE group_id||'_'||message_id=? AND status IN ('completed','failed','skipped')`, key)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n > 0, err
+}
+
+func (s *WorkStore) ClearFinished(ctx context.Context) error {
+	if _, err := s.writer.ExecContext(ctx, `DELETE FROM tgdl_work WHERE status IN ('completed','failed','skipped')`); err != nil {
+		return err
+	}
+	_, err := s.writer.ExecContext(ctx, `DELETE FROM kv WHERE key='queue_history'`)
+	return err
 }

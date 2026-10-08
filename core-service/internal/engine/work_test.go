@@ -132,3 +132,67 @@ func TestCancellationRefundsAttemptsAndClaimDetectsEdit(t *testing.T) {
 		t.Fatalf("edit retry count: %+v %v", third, err)
 	}
 }
+
+func TestQueueControlsAreDurableAndBoundClaims(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for id := 1; id <= 3; id++ {
+		if _, changed, err := s.Enqueue(ctx, "one", Target{ID: "-1000000000042", Name: "group"}, testMessage(id, 1, int64(id))); err != nil || !changed {
+			t.Fatalf("enqueue %d changed=%v err=%v", id, changed, err)
+		}
+	}
+	if err := s.SetQueuePaused(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if work, err := s.Claim(ctx, []string{"one"}, time.Now()); err != nil || work != nil {
+		t.Fatalf("paused queue claimed %+v err=%v", work, err)
+	}
+	if err := s.SetQueuePaused(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.PauseJob(ctx, "-1000000000042_1"); err != nil || !ok {
+		t.Fatalf("pause=%v err=%v", ok, err)
+	}
+	first, err := s.Claim(ctx, []string{"one"}, time.Now())
+	if err != nil || first == nil || first.MessageID != 2 {
+		t.Fatalf("paused row bypass=%+v err=%v", first, err)
+	}
+	if err := s.Finish(ctx, first, nil, false, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.CancelJob(ctx, "-1000000000042_1"); err != nil || !ok {
+		t.Fatalf("cancel=%v err=%v", ok, err)
+	}
+	if ok, err := s.ResumeJob(ctx, "-1000000000042_1"); err != nil || ok {
+		t.Fatalf("cancelled row resumed=%v err=%v", ok, err)
+	}
+	if ok, err := s.PauseJob(ctx, "-1000000000042_3"); err != nil || !ok {
+		t.Fatalf("pause pending=%v err=%v", ok, err)
+	}
+	if err := s.SetQueuePaused(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetQueuePaused(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	next, err := s.Claim(ctx, []string{"one"}, time.Now())
+	if err != nil || next == nil || next.MessageID != 3 {
+		t.Fatalf("resume-all did not clear per-job pause: %+v err=%v", next, err)
+	}
+	if err := s.Finish(ctx, next, nil, false, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, changed, err := s.Enqueue(ctx, "one", Target{ID: "-1000000000042", Name: "group"}, testMessage(4, 1, 4)); err != nil || !changed {
+		t.Fatalf("enqueue after resume changed=%v err=%v", changed, err)
+	}
+	if removed, err := s.CancelAllQueued(ctx); err != nil || removed != 1 {
+		t.Fatalf("cancel all removed=%d err=%v", removed, err)
+	}
+	if err := s.ClearFinished(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := s.reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM tgdl_work`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("finished rows=%d err=%v", count, err)
+	}
+}

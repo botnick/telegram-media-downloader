@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS tgdl_work (
  generation INTEGER NOT NULL DEFAULT 1,
  claim_generation INTEGER,
  status TEXT NOT NULL DEFAULT 'pending',
+ paused INTEGER NOT NULL DEFAULT 0,
  attempts INTEGER NOT NULL DEFAULT 0,
  retry_at INTEGER NOT NULL DEFAULT 0,
  error TEXT,
@@ -22,6 +23,13 @@ CREATE TABLE IF NOT EXISTS tgdl_work (
  UNIQUE(group_id,message_id)
 );
 CREATE INDEX IF NOT EXISTS idx_tgdl_work_pending ON tgdl_work(status,account_id,retry_at,id);
+CREATE TABLE IF NOT EXISTS tgdl_queue_state (
+ id INTEGER PRIMARY KEY CHECK (id=1),
+ paused INTEGER NOT NULL DEFAULT 0,
+ updated_at INTEGER NOT NULL
+);
+INSERT INTO tgdl_queue_state(id,paused,updated_at)
+ SELECT 1,0,0 WHERE NOT EXISTS (SELECT 1 FROM tgdl_queue_state WHERE id=1);
 CREATE TABLE IF NOT EXISTS tgdl_update_state (
  account_id TEXT NOT NULL,user_id INTEGER NOT NULL,
  pts INTEGER NOT NULL,qts INTEGER NOT NULL,date INTEGER NOT NULL,seq INTEGER NOT NULL,

@@ -28,6 +28,6 @@ func (a *App) ingestTelegram(ctx context.Context, message *tg.Message, groupID, 
 		return record, err
 	}
 	payload := map[string]any{"key": item.GroupID + "_" + strconv.FormatInt(item.MessageID, 10), "groupId": item.GroupID, "groupName": item.GroupName, "messageId": item.MessageID, "fileName": item.Name, "filePath": record.Path, "fileSize": item.Identity.Size, "mediaType": item.Type, "deduped": record.Reused, "addedAt": nil, "accountId": accountID, "accountName": nil}
-	a.hub.Broadcast(ws.Event{Type: "download_complete", Payload: map[string]any{"payload": payload}})
+	a.hub.Broadcast(ws.Event{Type: "download_complete", Payload: payload})
 	return record, a.drainFileCleanup(ctx)
 }

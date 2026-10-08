@@ -41,6 +41,8 @@ type Target struct{ ID, Name string }
 type Filter func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error)
 type Sink func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error
 
+var ErrEngineNotRunning = errors.New("Engine is not running. Start the monitor first.")
+
 type Controller struct {
 	writer, reader *sql.DB
 	work           *WorkStore
@@ -155,6 +157,151 @@ func (c *Controller) Dialogs(ctx context.Context, limit int) ([]Dialog, error) {
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+func (c *Controller) queueRun() (*running, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.run == nil || c.state != "running" {
+		return nil, ErrEngineNotRunning
+	}
+	return c.run, nil
+}
+
+func (c *Controller) RequireRunning() error {
+	_, err := c.queueRun()
+	return err
+}
+
+func (c *Controller) wake(run *running) {
+	select {
+	case run.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Controller) PauseAll(ctx context.Context) error {
+	run, err := c.queueRun()
+	if err != nil {
+		return err
+	}
+	if err = c.work.SetQueuePaused(ctx, true); err == nil {
+		c.wake(run)
+	}
+	return err
+}
+
+func (c *Controller) ResumeAll(ctx context.Context) error {
+	run, err := c.queueRun()
+	if err != nil {
+		return err
+	}
+	if err = c.work.SetQueuePaused(ctx, false); err == nil {
+		c.wake(run)
+	}
+	return err
+}
+
+func (c *Controller) CancelAllQueued(ctx context.Context) (int, error) {
+	run, err := c.queueRun()
+	if err != nil {
+		return 0, err
+	}
+	removed, err := c.work.CancelAllQueued(ctx)
+	if err == nil {
+		c.wake(run)
+	}
+	return removed, err
+}
+
+func (c *Controller) PauseJob(ctx context.Context, key string) (bool, error) {
+	run, err := c.queueRun()
+	if err != nil {
+		return false, err
+	}
+	ok, err := c.work.PauseJob(ctx, key)
+	if err == nil {
+		c.wake(run)
+	}
+	return ok, err
+}
+
+func (c *Controller) ResumeJob(ctx context.Context, key string) (bool, error) {
+	run, err := c.queueRun()
+	if err != nil {
+		return false, err
+	}
+	ok, err := c.work.ResumeJob(ctx, key)
+	if err == nil {
+		c.wake(run)
+	}
+	return ok, err
+}
+
+func (c *Controller) CancelJob(ctx context.Context, key string) (bool, error) {
+	run, err := c.queueRun()
+	if err != nil {
+		return false, err
+	}
+	ok, err := c.work.CancelJob(ctx, key)
+	if err == nil {
+		if ok {
+			// Cancelling a processing row must stop the in-flight media
+			// transport as well as marking the durable row skipped. The worker
+			// will observe the cancelled context and leave no partial claim.
+			var id int64
+			if queryErr := c.reader.QueryRowContext(ctx, `SELECT id FROM tgdl_work WHERE group_id||'_'||message_id=? LIMIT 1`, key).Scan(&id); queryErr == nil {
+				run.mu.Lock()
+				cancel := run.active[id]
+				run.mu.Unlock()
+				if cancel != nil {
+					cancel()
+				}
+			}
+		}
+		c.wake(run)
+	}
+	return ok, err
+}
+
+func (c *Controller) RetryJob(ctx context.Context, key string) (bool, error) {
+	run, err := c.queueRun()
+	if err != nil {
+		return false, err
+	}
+	ok, err := c.work.RetryJob(ctx, key)
+	if err == nil {
+		c.wake(run)
+	}
+	return ok, err
+}
+
+func (c *Controller) RetryAll(ctx context.Context) (int, error) {
+	run, err := c.queueRun()
+	if err != nil {
+		return 0, err
+	}
+	count, err := c.work.RetryAll(ctx)
+	if err == nil {
+		c.wake(run)
+	}
+	return count, err
+}
+
+func (c *Controller) DismissJob(ctx context.Context, key string) (bool, error) {
+	run, err := c.queueRun()
+	if err != nil {
+		return false, err
+	}
+	ok, err := c.work.DismissJob(ctx, key)
+	if err == nil {
+		c.wake(run)
+	}
+	return ok, err
+}
+
+func (c *Controller) ClearFinished(ctx context.Context) error {
+	return c.work.ClearFinished(ctx)
 }
 func (c *Controller) Start(request, parent context.Context, accounts []AccountConfig, workers, maxAttempts int) error {
 	c.opMu.Lock()

@@ -11,8 +11,9 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The four existing black-box contract files `auth`, `auth-password`,
-  `auth-setup` and `share` pass against the Go executable: **30 tests**.
+- Six black-box contract files `accounts`, `auth`, `auth-password`, `auth-setup`,
+  `share` and `queue` pass against the Go executable: **39 tests**. The Go WebSocket
+  writer preserves the released `{type,payload}` event envelope.
 - Focused Go regressions exercise secret redaction, partial config saves,
   config notifications without credentials, shared-file reference retention,
   directory traversal/symlink containment, explicit purge confirmation and
@@ -91,6 +92,14 @@ the durable chat-access registry. The projection is covered by fixture tests;
 live Telegram dialog ordering and access failures still need an authorized
 network E2E run.
 
+Queue control is now durable in Go. Global pause state and per-job pause flags
+are stored in SQLite, migrated into existing databases, and checked by every
+claim. Admin routes support pause/resume/cancel/retry, retry-all, batch actions,
+clear-finished and persisted queue-history snapshots; cancelling an active row
+also cancels its in-flight media context. The queue contract and focused store
+regressions cover the stopped-engine security boundary, idempotent cleanup and
+the durable pause/claim behavior.
+
 The contract runner still uses development-time JavaScript dependencies to
 compare the Go server with frozen responses. It does not launch a Node server
 for these Go-target tests. Removing this test tooling remains part of the
@@ -103,9 +112,10 @@ migration; the current source tree is not yet free of Node dependencies.
   forwarding. Channel history gaps are repaired natively; an unresolved global
   or incomplete marker still prevents restart and must never be cleared merely
   to make startup succeed.
-- Complete durable queue pause/resume/cancel/retry controls, rate limiting,
-  priority/TTL handling, old queue-history import and full browser interaction.
-  The actual queue snapshot alone does not establish complete queue API parity.
+- Complete queue rate limiting, priority/TTL handling, old queue-history import
+  and full browser interaction. Durable Go pause/resume/cancel/retry controls
+  and the queue snapshot are implemented, but the complete queue workflow still
+  needs browser and performance coverage.
 - Complete gallery/media/config/group/delete/purge contracts, maintenance jobs,
   archives, AI/NSFW services, backups and cluster management. A low-level Go
   projection or helper is not a replacement for the public workflow.

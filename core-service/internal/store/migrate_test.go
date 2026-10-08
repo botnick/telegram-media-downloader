@@ -47,3 +47,22 @@ func TestOpenCreatesMissingDataDirectory(t *testing.T) {
 	defer db.Writer.Close()
 	defer db.Reader.Close()
 }
+
+func TestRunMigrationsAddsDurableQueuePauseState(t *testing.T) {
+	db, err := Open(context.Background(), filepath.Join(t.TempDir(), "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Writer.Close()
+	defer db.Reader.Close()
+	var paused, queueState int
+	if err = db.Reader.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tgdl_work') WHERE name='paused'`).Scan(&paused); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Reader.QueryRow(`SELECT COUNT(*) FROM tgdl_queue_state WHERE id=1`).Scan(&queueState); err != nil {
+		t.Fatal(err)
+	}
+	if paused != 1 || queueState != 1 {
+		t.Fatalf("queue schema paused=%d state=%d", paused, queueState)
+	}
+}
