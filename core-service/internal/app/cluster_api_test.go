@@ -351,7 +351,11 @@ func TestClusterDirectModeDoesNotSilentlyProxy(t *testing.T) {
 	token := socketToken(t, a, "admin", time.Hour)
 	var requests atomic.Int64
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests.Add(1)
+		// Background catalog sync may contact the new peer; only a proxied
+		// media request would break the direct-mode contract.
+		if strings.Contains(r.URL.String(), "test.bin") {
+			requests.Add(1)
+		}
 		w.WriteHeader(200)
 	}))
 	defer remote.Close()
