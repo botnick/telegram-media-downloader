@@ -80,9 +80,16 @@ func removeDialogs(ctx context.Context, api dialogRemovalAPI, dialogs func(conte
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		removeCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		err := removeResolvedDialog(removeCtx, api, current, id)
-		cancel()
+		var err error
+		if dialog, ok := current[id]; ok && dialog.Access.State == "ok" {
+			// Batches are only for dead chats; a working chat needs the single,
+			// per-chat confirmation instead.
+			err = errors.New("chat is still available; only unavailable chats can be removed together")
+		} else {
+			removeCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+			err = removeResolvedDialog(removeCtx, api, current, id)
+			cancel()
+		}
 		if !each(id, err) {
 			return nil
 		}

@@ -3555,7 +3555,7 @@ function renderDialogsList(dialogs) {
                 ? _attentionChats(document.getElementById('groups-search')?.value || '')
                 : available;
 
-    paintSelectBar(filtered);
+    paintSelectBar(filtered, { enabled: tab === 'attention' });
     if (filtered.length === 0) {
         list.removeAttribute('role');
         list.classList.remove('cr-list');
@@ -3593,7 +3593,7 @@ function renderDialogsList(dialogs) {
                     return { id, label: meta?.label || id, title: meta?.title || id };
                 });
             }
-            return rows.renderChatResultRow(d, { accountChips, selecting: isSelecting(), selected: isSelected(d.id) });
+            return rows.renderChatResultRow(d, { accountChips, selecting: tab === 'attention' && isSelecting(), selected: isSelected(d.id) });
         })
         .join('');
     // Row taps open the chat's details page; the switch and Backfill…

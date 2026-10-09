@@ -1,5 +1,6 @@
-// Chats page select mode — tick chats (or Select all on the current tab and
-// search), then leave them from one Telegram account in one go.
+// Chats page select mode — on the Deleted / unavailable tab only, tick chats
+// (or Select all over the tab and search), then leave them from one Telegram
+// account in one go. Chats that still work are never offered.
 //
 // The leave sheet offers two outcomes: leave only (downloaded files stay) or
 // leave and delete what was downloaded from those chats. The server runs the
@@ -42,8 +43,22 @@ function exitSelect() {
     rerender();
 }
 
-/** Called after each list render with the chats currently shown. */
-export function paintSelectBar(visibleChats) {
+/**
+ * Called after each list render with the chats currently shown. Only the
+ * Deleted / unavailable tab offers selection; elsewhere the bar is hidden.
+ */
+export function paintSelectBar(visibleChats, { enabled = true } = {}) {
+    if (!enabled) {
+        sel.on = false;
+        sel.ids.clear();
+        sel.visible = [];
+        const el = document.getElementById('groups-select-bar');
+        if (el) {
+            el.innerHTML = '';
+            el.classList.add('hidden');
+        }
+        return;
+    }
     sel.visible = visibleChats.map((c) => ({ ...c, id: String(c.id) }));
     const shown = new Set(sel.visible.map((c) => c.id));
     // Selection never reaches chats hidden by the tab or the search.
