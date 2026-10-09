@@ -221,6 +221,13 @@ func (a *App) monitorEvent(state string, err error) {
 		cause = err.Error()
 	}
 	a.hub.Broadcast(ws.Event{Type: "monitor_state", Flat: true, Payload: map[string]any{"state": state, "error": cause}})
+	if a.output != nil && state != "starting" {
+		if err != nil {
+			fmt.Fprintf(a.output, "Monitor %s: %v\n", state, err)
+		} else {
+			fmt.Fprintf(a.output, "Monitor %s\n", state)
+		}
+	}
 	switch state {
 	case "running":
 		a.restartMu.Lock()
@@ -296,5 +303,5 @@ func (a *App) monitorShouldRestart() bool {
 		return false
 	}
 	status, err := a.monitor.Status(a.ctx)
-	return err == nil && status["state"] == "error"
+	return err == nil && (status["state"] == "error" || status["state"] == "stopped")
 }

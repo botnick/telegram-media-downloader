@@ -15,7 +15,8 @@ func (a *App) startAmbient() {
 	a.rescueWake = make(chan struct{}, 1)
 	a.clusterWake = make(chan struct{}, 1)
 	a.clusterSockets = &clusterSockets{app: a, sessions: make(map[*websocket.Conn]*clusterSocket)}
-	a.ambientWG.Add(5)
+	a.ambientWG.Add(6)
+	go func() { defer a.ambientWG.Done(); a.runMonitorWatchdog(a.ctx) }()
 	go func() { defer a.ambientWG.Done(); a.runPushes(a.ctx, 3*time.Second, a.pushMonitorStatus) }()
 	go func() { defer a.ambientWG.Done(); a.runPushes(a.ctx, 30*time.Second, a.pushStats) }()
 	go func() { defer a.ambientWG.Done(); a.runRescueSweeper(a.ctx) }()
@@ -102,5 +103,40 @@ func (a *App) runRescueSweeper(ctx context.Context) {
 			}
 			timer.Reset(interval)
 		}
+	}
+}
+
+// Watchdog interval for runMonitorWatchdog; tests shorten it.
+var monitorWatchdogEvery = time.Minute
+
+// runMonitorWatchdog keeps monitoring on while the operator left it on
+// (monitor.autoStart): whatever stopped it — a failed boot start, a run that
+// ended without an error, a maintenance action — it is started again. A
+// manual Stop clears autoStart, and busy operations holding monitorOp
+// (purge, account changes, a start in progress) are never interrupted.
+func (a *App) runMonitorWatchdog(ctx context.Context) {
+	ticker := time.NewTicker(monitorWatchdogEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		a.restartMu.Lock()
+		pending := a.restartPending
+		a.restartMu.Unlock()
+		if pending || a.purgePending() || !a.monitorOp.TryLock() {
+			continue
+		}
+		if a.monitorShouldRestart() {
+			if a.output != nil {
+				fmt.Fprintln(a.output, "Monitor watchdog: monitoring is on but stopped; starting it")
+			}
+			if err := a.startMonitor(ctx); err != nil && ctx.Err() == nil && a.output != nil {
+				fmt.Fprintf(a.output, "Monitor watchdog start failed: %v\n", err)
+			}
+		}
+		a.monitorOp.Unlock()
 	}
 }

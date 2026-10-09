@@ -70,3 +70,35 @@ func TestMonitorRestartsAfterErrorWhileAutoStartIsOn(t *testing.T) {
 		t.Fatalf("after stop runs=%d status=%v", runs.Load(), status)
 	}
 }
+
+func TestMonitorWatchdogRestartsUnexpectedStop(t *testing.T) {
+	saved := monitorWatchdogEvery
+	monitorWatchdogEvery = 20 * time.Millisecond
+	defer func() { monitorWatchdogEvery = saved }()
+	var runs atomic.Int64
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountFactory: func(_ engine.AccountConfig, _ *telegram.UpdateState, handler func(context.Context, tg.UpdatesClass) error, _ func(int64)) (engine.Account, error) {
+		runs.Add(1)
+		return &flakyRunAccount{fixtureAccount: fixtureAccount{handle: handler}}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	configureMonitor(t, a)
+	if w := monitorRequest(t, a, "/api/monitor/start"); w.Code != 200 {
+		t.Fatalf("start=%d %s", w.Code, w.Body.String())
+	}
+	// Stopped by something other than the operator: autoStart stays on.
+	if err := a.monitor.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if status, _ := a.monitor.Status(context.Background()); status["state"] == "running" && runs.Load() >= 2 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	status, _ := a.monitor.Status(context.Background())
+	t.Fatalf("watchdog did not restart: runs=%d status=%v", runs.Load(), status)
+}

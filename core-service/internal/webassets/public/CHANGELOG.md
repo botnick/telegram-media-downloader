@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.10] — 2026-10-10
+
+### Fixed
+- **Monitoring could stay off after an update.** A watchdog now checks every minute: while monitoring is switched on (it is, until you press Stop), a monitor found stopped for any reason — a start interrupted during a restart, a run that ended without an error, a maintenance action — is started again. It never interrupts a purge, an account change or a start already in progress. Monitor state changes are now written to the server log.
+
+### Service worker
+- `VERSION = 'v30100'`
+
 ## [3.0.9] — 2026-10-10
 
 ### Fixed
