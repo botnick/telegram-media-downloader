@@ -108,9 +108,13 @@ func TestClusterTwoGoServersPairProbeAndRevoke(t *testing.T) {
 	if _, err = b.db.Writer.Exec(`WITH RECURSIVE ids(n) AS (VALUES(43) UNION ALL SELECT n+1 FROM ids WHERE n<543) INSERT INTO downloads(id,group_id,message_id,file_name,file_path,file_size) SELECT n,'fixture',n,?,?,10 FROM ids`, name, name); err != nil {
 		t.Fatal(err)
 	}
-	status, synced := clusterCall(t, as, "POST", "/api/cluster/sync/run", at, nil)
-	if status != 200 || synced["rows"] != float64(502) {
+	status, synced := clusterSyncCall(t, as, at)
+	if status != 200 || synced["rows"].(float64) > 502 {
 		t.Fatal("native catalog sync", status, synced)
+	}
+	var catalogCount int
+	if err = a.db.Reader.QueryRow(`SELECT count(*) FROM peer_downloads WHERE peer_id=?`, bid.PeerID).Scan(&catalogCount); err != nil || catalogCount != 502 {
+		t.Fatal("incomplete paged cache", catalogCount, err)
 	}
 	for _, path := range []string{"/files/" + url.PathEscape(name) + "?peer=" + bid.PeerID, "/files/_clusterref/" + bid.PeerID + "/42"} {
 		req, err := http.NewRequest("GET", as.URL+path, nil)
@@ -128,6 +132,22 @@ func TestClusterTwoGoServersPairProbeAndRevoke(t *testing.T) {
 		if readErr != nil || res.StatusCode != 206 || string(bytes) != "2345" || res.Header.Get("Content-Range") != "bytes 2-5/10" {
 			t.Fatal("bridged range", res.StatusCode, string(bytes), readErr)
 		}
+	}
+	// A second pass must discover edits/deletes below the previous maximum ID.
+	if _, err = b.db.Writer.Exec(`UPDATE downloads SET file_name='renamed.bin' WHERE id=42; DELETE FROM downloads WHERE id=43`); err != nil {
+		t.Fatal(err)
+	}
+	status, synced = clusterSyncCall(t, as, at)
+	if status != 200 || synced["rows"].(float64) > 2 {
+		t.Fatal("old-row changes were skipped", status, synced)
+	}
+	var renamed string
+	var deleted int
+	if err = a.db.Reader.QueryRow(`SELECT file_name FROM peer_downloads WHERE peer_id=? AND remote_id=42`, bid.PeerID).Scan(&renamed); err != nil || renamed != "renamed.bin" {
+		t.Fatal(renamed, err)
+	}
+	if err = a.db.Reader.QueryRow(`SELECT count(*) FROM peer_downloads WHERE peer_id=? AND remote_id=43`, bid.PeerID).Scan(&deleted); err != nil || deleted != 0 {
+		t.Fatal(deleted, err)
 	}
 	// A code cannot be reused even by the peer that successfully consumed it.
 	status, _ = clusterCall(t, as, "POST", "/api/cluster/peers", at, map[string]any{"url": bs.URL, "pairingCode": code["code"]})
@@ -396,5 +416,19 @@ func TestClusterShutdownCancelsAndJoinsBlockedPairing(t *testing.T) {
 	case <-requestDone:
 	case <-time.After(time.Second):
 		t.Fatal("HTTP request not joined")
+	}
+}
+
+// Automatic and manual synchronization share the single-flight gate. The
+// manual pass may have zero work after a preceding live notification.
+func clusterSyncCall(t *testing.T, s *httptest.Server, token string) (int, map[string]any) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		status, result := clusterCall(t, s, "POST", "/api/cluster/sync/run", token, nil)
+		if status != 409 || time.Now().After(deadline) {
+			return status, result
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

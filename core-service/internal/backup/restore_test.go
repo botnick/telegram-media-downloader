@@ -196,6 +196,10 @@ func TestNativeSnapshotRestoreEncryptedAndPlaintext(t *testing.T) {
 			if _, err := db.Writer.Exec(`INSERT INTO kv(key,value,updated_at) VALUES('restore-test','preserve',0)`); err != nil {
 				t.Fatal(err)
 			}
+			epochJSON := `"` + strings.Repeat("ab", 32) + `"`
+			if _, err := db.Writer.Exec(`INSERT INTO kv(key,value,updated_at) VALUES('cluster_catalog_epoch',?,0)`, epochJSON); err != nil {
+				t.Fatal(err)
+			}
 			opts := RestoreOptions{Plaintext: !encrypted}
 			if encrypted {
 				if _, err := m.Encryption(ctx, id, true, "restore-pass", false); err != nil {
@@ -218,6 +222,10 @@ func TestNativeSnapshotRestoreEncryptedAndPlaintext(t *testing.T) {
 			}
 			input := filepath.Join(target, jobs[0]["remote_path"].(string))
 			output := filepath.Join(dir, "restored")
+			if !encrypted {
+				t.Chdir(dir)
+				output = "restored"
+			}
 			result, err := RestoreSnapshot(ctx, input, output+string(filepath.Separator), opts)
 			if err != nil {
 				t.Fatal(err)
@@ -239,6 +247,12 @@ func TestNativeSnapshotRestoreEncryptedAndPlaintext(t *testing.T) {
 			var value string
 			if err = restored.QueryRow(`SELECT value FROM kv WHERE key='restore-test'`).Scan(&value); err != nil || value != "preserve" {
 				t.Fatal("snapshot lost committed database value", err)
+			}
+			if err = restored.QueryRow(`SELECT value FROM kv WHERE key='cluster_catalog_epoch'`).Scan(&value); err != nil || value == epochJSON || len(value) != 66 {
+				t.Fatal("restored catalog kept old epoch", value, err)
+			}
+			if err = db.Reader.QueryRow(`SELECT value FROM kv WHERE key='cluster_catalog_epoch'`).Scan(&value); err != nil || value != epochJSON {
+				t.Fatal("restore changed source epoch", value, err)
 			}
 			if _, err = RestoreSnapshot(ctx, input, output, opts); !errors.Is(err, os.ErrExist) {
 				t.Fatal("existing directory accepted", err)

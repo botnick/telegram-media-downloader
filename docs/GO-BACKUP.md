@@ -340,6 +340,10 @@ key, tag, length or version fails without a final output. Snapshot restore
 allows only the database, config, secret and sessions; rejects traversal,
 links, special files and duplicate files; verifies gzip checksums, JSON shape
 and SQLite integrity/schema; and requires a session key for native sessions.
+Before publication, native restore rotates an existing cluster catalog epoch in
+the staged database. Other instances therefore replace their cached catalog even
+when restored history advances beyond their old cursor. Ordinary server restarts
+retain that epoch. Relative and absolute restore destinations are covered.
 It publishes the completed directory using the same OS-level exclusive rename
 as file downloads. An existing destination, including an empty directory,
 cannot be replaced. A forced process kill can leave a private restore staging

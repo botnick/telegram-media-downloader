@@ -1,10 +1,48 @@
 package app
 
 import (
+	"encoding/hex"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
+
+func (a *App) handlePeerChanges(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	after := int64(0)
+	if q.Get("after") != "" {
+		var err error
+		after, err = strconv.ParseInt(q.Get("after"), 10, 64)
+		if err != nil || after < 0 {
+			writeJSONError(w, 400, "Invalid catalog revision")
+			return
+		}
+	}
+	limit := 500
+	if q.Get("limit") != "" {
+		var err error
+		limit, err = strconv.Atoi(q.Get("limit"))
+		if err != nil || limit < 1 || limit > 500 {
+			writeJSONError(w, 400, "Invalid catalog limit")
+			return
+		}
+	}
+	epoch := q.Get("epoch")
+	if epoch != "" {
+		decoded, err := hex.DecodeString(epoch)
+		if err != nil || len(decoded) != 32 {
+			writeJSONError(w, 400, "Invalid catalog epoch")
+			return
+		}
+	}
+	page, err := a.cluster.Changes(r.Context(), epoch, after, limit)
+	if err != nil {
+		writeJSONError(w, 500, "Catalog changes read failed")
+		return
+	}
+	writeJSON(w, 200, page)
+}
 
 func (a *App) handlePeerCatalog(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()

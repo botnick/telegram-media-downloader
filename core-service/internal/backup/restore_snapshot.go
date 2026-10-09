@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/botnick/telegram-media-downloader/core-service/internal/cluster"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/filepublish"
 	_ "modernc.org/sqlite"
 )
@@ -118,6 +119,9 @@ func RestoreSnapshot(ctx context.Context, input, output string, opts RestoreOpti
 	if err = validateRestoredDatabase(ctx, filepath.Join(parent, stage, "db.sqlite")); err != nil {
 		return result, err
 	}
+	if err = resetRestoredCatalog(ctx, filepath.Join(parent, stage, "db.sqlite")); err != nil {
+		return result, err
+	}
 	if err = ctx.Err(); err != nil {
 		return result, err
 	}
@@ -131,6 +135,31 @@ func RestoreSnapshot(ctx context.Context, input, output string, opts RestoreOpti
 	defer dir.Close()
 	err = filepublish.ExclusiveAt(dir, stage, name)
 	return result, err
+}
+
+func resetRestoredCatalog(ctx context.Context, name string) error {
+	abs, err := filepath.Abs(name)
+	if err != nil {
+		return err
+	}
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(abs), RawQuery: "mode=rw"}
+	if !strings.HasPrefix(u.Path, "/") {
+		u.Path = "/" + u.Path
+	}
+	db, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		return err
+	}
+	db.SetMaxOpenConns(1)
+	defer db.Close()
+	// The staged archive contains one database, never a live WAL sidecar.
+	if _, err = db.ExecContext(ctx, `PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL`); err != nil {
+		return err
+	}
+	if err = (cluster.Store{Writer: db}).RotateCatalogEpoch(ctx); err != nil {
+		return err
+	}
+	return db.Close()
 }
 
 func extractSnapshot(ctx context.Context, src io.Reader, root *os.Root, opts RestoreOptions) (result RestoreResult, err error) {

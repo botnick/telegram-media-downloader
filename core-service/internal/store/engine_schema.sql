@@ -17,6 +17,15 @@ CREATE TABLE IF NOT EXISTS tgdl_cluster_replay (
  PRIMARY KEY(peer_id,signature)
 );
 CREATE INDEX IF NOT EXISTS idx_tgdl_cluster_replay_expiry ON tgdl_cluster_replay(expires_at);
+
+CREATE TABLE IF NOT EXISTS tgdl_cluster_revision (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL);
+INSERT OR IGNORE INTO tgdl_cluster_revision(id,revision) VALUES(1,0);
+CREATE TABLE IF NOT EXISTS tgdl_cluster_catalog (
+    remote_id INTEGER PRIMARY KEY,
+    revision INTEGER NOT NULL UNIQUE,
+    event_type TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS tgdl_work (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  account_id TEXT NOT NULL,

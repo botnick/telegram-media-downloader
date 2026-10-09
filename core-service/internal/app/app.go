@@ -83,6 +83,8 @@ type App struct {
 	clusterWG           sync.WaitGroup
 	clusterClosed       bool
 	clusterSyncMu       sync.Mutex
+	clusterWake         chan struct{}
+	clusterSockets      *clusterSockets
 	loginRL             *rateLimiter
 	handler             http.Handler
 	configMu            sync.Mutex

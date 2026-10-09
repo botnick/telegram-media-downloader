@@ -5,6 +5,17 @@ but the Go application is not yet a complete replacement for the released
 downloader. Passing package tests does not establish end-to-end Telegram
 functionality. Do not deploy this branch over a working library yet.
 
+## Current delivery scope
+
+On 2026-10-09 the owner narrowed the migration to necessary functionality to
+reduce time and cost. Prioritize Telegram downloads, download-time deduplication,
+queue reliability, file management, the usable dashboard and access controls.
+Do not extend the migration into optional AI/image-analysis workflows or advanced
+cluster features. Preserve and verify completed work; do not port unused features
+just to reproduce every historical API. The legacy contract totals below remain
+honest compatibility evidence, but optional feature failures are not a mandate to
+build those features. Production must still use Go without a Node runtime fallback.
+
 ## Verified in the current application
 
 - Native backup management and local/S3/SFTP/FTP mirror/snapshot jobs include automatic
@@ -37,7 +48,11 @@ functionality. Do not deploy this branch over a working library yet.
   persistent replay checks, automatic paged catalog pulls and actual peer-file
   range proxying are implemented. An independent two-process experiment verifies
   restart, 502-row pagination, the real timer discovering row 503, key rotation
-  and revocation. Peer WebSockets and old-row reconciliation remain incomplete.
+  and revocation. Signed sockets now trigger durable add/edit/delete reconciliation;
+  a second two-process check verifies offline edits, receiver restart and an older
+  native snapshot restored beyond the old cursor. Epoch rotation also covers
+  relative restore destinations. Full legacy peer-event/config/failover workflows
+  remain incomplete and outside the narrowed core delivery scope.
   See [cluster scope, limits and measurements](GO-CLUSTER.md).
 - Native reverse-proxy trust, live HTTPS/CSP enforcement and optional API quotas
   now apply before route dispatch. Login and share quotas use the same resolved
@@ -48,9 +63,13 @@ functionality. Do not deploy this branch over a working library yet.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
 - The latest full black-box run against the Go executable passes
-  **246 of 324 tests**, with **22 of 36 files passing** (62.92 seconds).
-  The remaining **78 failed cases in 14 files** are recorded failures, not
-  waived expectations. Cluster/peer contracts improve from 33 to 25 failures;
+  **246 of 324 tests**, with **21 of 36 files passing** (217.01 seconds).
+  The remaining **78 failed cases in 15 files** are recorded failures, not
+  waived expectations. This live-cluster run used one contract worker. Peer WS
+  authentication now passes (3/4 cases still fail); maintenance again differs
+  on the legacy non-growth VACUUM assertion. The preceding cluster checkpoint
+  passed 246/324 in 62.92 seconds with 22/36 files passing. Its cluster/peer
+  contracts improved from 33 to 25 failures;
   the file suite adds one failure for the real peer proxy's error/cache headers
   instead of its former fabricated response. Both periodic WebSocket/rescue
   contracts pass. The preceding rescue checkpoint passed 239/324. The
@@ -74,7 +93,7 @@ functionality. Do not deploy this branch over a working library yet.
   timing assumption still needs correction in the native contract runner.
   Another difference is the additional SFTP host-key fingerprint and FTP
   passive-mode/CA fields in provider
-  metadata (backup 16/17). Maintenance is now 8/8 on this fixture. Its earlier
+  metadata (backup 16/17). Maintenance is 7/8 in this run. Its earlier
   VACUUM failure reproduced legitimate 129 → 130 page growth; the additional
   host-key table changes the fixture's packing again. Actual sizes remain
   visible, and one green run does not prove VACUUM never grows a database. These are

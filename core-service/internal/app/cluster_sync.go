@@ -27,6 +27,7 @@ func (a *App) syncCluster(ctx context.Context) (int, int, error) {
 	queue := make(chan cluster.Peer)
 	var wg sync.WaitGroup
 	var total atomic.Int64
+	var changed atomic.Bool
 	var errs []error
 	var mu sync.Mutex
 	for range min(4, len(peers)) {
@@ -38,7 +39,13 @@ func (a *App) syncCluster(ctx context.Context) (int, int, error) {
 					continue
 				}
 				n, err := a.clusterHTTP.SyncPeer(ctx, p)
-				total.Add(int64(n))
+				total.Add(int64(n.Rows))
+				if n.Changed {
+					changed.Store(true)
+				}
+				if n.More && err == nil {
+					a.wakeClusterSync()
+				}
 				if err != nil && !errors.Is(err, cluster.ErrPeerChanged) {
 					mu.Lock()
 					errs = append(errs, err)
@@ -58,7 +65,7 @@ func (a *App) syncCluster(ctx context.Context) (int, int, error) {
 	}
 	close(queue)
 	wg.Wait()
-	if total.Load() > 0 {
+	if changed.Load() {
 		a.hub.Broadcast(ws.Event{Type: "peer_catalog_update", Payload: map[string]any{"count": total.Load()}})
 	}
 	return len(peers), int(total.Load()), errors.Join(append(errs, ctx.Err())...)
@@ -71,13 +78,24 @@ func (a *App) runClusterSync(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			pass, cancel := context.WithTimeout(ctx, time.Minute)
-			_, _, err := a.syncCluster(pass)
-			cancel()
-			if err != nil && ctx.Err() == nil && !errors.Is(err, errClusterSyncBusy) && a.output != nil {
-				fmt.Fprintf(a.output, "Cluster sync remains pending: %v\n", err)
-			}
+		case <-a.clusterWake:
 		}
+		if ctx.Err() != nil {
+			return
+		}
+		pass, cancel := context.WithTimeout(ctx, time.Minute)
+		_, _, err := a.syncCluster(pass)
+		cancel()
+		if err != nil && ctx.Err() == nil && !errors.Is(err, errClusterSyncBusy) && a.output != nil {
+			fmt.Fprintf(a.output, "Cluster sync remains pending: %v\n", err)
+		}
+	}
+}
+
+func (a *App) wakeClusterSync() {
+	select {
+	case a.clusterWake <- struct{}{}:
+	default:
 	}
 }
 func (a *App) handleClusterSync(w http.ResponseWriter, r *http.Request) {

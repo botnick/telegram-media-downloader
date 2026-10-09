@@ -49,8 +49,9 @@ Useful commands:
 - Pin mutations, job status/cancellation and SQLite backup
   are owned by Go and commit before broadcasting their event.
 - Cluster pairing, durable request replay checks, automatic paged catalog pulls
-  and ranged peer-file proxying run in Go. Peer WebSockets, old-row reconciliation,
-  discovery and failover remain incomplete. See [cluster scope and evidence](../docs/GO-CLUSTER.md).
+  and ranged peer-file proxying run in Go. Signed peer sockets wake durable
+  add/edit/delete reconciliation, including disconnect recovery and native restore
+  epoch changes. Complete peer-event workflows, discovery and failover remain incomplete. See [cluster scope and evidence](../docs/GO-CLUSTER.md).
 - `/api/history` runs native durable backfills using the shared account/queue
   engine, including jobs-only operation, cancellation and restart resumption.
   See [history limits, semantics and validation](../docs/GO-HISTORY.md).

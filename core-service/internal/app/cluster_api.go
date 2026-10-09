@@ -36,6 +36,7 @@ func registerClusterRoutes(mux *http.ServeMux, a *App) {
 	mux.HandleFunc("POST /api/cluster/handshake", a.handleClusterHandshake)
 	mux.HandleFunc("GET /api/cluster/health", a.handleClusterHealth)
 	mux.HandleFunc("GET /api/cluster/downloads/since", a.handlePeerCatalog)
+	mux.HandleFunc("GET /api/cluster/catalog/changes", a.handlePeerChanges)
 	mux.HandleFunc("GET /api/cluster/search/peer", a.handlePeerCatalog)
 	mux.HandleFunc("GET /api/cluster/groups/snapshot", a.handlePeerSnapshot)
 	mux.HandleFunc("GET /api/cluster/accounts/snapshot", a.handlePeerSnapshot)
@@ -44,7 +45,7 @@ func registerClusterRoutes(mux *http.ServeMux, a *App) {
 
 func isClusterPeerPath(path string) bool {
 	switch path {
-	case "/api/cluster/handshake", "/api/cluster/health", "/api/cluster/downloads/since", "/api/cluster/groups/snapshot", "/api/cluster/accounts/snapshot", "/api/cluster/sign-url", "/api/cluster/relay/proxy", "/api/cluster/files/delete", "/api/cluster/search/peer":
+	case "/api/cluster/handshake", "/api/cluster/health", "/api/cluster/downloads/since", "/api/cluster/catalog/changes", "/api/cluster/groups/snapshot", "/api/cluster/accounts/snapshot", "/api/cluster/sign-url", "/api/cluster/relay/proxy", "/api/cluster/files/delete", "/api/cluster/search/peer":
 		return true
 	}
 	return strings.HasPrefix(path, "/api/cluster/files/") || strings.HasPrefix(path, "/api/cluster/peer-thumbs/")
@@ -60,7 +61,7 @@ func (a *App) beginClusterRequest(r *http.Request) (*http.Request, func(), bool)
 	}
 	a.clusterWG.Add(1)
 	ctx, cancel := context.WithCancel(r.Context())
-	if !((r.Method == "GET" || r.Method == "HEAD") && (strings.HasPrefix(r.URL.Path, "/api/cluster/files/") || strings.HasPrefix(r.URL.Path, "/files/"))) {
+	if r.URL.Path != "/ws/cluster" && !((r.Method == "GET" || r.Method == "HEAD") && (strings.HasPrefix(r.URL.Path, "/api/cluster/files/") || strings.HasPrefix(r.URL.Path, "/files/"))) {
 		cancel()
 		limit := 10 * time.Second
 		if r.URL.Path == "/api/cluster/sync/run" {

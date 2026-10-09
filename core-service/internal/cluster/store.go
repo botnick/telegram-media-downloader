@@ -128,6 +128,9 @@ func (s Store) Initialize(ctx context.Context) error {
 	if !secretPattern.MatchString(token) {
 		return errors.New("invalid persisted cluster token")
 	}
+	if err = initializeCatalog(ctx, tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 func clip(s string, n int) string {

@@ -30,6 +30,16 @@ func (a *App) gateway(next http.Handler) http.Handler {
 				return
 			}
 		}
+		if r.URL.Path == "/ws/cluster" {
+			r, finish, ok := a.beginClusterRequest(r)
+			if !ok {
+				writeJSONError(w, 503, "Server closing")
+				return
+			}
+			defer finish()
+			a.handleClusterSocket(w, r)
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/api/cluster/") {
 			var finish func()
 			var ok bool

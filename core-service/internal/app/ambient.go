@@ -6,17 +6,21 @@ import (
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
+	"github.com/gorilla/websocket"
 )
 
 // One owned loop per task, not one timer/query per browser connection. A slow
 // query or sweep cannot spawn overlapping passes or accumulate goroutines.
 func (a *App) startAmbient() {
 	a.rescueWake = make(chan struct{}, 1)
-	a.ambientWG.Add(4)
+	a.clusterWake = make(chan struct{}, 1)
+	a.clusterSockets = &clusterSockets{app: a, sessions: make(map[*websocket.Conn]*clusterSocket)}
+	a.ambientWG.Add(5)
 	go func() { defer a.ambientWG.Done(); a.runPushes(a.ctx, 3*time.Second, a.pushMonitorStatus) }()
 	go func() { defer a.ambientWG.Done(); a.runPushes(a.ctx, 30*time.Second, a.pushStats) }()
 	go func() { defer a.ambientWG.Done(); a.runRescueSweeper(a.ctx) }()
 	go func() { defer a.ambientWG.Done(); a.runClusterSync(a.ctx) }()
+	go func() { defer a.ambientWG.Done(); a.clusterSockets.run(a.ctx) }()
 }
 
 func (a *App) runPushes(ctx context.Context, interval time.Duration, push func(context.Context) error) {
