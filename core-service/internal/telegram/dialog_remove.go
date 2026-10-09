@@ -10,6 +10,10 @@ import (
 	"github.com/gotd/td/tg"
 )
 
+// ErrDialogNotInAccount means the account's complete current dialog list does
+// not contain the chat: it was already left, removed or deleted on Telegram.
+var ErrDialogNotInAccount = errors.New("dialog is not in the selected account's current dialogs")
+
 type dialogRemovalAPI interface {
 	ChannelsLeaveChannel(context.Context, tg.InputChannelClass) (tg.UpdatesClass, error)
 	MessagesDeleteChatUser(context.Context, *tg.MessagesDeleteChatUserRequest) (tg.UpdatesClass, error)
@@ -134,7 +138,7 @@ func removeResolvedDialog(ctx context.Context, api dialogRemovalAPI, current map
 	}
 	dialog, ok := current[id]
 	if !ok {
-		return errors.New("dialog is not in the selected account's current dialogs")
+		return ErrDialogNotInAccount
 	}
 	selected := &dialog
 	if selected.Access.State == "" || selected.Access.State == "unknown" {

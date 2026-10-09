@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.7] — 2026-10-10
+
+### Fixed
+- **Leaving chats that are already gone on Telegram failed.** Chats left, removed or deleted earlier stay in the app's list but no longer appear in the account's dialogs; leaving them reported "dialog is not in the selected account's current dialogs", and the bulk dialog skipped chats no account holds. Such chats now count as left and are removed from the app (and their files deleted when chosen), one at a time or in bulk with any connected account.
+
+### Service worker
+- `VERSION = 'v3070'`
+
 ## [3.0.6] — 2026-10-09
 
 ### Fixed

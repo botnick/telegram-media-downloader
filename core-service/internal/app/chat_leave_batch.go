@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 	"github.com/gotd/td/tgerr"
 )
@@ -148,10 +149,20 @@ func (a *App) leaveBatchRemote(ctx context.Context, accountID string, ids []stri
 	a.updateLeaveBatch(func(status map[string]any) { status["stage"] = "leaving" })
 	var removed []string
 	err = session.RemoveDialogs(accountID, ids, func(id string, err error) bool {
+		// Already gone from the account on Telegram: nothing to leave, so it
+		// only needs the local cleanup.
+		gone := errors.Is(err, telegram.ErrDialogNotInAccount)
+		if gone {
+			err = nil
+		}
 		wait, flood := floodWaitSeconds(err)
 		a.updateLeaveBatch(func(status map[string]any) {
 			result := map[string]any{"id": id, "ok": err == nil}
 			status["processed"] = jobCount(status["processed"]) + 1
+			if gone {
+				result["alreadyGone"] = true
+				status["alreadyGone"] = jobCount(status["alreadyGone"]) + 1
+			}
 			if err == nil {
 				status["removed"] = jobCount(status["removed"]) + 1
 			} else {

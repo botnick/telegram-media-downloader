@@ -139,7 +139,9 @@ function openBatchLeaveSheet(chats) {
     const accounts = state.dialogsAccounts || [];
     const counts = new Map();
     for (const c of chats) for (const id of chatAccounts(c)) counts.set(id, (counts.get(id) || 0) + 1);
-    const ids = [...counts.keys()];
+    // Every connected account is offered: chats no longer in any account on
+    // Telegram are simply removed from the app with the chosen one.
+    const ids = [...new Set([...accounts.map((a) => String(a.id)), ...counts.keys()])];
     const names = new Map(chats.map((c) => [c.id, c.name || c.id]));
     const preview = chats.slice(0, 8).map((c) => `<li>${escapeHtml(c.name || c.id)}</li>`).join('');
     const more = chats.length > 8 ? `<li>${escapeHtml(i18nTf('chats.leave_batch.more', { n: chats.length - 8 }, `…and ${chats.length - 8} more`))}</li>` : '';
@@ -154,7 +156,7 @@ function openBatchLeaveSheet(chats) {
             ${ids.map((id) => {
                 const a = accounts.find((x) => String(x.id) === id);
                 const label = a ? accountLabel(a) : id;
-                return `<option value="${escapeHtml(id)}">${escapeHtml(label)} — ${escapeHtml(i18nTf('chats.leave_batch.account_has', { n: counts.get(id), total: chats.length }, `in ${counts.get(id)} of ${chats.length}`))}</option>`;
+                return `<option value="${escapeHtml(id)}">${escapeHtml(label)} — ${escapeHtml(i18nTf('chats.leave_batch.account_has', { n: counts.get(id) || 0, total: chats.length }, `in ${counts.get(id) || 0} of ${chats.length}`))}</option>`;
             }).join('')}
         </select>
         <p class="cd-help" data-batch-skip></p>
@@ -186,11 +188,12 @@ function openBatchLeaveSheet(chats) {
     const cancel = box.querySelector('[data-batch-cancel]');
     let started = false;
     const mode = () => box.querySelector('input[name="chat-batch-mode"]:checked')?.value || 'keep';
-    const targets = () => chats.filter((c) => chatAccounts(c).includes(select.value));
+    const targets = () => chats;
     const check = () => {
-        const n = select.value ? targets().length : 0;
-        skip.textContent = select.value && n < chats.length
-            ? i18nTf('chats.leave_batch.skipped', { n: chats.length - n }, `${chats.length - n} selected chats are not in this account and will be skipped.`)
+        const n = select.value ? chats.length : 0;
+        const gone = select.value ? chats.filter((c) => !chatAccounts(c).includes(select.value)).length : 0;
+        skip.textContent = gone
+            ? i18nTf('chats.leave_batch.gone', { n: gone }, `${gone} selected chats are no longer in this account on Telegram; they will only be removed from the app.`)
             : '';
         typedBox.classList.toggle('hidden', mode() !== 'delete');
         go.textContent = mode() === 'delete'
@@ -276,6 +279,9 @@ function resultText(s, names) {
         return s.error || i18nT('access.leave.failed', 'Telegram did not confirm removal.');
     }
     const parts = [i18nTf('chats.leave_batch.done', { n: jobCount(s.removed), total: jobCount(s.total) }, `Left ${jobCount(s.removed)} of ${jobCount(s.total)} chats.`)];
+    if (jobCount(s.alreadyGone)) {
+        parts.push(i18nTf('chats.leave_batch.already_gone', { n: jobCount(s.alreadyGone) }, `${jobCount(s.alreadyGone)} were already gone on Telegram and were removed from the app.`));
+    }
     if (s.deleteFiles) {
         parts.push(i18nTf('chats.leave_batch.files_deleted', { n: jobCount(s.filesDeleted) }, `${jobCount(s.filesDeleted)} files deleted.`));
     } else {

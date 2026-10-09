@@ -2333,5 +2333,8 @@
     "chats.leave_batch.flood": "Telegram asked to wait {sec} s, so {n} chats were not tried. Try them again later.",
     "chats.leave_batch.failed": "{n} failed: {list}",
     "chats.leave_batch.local_failed": "Some local files or settings could not be cleaned up — check Maintenance.",
-    "access.leave.files_kept_short": "Downloaded files kept."
+    "access.leave.files_kept_short": "Downloaded files kept.",
+    "chats.leave_batch.gone": "{n} selected chats are no longer in this account on Telegram; they will only be removed from the app.",
+    "chats.leave_batch.already_gone": "{n} were already gone on Telegram and were removed from the app.",
+    "access.leave.already_gone": "Already gone on Telegram — removed from the app. Downloaded files kept."
 }

@@ -302,7 +302,9 @@ export function openLeaveChatSheet(chat, { onRemoved } = {}) {
     const id = String(chat.id);
     const current = (state.allDialogs || []).find((d) => String(d.id) === id) || chat;
     const access = accessFor(id, current);
-    const ids = [...new Set((current.accountIds || access.accounts?.map((a) => a.id) || []).map(String))];
+    const holders = [...new Set((current.accountIds || access.accounts?.map((a) => a.id) || []).map(String))];
+    // A chat no account holds any more can still be removed from the app.
+    const ids = holders.length ? holders : [...new Set((state.dialogsAccounts || state.accountsList || []).map((a) => String(a.id)))];
     const isDM = current.type === 'user' || current.type === 'bot' || Number(id) > 0;
     const name = chat.name || current.name || id;
     const type = isDM ? i18nT('groups.type.user', 'Direct message')
@@ -355,7 +357,7 @@ export function openLeaveChatSheet(chat, { onRemoved } = {}) {
             if (r?.success !== true) throw new Error(r?.error || i18nT('access.leave.failed', 'Telegram did not confirm removal.'));
             removed = true;
             const warning = r.warning ? i18nTf('access.leave.partial_success', { message: String(r.warning) }, `Telegram removed the chat, but local cleanup needs attention: ${r.warning}`) : '';
-            if (r.localConfigRemoved) state.groups = (state.groups || []).filter((g) => g.peerId || String(g.id) !== id);
+            if (r.localConfigRemoved || r.alreadyGone) state.groups = (state.groups || []).filter((g) => g.peerId || String(g.id) !== id);
             try {
                 await refreshDialogs();
                 onRemoved?.(r);
@@ -365,7 +367,9 @@ export function openLeaveChatSheet(chat, { onRemoved } = {}) {
                     showToast(warning, 'warning', 7000);
                 } else {
                     handle.close();
-                    showToast(i18nT('access.leave.success', 'Removed from the selected Telegram account. Downloaded files kept.'), 'success');
+                    showToast(r.alreadyGone
+                        ? i18nT('access.leave.already_gone', 'Already gone on Telegram — removed from the app. Downloaded files kept.')
+                        : i18nT('access.leave.success', 'Removed from the selected Telegram account. Downloaded files kept.'), 'success');
                 }
             } catch {
                 status.textContent = [warning, i18nT('access.leave.refresh_failed', 'Telegram confirmed removal, but the list could not refresh. Close this dialog and press Check again.')].filter(Boolean).join(' ');

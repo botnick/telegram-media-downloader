@@ -2333,5 +2333,8 @@
     "chats.leave_batch.flood": "Telegram ขอให้รอ {sec} วินาที จึงหยุดไว้ก่อน ยังไม่ได้ทำอีก {n} แชต ลองใหม่ภายหลัง",
     "chats.leave_batch.failed": "ไม่สำเร็จ {n} แชต: {list}",
     "chats.leave_batch.local_failed": "ลบไฟล์หรือการตั้งค่าในเครื่องไม่ครบบางส่วน — ตรวจที่หน้า Maintenance",
-    "access.leave.files_kept_short": "ไฟล์ที่ดาวน์โหลดไว้ยังอยู่ครบ"
+    "access.leave.files_kept_short": "ไฟล์ที่ดาวน์โหลดไว้ยังอยู่ครบ",
+    "chats.leave_batch.gone": "มี {n} แชตที่ไม่อยู่ในบัญชีนี้บน Telegram แล้ว จะนำออกจากแอปอย่างเดียว",
+    "chats.leave_batch.already_gone": "{n} แชตไม่อยู่ใน Telegram แล้ว — นำออกจากแอปให้แล้ว",
+    "access.leave.already_gone": "แชตนี้ไม่อยู่ใน Telegram แล้ว — นำออกจากแอปให้แล้ว ไฟล์ที่โหลดไว้ยังอยู่ครบ"
 }

@@ -3,12 +3,14 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 )
 
@@ -54,7 +56,11 @@ func (a *App) handleChatLeave(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 409, "Selected Telegram account is not connected")
 		return
 	}
-	if err := session.RemoveDialog(body.AccountID, id); err != nil {
+	alreadyGone := false
+	if err := session.RemoveDialog(body.AccountID, id); errors.Is(err, telegram.ErrDialogNotInAccount) {
+		// Already left or removed on Telegram: only the local entry remains.
+		alreadyGone = true
+	} else if err != nil {
 		writeJSONError(w, 502, err.Error())
 		return
 	}
@@ -68,7 +74,7 @@ func (a *App) handleChatLeave(w http.ResponseWriter, r *http.Request) {
 		removed, cleanupErr = a.removeLeftChatConfig(ctx, id)
 	}
 	a.monitorOp.Unlock()
-	response := map[string]any{"success": true, "id": id, "accountId": body.AccountID, "localConfigRemoved": removed}
+	response := map[string]any{"success": true, "id": id, "accountId": body.AccountID, "localConfigRemoved": removed, "alreadyGone": alreadyGone}
 	if cleanupErr != nil {
 		response["warning"] = "Removed from Telegram, but the local list could not be updated. Refresh or remove the local list entry."
 	}

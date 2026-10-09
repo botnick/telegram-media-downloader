@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -163,5 +164,48 @@ func TestChatLeaveBatchKeepsOrDeletesFilesAndStopsOnFloodWait(t *testing.T) {
 	}
 	if strings.Join(left, ",") != "-1000000000044,-1000000000045" {
 		t.Fatalf("configured=%v", left)
+	}
+}
+
+func TestChatLeaveBatchCleansUpChatsAlreadyGoneOnTelegram(t *testing.T) {
+	account := &batchLeaveAccount{fail: map[string]error{"-1000000000042": fmt.Errorf("remove: %w", telegram.ErrDialogNotInAccount)}}
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountFactory: func(_ engine.AccountConfig, _ *telegram.UpdateState, handler func(context.Context, tg.UpdatesClass) error, _ func(int64)) (engine.Account, error) {
+		account.handle = handler
+		return account, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	configureMonitor(t, a)
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/chats/leave-batch", strings.NewReader(`{"accountId":"one","ids":["-1000000000042"],"confirm":"1"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	w := httptest.NewRecorder()
+	a.Handler().ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("batch=%d %s", w.Code, w.Body.String())
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var status map[string]any
+	for time.Now().Before(deadline) {
+		a.leaveBatchMu.Lock()
+		status = cloneConfigValue(a.leaveBatchStatus).(map[string]any)
+		a.leaveBatchMu.Unlock()
+		if status["running"] != true {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if jobCount(status["removed"]) != 1 || jobCount(status["failed"]) != 0 || jobCount(status["alreadyGone"]) != 1 {
+		t.Fatalf("status=%v", status)
+	}
+	cfg, _ := a.config.Load(context.Background())
+	if len(configuredGroupList(cfg)) != 0 {
+		t.Fatal("already-gone chat kept in the local list")
 	}
 }
