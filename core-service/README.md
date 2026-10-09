@@ -58,9 +58,11 @@ Useful commands:
   DCs. Handshakes are bounded and invalid settings cannot silently select direct
   connections. See [proxy configuration and verification](../docs/GO-PROXIES.md).
 
-- Native local mirror/snapshot backups now cover durable automatic enqueue,
-  destination controls, retry/pause, cron and retention. Remote transports and
-  encrypted payload streaming remain incomplete. See [backup scope and tests](../docs/GO-BACKUP.md).
+- Native local, S3 and SFTP mirror/snapshot backups cover durable enqueue,
+  destination controls, retry/pause, cron and retention. S3 uses bounded multipart
+  uploads and checksums; SFTP persists host keys and publishes complete files.
+  FTP/FTPS, Drive, Dropbox, hard-crash remote cleanup and encrypted payload
+  streaming/restore remain incomplete. See [backup scope and tests](../docs/GO-BACKUP.md).
 
 ## Data safety
 

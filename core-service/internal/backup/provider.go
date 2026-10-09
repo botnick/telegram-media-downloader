@@ -30,6 +30,9 @@ func providerInfo(name string) (ProviderInfo, bool) {
 func secretFields(name string) map[string]bool {
 	p, _ := providerInfo(name)
 	out := map[string]bool{}
+	if name == "s3" {
+		out["sessionToken"] = true
+	}
 	for _, f := range p.ConfigSchema {
 		if f["secret"] == true {
 			if n, ok := f["name"].(string); ok {
@@ -66,6 +69,20 @@ func nativeProvider(_ context.Context, name string, cfg map[string]any) (Provide
 	switch name {
 	case "local":
 		return newLocal(cfg)
+	case "s3":
+		return newS3(cfg)
+	case "sftp":
+		return newSFTP(cfg, nil)
 	}
 	return nil, fmt.Errorf("native backup provider %q is not available yet", name)
+}
+
+func (m *Manager) provider(ctx context.Context, name string, cfg map[string]any) (Provider, error) {
+	if m.opts.Factory != nil {
+		return m.opts.Factory(ctx, name, cfg)
+	}
+	if name == "sftp" {
+		return newSFTP(cfg, m.checkSSHHost)
+	}
+	return nativeProvider(ctx, name, cfg)
 }

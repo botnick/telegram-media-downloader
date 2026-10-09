@@ -80,9 +80,6 @@ func NewManager(ctx context.Context, opts Options) (*Manager, error) {
 	if opts.Writer == nil || opts.Reader == nil || opts.Secret == nil {
 		return nil, errors.New("backup database and credential secret are required")
 	}
-	if opts.Factory == nil {
-		opts.Factory = nativeProvider
-	}
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Manager{opts: opts, ctx: ctx, cancel: cancel, workers: map[int64]*worker{}, keys: map[int64][]byte{}}
 	if _, err := opts.Writer.ExecContext(ctx, backupSchema); err != nil {
@@ -520,7 +517,7 @@ func (m *Manager) Test(ctx context.Context, id int64) (bool, string, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	p, err := m.opts.Factory(ctx, d.Provider, cfg)
+	p, err := m.provider(ctx, d.Provider, cfg)
 	if err != nil {
 		return false, err.Error(), nil
 	}
@@ -614,6 +611,7 @@ func (m *Manager) Encryption(ctx context.Context, id int64, enabled bool, passph
 }
 
 const backupSchema = `
+CREATE TABLE IF NOT EXISTS native_backup_host_keys(address TEXT PRIMARY KEY,public_key BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS native_backup_state(
  destination_id INTEGER PRIMARY KEY REFERENCES backup_destinations(id) ON DELETE CASCADE,
  paused INTEGER NOT NULL DEFAULT 0,

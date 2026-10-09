@@ -227,7 +227,7 @@ func (m *Manager) work(ctx context.Context, id int64, w *worker) {
 			if blockedError == "" && provider == nil {
 				cfg, e := m.config(ctx, d)
 				if e == nil {
-					provider, e = m.opts.Factory(ctx, d.Provider, cfg)
+					provider, e = m.provider(ctx, d.Provider, cfg)
 				}
 				if e != nil {
 					blockedError = e.Error()

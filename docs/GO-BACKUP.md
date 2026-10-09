@@ -1,12 +1,13 @@
 # Native backup migration
 
-The Go application now implements destination management and local filesystem
-mirror/snapshot jobs. **Backup migration is incomplete.** S3, SFTP, FTP/FTPS,
-Google Drive and Dropbox transports, and TGDB payload encryption/restore, still
-need native implementations. Their existing configuration forms and stored
-credentials remain readable. A remote provider test reports unavailable; queued
-remote/encrypted uploads remain pending with an explicit destination error.
-They do not consume retry attempts, send plaintext, or invoke another runtime.
+The Go application now implements destination management and local, S3 and SFTP
+mirror/snapshot transports. **Backup migration is incomplete.** FTP/FTPS,
+Google Drive, Dropbox and TGDB payload encryption/restore still need native
+implementations. Existing configuration forms and stored credentials remain
+readable. Unsupported transports report unavailable; their queued uploads and
+encrypted payload jobs remain pending with an explicit destination error.
+Those blocked jobs do not consume retry attempts, send plaintext, or invoke
+another runtime. Supported transports use the durable queue's actual retries.
 The frozen backup contracts do not exercise successful remote or encrypted
 uploads, so their passing result must not be treated as that coverage.
 
@@ -16,8 +17,9 @@ All `/api/backup/*` routes require an administrator session. They cover provider
 metadata, destination create/update/delete, redacted config, connection tests,
 status, jobs/recent activity, retry, pause/resume, manual runs, and encryption
 key management. Backup WebSocket events and logs are flat and administrator-only.
-Provider metadata is a static copy of the released form schema, not a claim
-that all six transports are ready.
+Provider metadata retains the released form fields and adds an optional SSH
+host fingerprint for SFTP. The presence of a form does not establish that all
+six transports are ready.
 
 Provider credentials retain the existing TGDC v1 layout:
 `TGDC | version=1 | IV[12] | AES-256-GCM ciphertext | tag[16]`.
@@ -53,6 +55,75 @@ before skipping, including zero-byte files. Path escapes and outside-root
 symlinks are rejected. Connection probes use unique names and cannot overwrite
 an existing probe file. File sync/rename and SQLite WAL provide process-restart
 recovery; this is not a guarantee against every filesystem/power-loss scenario.
+
+## Native S3 transport
+
+The official AWS Go v2 S3 client signs requests with SigV4. Credentials are
+explicitly supplied from the encrypted destination config; no environment,
+instance metadata or default credential chain is used. The optional
+`sessionToken` config value is secret and empty edits preserve it, although the
+current form only exposes access key ID and secret. Use HTTPS for remote
+endpoints; explicit HTTP supports local gateways. Redirects are refused rather
+than forwarding signed requests to another host. The configured region, bucket,
+prefix, endpoint and path-style addressing control all requests.
+
+Files up to 8 MiB use PutObject. Larger files use at most four concurrent
+UploadPart requests; part sizes grow to keep the total at or below 10,000.
+ReaderAt/SectionReader and 64 KiB inspection buffers avoid retaining full parts
+in memory. One inspection pass computes the full SHA-256 identity and per-part
+Content-MD5 values. MD5 is a protocol integrity check, not a dedup identity or
+authentication algorithm. A compliant server rejects changed bytes; completion
+is checked against the returned ETag and object length. This targets general
+purpose buckets and compatible gateways, not S3 directory buckets.
+
+An existing equal-sized object is read and SHA-256 checked with an ETag condition
+before skipping. Object metadata or a multipart ETag alone is never treated as
+proof of identical content. Listing validates prefix ownership and continuation
+tokens. Delete failures propagate. SDK requests allow at most three attempts;
+progress callbacks are serialized and monotonic across retries. Progress counts
+source bytes processed, not remotely acknowledged durability, and may advance
+during request signing before the network transfer finishes.
+
+Failed/canceled multipart uploads join all part requests, then attempt Abort
+using a fresh 30-second context. Abort errors are reported together with the
+transfer error. **A hard process crash or failed abort can still leave remote
+parts: a durable multipart cleanup journal is not implemented yet.** An abort
+lifecycle policy on the bucket is useful operational protection, not evidence
+that application crash cleanup is complete. No real AWS/R2/B2/MinIO account has
+been exercised in this migration; current evidence is a wire-protocol fixture.
+
+## Native SFTP transport
+
+SFTP inspects the source before connecting, uses Go SSH directly, reuses one authenticated connection per destination,
+and sends at most sixteen concurrent 32 KiB file requests. It does not invoke
+an SSH executable, agent, or global SSH configuration. Password or private-key
+authentication is explicit; when both are supplied, the key takes precedence.
+Encrypted private keys accept the configured passphrase.
+
+The optional **SSH host key fingerprint** field accepts `SHA256:...`. Verify it
+through a trusted channel before entering it to authenticate the first
+connection. If blank, the first observed key is persisted in
+`native_backup_host_keys` by host/port (trust on first use). This does **not**
+authenticate an unknown first server. Subsequent changed keys are rejected
+before sending a password or authenticating a client key, including after
+restart. Entering a separately verified new fingerprint authorizes rotation of
+that host's stored key. Connection-test results show the observed fingerprint.
+
+Uploads verify existing bytes with SHA-256, create exclusive random temporary
+files, set private permissions before writing, check the source hash again
+during transfer, and verify remote length. Servers advertising fsync are synced.
+Replacing an existing file requires `posix-rename@openssh.com`; a server without
+it can create a new file using standard SFTP rename but receives an explicit
+error on replacement. The old file is never deleted to make space for a rename.
+
+Cancellation closes the socket and joins the transfer. Temporary cleanup uses
+a new connection to the same trusted endpoint with a separate 30-second limit;
+failure is reported. Later operations reconnect with the same authentication
+and host-key rules. Hard-crash temporary-file cleanup is still release work.
+Path components are checked with Lstat and symlinks rejected. SFTP v3 does not
+provide directory-handle-relative opens, so this cannot prevent an untrusted
+server/account from swapping paths between checks; use a trusted remote account
+and, where appropriate, a server-side chroot. No real NAS deployment was tested.
 
 ## Snapshots and restart recovery
 
@@ -106,21 +177,38 @@ An application test exercises authenticated HTTP create, raw Telegram message
 metadata through fixture bytes into an actual mirrored file, guest rejection,
 and restart persistence. It does not contact Telegram or a real cloud provider.
 
+Additional native tests run actual HTTP and SSH/SFTP servers over loopback.
+The S3 fixture independently verifies SigV4, checks request bodies and transport
+checksums, and exercises multipart parallelism/retries/abort, source mutation,
+equal-size corruption, empty files, pagination, redirects, error redaction and
+automatic mirror recovery after restart. SSH tests exercise real password and
+encrypted-key authentication, host-key persistence/rotation before credentials,
+connection reuse, cancellation/reconnect/cleanup, symlink rejection, missing
+atomic-rename support and automatic queued mirror recovery. These are protocol
+integration tests; they are not live provider or browser E2E results.
+
 The old Node contract runner is still development tooling; its removal remains
-part of the overall migration. No frozen expectations were edited. The backup file passes 17/17. The full run
-passes 239/324, leaving 85 failed cases in 12 files. One newly exposed failure
-is the maintenance contract assuming VACUUM can never increase the logical
-page count. A quiescent native database with the sole writer reserved reproduced
-129 → 130 pages (4096 bytes each), so the application preserves those actual
-measurements. VACUUM now holds that connection across both measurements and
-reports database errors instead of silently counting them as successes. This
-adds a documented frozen expectation difference; it is not a waived pass. See
+part of the overall migration. No frozen expectations were edited. Backup
+passes 16/17: the unchanged provider-metadata snapshot lacks the new optional
+SFTP host-key field. The full run passes 239/324, leaving 85 failed cases in
+12 files. Maintenance now passes 8/8 with the host-key table present. At the
+previous checkpoint, its non-growth assertion failed because a quiescent native
+database grew from 129 to 130 pages during VACUUM. That earlier evidence remains
+valid: different schema packing does not make non-growth a general guarantee.
+The application keeps actual measurements and database errors visible. Both
+the added field and the earlier VACUUM finding are documented rather than
+hidden by changing frozen expectations. See
 [the current migration totals and release gates](GO-MIGRATION-STATUS.md).
 
-Further work includes all five remote transports, encrypted upload and restore
+Further work includes the three remaining remote transports, encrypted upload and restore
 compatibility, bounded concurrency tuning, cleanup of interrupted pre-publication
-staging files, rebasing completed jobs after changing a destination's root/bucket,
+staging files and multipart uploads, rebasing completed jobs after changing a destination's root/bucket,
 and real browser/Telegram/provider/migration E2E.
+Very low configured throttle rates also need dedicated integration coverage:
+both transports bound silent sockets to one minute, while the current queue
+throttles by sleeping in the progress callback. A local pause longer than that
+can be mistaken for a silent remote. This is an outstanding interaction to fix
+before claiming the full legacy throttle range is supported.
 
 ## Local verification benchmark
 
@@ -134,6 +222,19 @@ throughput with a warm local fixture, not upload speed, network/NAS performance,
 process RSS, or a comparison against Node. Working buffers do not grow with
 file size.
 
+`BenchmarkS3SourceInspection` on the same CPU/toolchain, three runs of ten
+iterations per size: inspecting 1 MiB takes 2.23–2.34 ms, about 65,961–65,963
+allocated bytes and 12 allocations; 64 MiB takes 109–144 ms, about 67,923–67,924
+bytes and 64 allocations. It computes SHA-256 plus the protocol's per-part MD5
+values over preallocated warm memory; setup/input allocation is excluded.
+This verifies bounded inspection buffers, not upload throughput, disk speed,
+peak process RSS, or a comparison against the previous implementation.
+The comparable unstripped Linux builds grew from 33,838,568 to 38,669,142 bytes
+after adding the remote transports and dependencies (about 4.61 MiB). This is
+binary size, not resident memory. The implementation uses the maintained AWS
+S3 client and Go SSH/SFTP libraries; no deprecated S3 transfer-manager dependency
+is retained.
+
 ## References
 
 - [Go traversal-resistant file APIs](https://go.dev/blog/osroot): directory handles
@@ -144,5 +245,15 @@ file size.
   publication and mirror enqueue are implemented in database transactions.
 - [Go cipher AEAD](https://pkg.go.dev/crypto/cipher#AEAD): used for the bounded TGDC
   configuration blobs, not a whole-file streaming substitute.
+- [AWS PutObject integrity](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)
+  and [UploadPart](https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html):
+  request checksums and multipart upload semantics.
+- [Cloudflare S3 compatibility](https://developers.cloudflare.com/r2/api/s3/api/):
+  Content-MD5 support for PutObject/UploadPart informed the protocol choice;
+  this reference is not a successful R2 deployment test.
+- [Go SSH host-key callback](https://pkg.go.dev/golang.org/x/crypto/ssh#ClientConfig)
+  and [SHA256 fingerprints](https://pkg.go.dev/golang.org/x/crypto/ssh#FingerprintSHA256).
+- [SFTP PosixRename](https://pkg.go.dev/github.com/pkg/sftp#Client.PosixRename),
+  concurrent file requests and advertised extensions.
 - Released format definitions: `src/core/backup/credentials.js`, `encryption.js`,
   and the unchanged frozen backup HTTP/WebSocket contracts.

@@ -131,6 +131,13 @@
         "placeholder": "/home/user/tgdl-backup",
         "required": true,
         "type": "text"
+      },
+      {
+        "help": "Recommended: SHA256 fingerprint verified with your server administrator. If blank, the first key is trusted and remembered; later changes are rejected. Set a verified new fingerprint to authorize rotation.",
+        "label": "SSH host key fingerprint (optional)",
+        "name": "hostKey",
+        "placeholder": "SHA256:...",
+        "type": "text"
       }
     ],
     "displayName": "SFTP (SSH file transfer)",
