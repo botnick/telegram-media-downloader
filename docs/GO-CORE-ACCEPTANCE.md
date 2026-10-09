@@ -8,7 +8,7 @@ sidecar projects remain independent.
 **Acceptance is incomplete.** Native implementation and the checks below are
 available, but no real Telegram account is configured in this development
 workspace. Fixture success does not establish live Telegram E2E. No release,
-deployment or GitHub CI result is claimed.
+production deployment or GitHub CI result is claimed.
 
 | Requirement | Current evidence | Limit |
 | --- | --- | --- |
@@ -46,3 +46,11 @@ The development workspace currently has no configured Telegram API credentials,
 account metadata or session files. That blocks this final live verification;
 repeating offline fixtures cannot resolve it. The working library and other
 rooms' accounts have not been used as test data.
+
+A separate password-protected native preview is prepared for account acceptance.
+The listener binds to loopback, guest login is disabled, public setup is locked,
+and HTTPS login/config access/logout and secure cookies have been checked. During
+publication an authoritative DNS lookup returned the new record while a recursive
+resolver retained NXDOMAIN; the TLS checks used the observed edge address without
+disabling certificate verification. This preview is a way to supply the missing
+test account, not evidence that live Telegram acceptance has passed.
