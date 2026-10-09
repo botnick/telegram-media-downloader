@@ -113,8 +113,8 @@ Live read-only verification on the protected preview returned 187 chats from
 one account in 1.54 seconds: 153 available, 27 restricted, four migrated and three
 deleted accounts. Three real profile JPEG requests returned HTTP 200 (11,196,
 6,384 and 11,040 bytes). Pending recovery markers were preserved; monitor state
-remained stopped with zero active/queued downloads. Remote leave/delete was not
-executed against the owner's real chats. Destructive behavior is covered by
+remained stopped with zero active/queued downloads. The initial verification did
+not execute remote leave/delete against the owner's real chats. Removal is covered by
 transport fixtures, HTTP authorization/account/confirmation tests and isolated
 browser fixtures; live browser checking opens and cancels confirmation only.
 
@@ -123,6 +123,17 @@ with no blocked entries in Available, and 34 blocked rows in Deleted/unavailable
 Seventeen real profile images decoded. The removal sheet required choosing the
 single account before enabling confirmation; cancellation before and after
 selection sent zero removal requests. Monitoring remained stopped and idle.
+
+After the owner explicitly requested a real test with two named chats, the same
+authenticated removal endpoint was exercised against exactly those targets: one
+channel and one supergroup. Both requests returned HTTP 200 with confirmed success
+and no warning. A subsequent fresh active/archive read from Telegram confirmed
+both IDs absent and the dialog count decreased from 187 to 185. The same single
+account remained connected, with monitoring stopped and zero active/queued jobs.
+Neither chat had a local subscription or downloaded media; download rows stayed
+at zero. Consequently this live test proves channel/supergroup leave behavior,
+but existing-file preservation, basic-group cleanup and DM removal still rely on
+the corresponding fixtures. No other chat was targeted. No account was rejoined.
 
 Affected app/engine/Telegram race suites, targeted promotion-stop and verified
 transport regressions, vet and the native build pass. The asset and service-worker
