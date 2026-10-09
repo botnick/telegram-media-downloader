@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.3] — 2026-10-09
+
+### Fixed
+- **Settings → Tools → Recovery said "N chats can't be reached" but Open showed an empty page.** Those chats are reviewed on **Chats → Deleted / unavailable** (where they can be left in bulk); Open now goes there whenever the card reports unreachable chats. The Recovery page itself still hides entries you chose to ignore.
+
+### Service worker
+- `VERSION = 'v3030'`
+
 ## [3.0.2] — 2026-10-09
 
 Upgrades from long-running 2.x installs.

@@ -495,9 +495,12 @@ const LOADERS = {
                 { n: num(unreachable) },
                 `${num(unreachable)} chats can't be reached`,
             );
+            // These chats are reviewed on Chats → Deleted / unavailable, not
+            // on the Recovery page (which also hides ignored entries).
             return {
                 line: text,
                 tone: 'warn',
+                href: '#/groups?tab=attention',
                 attention: {
                     text,
                     tone: 'warn',
@@ -593,7 +596,8 @@ function statusPill(info) {
 const srName = (tool) => `<span class="sr-only"> · ${escapeHtml(tr(TOOLS[tool].name))}</span>`;
 
 function cardActions(tool, info) {
-    const href = toolHref(tool);
+    // A status can point Open somewhere more useful than the tool page.
+    const href = info.href || toolHref(tool);
     const busy = _pending.has(tool);
     let primary = '';
     if (info.running) {
