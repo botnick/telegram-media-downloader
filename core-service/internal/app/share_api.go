@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -200,16 +199,8 @@ func (a *App) queryShareLinks(r *http.Request, key []byte, where string, args []
 }
 
 func requestScheme(r *http.Request) string {
-	if r.TLS != nil {
+	if networkForRequest(r).secure {
 		return "https"
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		if peer := net.ParseIP(host); peer != nil && peer.IsLoopback() {
-			if proto := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]); proto == "https" {
-				return proto
-			}
-		}
 	}
 	return "http"
 }

@@ -1,11 +1,10 @@
 package app
 
 import (
+	"container/heap"
 	"fmt"
-	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -14,11 +13,31 @@ type rateWindow struct {
 	count int
 	reset time.Time
 }
+type rateExpiry struct {
+	key   string
+	reset time.Time
+}
+type rateExpiries []rateExpiry
+
+func (h rateExpiries) Len() int           { return len(h) }
+func (h rateExpiries) Less(i, j int) bool { return h[i].reset.Before(h[j].reset) }
+func (h rateExpiries) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *rateExpiries) Push(x any)        { *h = append(*h, x.(rateExpiry)) }
+func (h *rateExpiries) Pop() any {
+	old := *h
+	n := len(old)
+	v := old[n-1]
+	old[n-1] = rateExpiry{}
+	*h = old[:n-1]
+	return v
+}
+
 type rateLimiter struct {
 	mu      sync.Mutex
 	window  time.Duration
 	limit   int
 	clients map[string]rateWindow
+	expires rateExpiries
 	message string
 }
 
@@ -37,6 +56,7 @@ func (l *rateLimiter) configure(limit int, window time.Duration) {
 	defer l.mu.Unlock()
 	if window != l.window {
 		l.clients = make(map[string]rateWindow)
+		l.expires = nil
 	}
 	l.limit = limit
 	l.window = window
@@ -44,43 +64,46 @@ func (l *rateLimiter) configure(limit int, window time.Duration) {
 func (l *rateLimiter) allow(key string, now time.Time) (bool, int, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.allowLocked(key, now, l.limit)
+}
+func (l *rateLimiter) allowPolicy(key string, now time.Time, limit int, window time.Duration) (bool, int, time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.window != window {
+		l.clients = make(map[string]rateWindow)
+		l.expires = nil
+		l.window = window
+	}
+	return l.allowLocked(key, now, limit)
+}
+func (l *rateLimiter) allowLocked(key string, now time.Time, limit int) (bool, int, time.Duration) {
+	// Expire each bucket once, rather than scanning the whole client map for
+	// every newly observed address. Live buckets are never evicted for space.
+	for len(l.expires) > 0 && !now.Before(l.expires[0].reset) {
+		expired := heap.Pop(&l.expires).(rateExpiry)
+		delete(l.clients, expired.key)
+	}
 	current, exists := l.clients[key]
-	if !exists || !now.Before(current.reset) {
-		// Expired buckets are reclaimed and capacity fails closed, rather than
-		// evicting live buckets and allowing brute-force clients another quota.
-		for k, entry := range l.clients {
-			if !now.Before(entry.reset) {
-				delete(l.clients, k)
-			}
-		}
+	if !exists {
 		if len(l.clients) >= 10000 {
 			return false, 0, l.window
 		}
 		current = rateWindow{reset: now.Add(l.window)}
+		heap.Push(&l.expires, rateExpiry{key, current.reset})
 	}
-	if current.count >= l.limit {
+	if current.count >= limit {
 		return false, 0, current.reset.Sub(now)
 	}
 	current.count++
 	l.clients[key] = current
-	return true, l.limit - current.count, current.reset.Sub(now)
+	return true, limit - current.count, current.reset.Sub(now)
 }
 func clientKey(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		// The default reverse-proxy trust boundary is loopback. Never accept
-		// forwarded IPs from remote peers when choosing an authentication quota.
-		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
-			parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
-			for i := len(parts) - 1; i >= 0; i-- {
-				if forwarded := net.ParseIP(strings.TrimSpace(parts[i])); forwarded != nil && !forwarded.IsLoopback() {
-					return forwarded.String()
-				}
-			}
-		}
-		return host
+	n := networkForRequest(r)
+	if n.client.IsValid() {
+		return n.client.String()
 	}
-	return r.RemoteAddr
+	return "invalid-client"
 }
 func (l *rateLimiter) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

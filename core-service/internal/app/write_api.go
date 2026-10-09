@@ -57,6 +57,14 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, 400, "web must be an object")
 			return
 		}
+		if raw, present := web["csp"]; present && raw != nil {
+			normalized, err := normalizeCSP(raw)
+			if err != nil {
+				writeJSONError(w, 400, err.Error())
+				return
+			}
+			web["csp"] = normalized
+		}
 		for _, key := range []string{"password", "passwordHash", "guestPasswordHash"} {
 			if _, present := web[key]; present {
 				writeJSONError(w, 400, "Use /api/auth/setup or /api/auth/change-password to manage dashboard auth.")
@@ -93,6 +101,17 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 	}
 	config := effectiveConfig(rawConfig)
 	mergeConfig(config, patch)
+	if web, ok := patch["web"].(map[string]any); ok {
+		if csp, present := web["csp"]; present {
+			// CSP is one policy document: an omitted directive restores its
+			// shipped default, while null resets the entire custom policy.
+			if csp == nil {
+				delete(ensureMap(config, "web"), "csp")
+			} else {
+				ensureMap(config, "web")["csp"] = cloneConfigValue(csp)
+			}
+		}
+	}
 	if advanced, ok := config["advanced"].(map[string]any); ok && patch["advanced"] != nil {
 		sanitizeAdvancedConfig(advanced)
 		delete(advanced, "goCore")

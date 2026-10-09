@@ -28,12 +28,23 @@ functionality. Do not deploy this branch over a working library yet.
 
 - Authentication, first-time setup, password changes/reset, guest access,
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
+- Native reverse-proxy trust, live HTTPS/CSP enforcement and optional API quotas
+  now apply before route dispatch. Login and share quotas use the same resolved
+  client identity. Text compression streams gzip/deflate/Brotli with bounded
+  encoder concurrency, waits and network writes; raw media/ranges are preserved.
+  Actual socket, process and independent decoder checks pass. See
+  [HTTP policy and remaining security limits](GO-HTTP-SECURITY.md).
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the FTP-enabled Go executable passes
-  **239 of 324 tests**, with **24 of 36 files passing** (61.96 seconds).
-  The remaining **85 failed cases in 12 files** are recorded failures, not
-  waived expectations. The preceding encrypted-backup checkpoint passed
+- The latest full black-box run against the Go executable passes
+  **242 of 324 tests**, with **24 of 36 files passing** (57.18 seconds).
+  The remaining **82 failed cases in 12 files** are recorded failures, not
+  waived expectations. The FTP checkpoint passed 239/324. HTTP security now
+  passes 4/5: its remaining case expects an Express framework header on the
+  HTTPS redirect; Go omits that header. Native tests cover all HTTPS branches.
+  The development launcher now translates its production-cookie scenario to
+  Go's explicit Secure-cookie option; production does not read NODE_ENV.
+  The earlier encrypted-backup checkpoint passed
   238/324: a file-token case differed only in the request normalizer placeholder
   (`filetoken:1` versus `filetoken:3`); status 200, headers and file hash matched.
   Separate mint requests can cross a second and produce different expiry/signature
@@ -277,7 +288,8 @@ migration; the current source tree is not yet free of Node dependencies.
 - Resolve the 12 remaining contract files: cluster/peer/cluster-WebSocket,
   AI jobs, NSFW, seekbar, backup provider metadata, recovery, purge, security,
   updates and periodic WebSocket events. Three cleanup corrections and the
-  added SFTP/FTP form fields are documented differences, still counted as failures.
+  added SFTP/FTP form fields and omitted Express response header are documented
+  differences, still counted as failures.
   The old VACUUM non-growth assumption also remains incorrect in general even
   though the current schema's fixture passes it.
   A low-level Go projection or helper is not a replacement for a public workflow.

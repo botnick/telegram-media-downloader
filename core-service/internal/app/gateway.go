@@ -20,7 +20,7 @@ func (a *App) gateway(next http.Handler) http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			w.Header().Set("Cache-Control", "no-store, max-age=0")
 			w.Header().Set("Pragma", "no-cache")
-			w.Header().Set("Vary", "Cookie, Accept-Encoding")
+			w.Header().Set("Vary", a.apiVary(r))
 		} else if !strings.HasPrefix(r.URL.Path, "/share/") {
 			w.Header().Set("Vary", "Accept-Encoding")
 		}
@@ -93,6 +93,13 @@ func (a *App) gateway(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (a *App) apiVary(r *http.Request) string {
+	if compressionRequestOptOut(r) || a.httpOptions.CompressionLevel != nil && *a.httpOptions.CompressionLevel == 0 {
+		return "Cookie"
+	}
+	return "Cookie, Accept-Encoding"
 }
 
 func isAuthRoute(path string) bool {

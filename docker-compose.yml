@@ -14,6 +14,11 @@ services:
       - TZ=${TZ:-UTC}
       - PORT=3000
       - TGDL_DATA_DIR=/app/data
+      # A defined empty TRUST_PROXY disables forwarded-header trust.
+      - TRUST_PROXY=${TRUST_PROXY-loopback}
+      - TGDL_SECURE_COOKIES=${TGDL_SECURE_COOKIES:-0}
+      - TGDL_CSP=${TGDL_CSP:-}
+      - COMPRESSION_LEVEL=${COMPRESSION_LEVEL:-6}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 30s

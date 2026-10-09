@@ -122,6 +122,10 @@ function targetEnv({ port, dataDir, extra = {}, nodeEnv = 'test' }) {
         PORT: String(port),
         TGDL_DATA_DIR: dataDir,
         NODE_ENV: nodeEnv,
+        // The native executable has an explicit cookie policy, independent of Node.
+        ...(process.env.CONTRACT_TARGET === 'go'
+            ? { TGDL_SECURE_COOKIES: nodeEnv === 'production' ? '1' : '0' }
+            : {}),
         TZ: 'UTC',
         LANG: 'C.UTF-8',
         LC_ALL: 'C.UTF-8',

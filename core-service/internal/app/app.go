@@ -33,6 +33,7 @@ import (
 )
 
 type Config struct {
+	HTTP                HTTPOptions
 	AccountFactory      engine.Factory
 	AccountLoginFactory telegram.LoginFactory
 	DataDir             string
@@ -44,6 +45,10 @@ type Config struct {
 	Output              io.Writer
 }
 type App struct {
+	httpOptions      HTTPOptions
+	proxyPolicy      proxyPolicy
+	webPolicy        webPolicyCache
+	apiRL            *rateLimiter
 	monitor          *engine.Controller
 	accounts         *accounts.Repository
 	accountWizard    *accounts.Wizard
@@ -138,6 +143,17 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 func New(ctx context.Context, cfg Config) (*App, error) {
+	proxy, err := parseProxyPolicy(cfg.HTTP.TrustProxy)
+	if err != nil {
+		return nil, err
+	}
+	level := 6
+	if cfg.HTTP.CompressionLevel != nil {
+		level = *cfg.HTTP.CompressionLevel
+	}
+	if level < 0 || level > 9 {
+		return nil, errors.New("COMPRESSION_LEVEL must be 0-9")
+	}
 	release, err := engine.AcquireServerOwnership(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -157,6 +173,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	}
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
 	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute), loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum")}
+	a.httpOptions, a.proxyPolicy, a.apiRL = cfg.HTTP, proxy, newRateLimiter(10000, time.Minute)
 	a.ctx, a.cancel = context.WithCancel(ctx)
 	a.releaseOwnership = release
 	a.accounts = accounts.NewRepository(db.Writer, db.Reader, cfg.DataDir, &a.configMu)
@@ -228,7 +245,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("/", newStaticHandler(cfg.Static))
 	registerPublicAPIRoutes(mux, a)
 
-	a.handler = securityHeaders(a.gateway(mux))
+	a.handler = a.transportPolicy(newCompressionPool(level).middleware(a.gateway(mux)))
 	if err := a.recoverPurges(ctx); err != nil {
 		a.Close()
 		return nil, fmt.Errorf("recover purge jobs: %w", err)
@@ -265,25 +282,6 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		}()
 	}
 	return a, nil
-}
-
-func securityHeaders(next http.Handler) http.Handler {
-	const csp = "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", csp)
-		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
-		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
-		w.Header().Set("Origin-Agent-Cluster", "?1")
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Strict-Transport-Security", "max-age=0")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-DNS-Prefetch-Control", "off")
-		w.Header().Set("X-Download-Options", "noopen")
-		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
-		w.Header().Set("X-XSS-Protection", "0")
-		next.ServeHTTP(w, r)
-	})
 }
 
 func webBoolValue(web map[string]any, key string, fallback bool) bool {

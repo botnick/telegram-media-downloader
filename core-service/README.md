@@ -116,6 +116,9 @@ Shutdown/edit cancellation returns work to pending without spending a retry;
 a transfer deadline consumes one of the configured attempts. Queued Telegram
 payloads stay private: the dashboard receives a bounded field projection.
 Set `TGDL_SECURE_COOKIES=1` when serving behind HTTPS.
+Native HTTP policy now honors `TRUST_PROXY`, live HTTPS/CSP/API-limit settings,
+and bounded gzip/deflate/Brotli response compression. Compose forwards these
+options. See [HTTP policy, verification and limits](../docs/GO-HTTP-SECURITY.md).
 
 References:
 
