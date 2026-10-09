@@ -518,12 +518,12 @@ func (a *App) commitPurge(ctx context.Context, p *purgeRecord) error {
 	if err != nil {
 		return err
 	}
-	for _, table := range []string{"queue", "tgdl_work", "tgdl_message_generations"} {
+	for _, table := range []string{"queue", "tgdl_work", "tgdl_message_generations", "tgdl_rescue_messages"} {
 		res, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE `+where, args...)
 		if err != nil {
 			return err
 		}
-		if table != "tgdl_message_generations" {
+		if table != "tgdl_message_generations" && table != "tgdl_rescue_messages" {
 			n, err := res.RowsAffected()
 			if err != nil {
 				return err

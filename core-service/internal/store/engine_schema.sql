@@ -2,6 +2,16 @@ CREATE TABLE IF NOT EXISTS tgdl_user_peers (
     account_id TEXT NOT NULL, self_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
     access_hash INTEGER NOT NULL, PRIMARY KEY(account_id,self_id,user_id)
 );
+-- Rescue receipts are written before download/cursor acknowledgement and
+-- survive a source delete received while the file is still being transferred.
+CREATE TABLE IF NOT EXISTS tgdl_rescue_messages (
+ group_id TEXT NOT NULL, message_id INTEGER NOT NULL,
+ account_id TEXT NOT NULL, channel_id INTEGER NOT NULL,
+ pending_until INTEGER NOT NULL, rescued_at INTEGER,
+ PRIMARY KEY(group_id,message_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tgdl_rescue_channel ON tgdl_rescue_messages(channel_id,message_id);
+CREATE INDEX IF NOT EXISTS idx_tgdl_rescue_account ON tgdl_rescue_messages(account_id,message_id) WHERE channel_id=0;
 CREATE TABLE IF NOT EXISTS tgdl_work (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  account_id TEXT NOT NULL,

@@ -131,6 +131,12 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "config write failed")
 		return
 	}
+	if _, changed := patch["rescue"]; changed && a.rescueWake != nil {
+		select {
+		case a.rescueWake <- struct{}{}:
+		default:
+		}
+	}
 	if advancedPatch, ok := patch["advanced"].(map[string]any); ok {
 		if _, changed := advancedPatch["ai"]; changed {
 			a.hub.Broadcast(ws.Event{Type: "ai_config_changed", Flat: true})

@@ -1,8 +1,10 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/auth"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"math"
@@ -59,15 +61,22 @@ func hostname() string {
 }
 
 func (a *App) handleAPIMonitorStatus(w http.ResponseWriter, r *http.Request) {
-	config, err := a.config.Load(r.Context())
+	status, err := a.monitorStatusPayload(r.Context())
 	if err != nil {
-		writeJSONError(w, 500, "config read failed")
+		writeJSONError(w, 500, err.Error())
 		return
+	}
+	writeJSON(w, 200, status)
+}
+
+func (a *App) monitorStatusPayload(ctx context.Context) (map[string]any, error) {
+	config, err := a.config.Load(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("config read failed: %w", err)
 	}
 	saved, err := telegram.SavedSessions(a.dataDir)
 	if err != nil {
-		writeJSONError(w, 500, "account directory read failed")
-		return
+		return nil, fmt.Errorf("account directory read failed: %w", err)
 	}
 	accounts := len(saved)
 	telegram, _ := config["telegram"].(map[string]any)
@@ -86,16 +95,15 @@ func (a *App) handleAPIMonitorStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	status, err := a.monitor.Status(r.Context())
+	status, err := a.monitor.Status(ctx)
 	if err != nil {
-		writeJSONError(w, 500, err.Error())
-		return
+		return nil, err
 	}
 	status["hint"] = hint
 	if status["accounts"] == 0 {
 		status["accounts"] = accounts
 	}
-	writeJSON(w, 200, status)
+	return status, nil
 }
 
 func (a *App) handleAPIQueueSnapshot(w http.ResponseWriter, r *http.Request) {

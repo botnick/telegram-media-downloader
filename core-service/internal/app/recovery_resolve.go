@@ -200,7 +200,7 @@ func (a *App) applyRecoveryPlan(ctx context.Context, plan recoveryPlan) (map[str
 	}
 	defer tx.Rollback()
 	if plan.reason == "" && target != plan.id {
-		for _, table := range []string{"downloads", "queue", "tgdl_work", "tgdl_message_generations"} {
+		for _, table := range []string{"downloads", "queue", "tgdl_work", "tgdl_message_generations", "tgdl_rescue_messages"} {
 			var collision int
 			query := `SELECT COUNT(*) FROM ` + table + ` a JOIN ` + table + ` b ON a.message_id=b.message_id WHERE a.group_id=? AND b.group_id=?`
 			if err := tx.QueryRowContext(ctx, query, plan.id, target).Scan(&collision); err != nil {
@@ -226,7 +226,7 @@ func (a *App) applyRecoveryPlan(ctx context.Context, plan recoveryPlan) (map[str
 		delete(group, "_resolveFailedAt")
 		delete(group, "_resolveFailedReason")
 		if target != plan.id {
-			for _, table := range []string{"downloads", "queue", "tgdl_work", "tgdl_message_generations"} {
+			for _, table := range []string{"downloads", "queue", "tgdl_work", "tgdl_message_generations", "tgdl_rescue_messages"} {
 				if _, err := tx.ExecContext(ctx, `UPDATE `+table+` SET group_id=? WHERE group_id=?`, target, plan.id); err != nil {
 					return nil, err
 				}

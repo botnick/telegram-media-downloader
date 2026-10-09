@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/botnick/telegram-media-downloader/core-service/internal/rescue"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/gotd/td/bin"
 	"github.com/gotd/td/tg"
@@ -80,6 +81,9 @@ func enqueueWork(ctx context.Context, db queueWriter, accountID string, target T
 	}
 	if target.ID == "" {
 		target.ID = media.GroupID
+	}
+	if err := rescue.Observe(ctx, db, accountID, target.ID, message, origin); err != nil {
+		return 0, false, err
 	}
 	if origin == "stories" {
 		// Stories have no message PTS. Explicit reads serialize in the app and

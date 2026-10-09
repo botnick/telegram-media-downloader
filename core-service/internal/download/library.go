@@ -438,6 +438,7 @@ func (l *Library) register(ctx context.Context, item Item, media candidate, reus
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Record{}, err
 	}
+	inserted := errors.Is(err, sql.ErrNoRows)
 	var id int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO downloads(group_id,group_name,message_id,file_name,file_size,file_type,file_path,file_hash,telegram_media_kind,telegram_media_id,telegram_media_size,status)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,'completed') ON CONFLICT(group_id,message_id) DO UPDATE SET
@@ -446,6 +447,16 @@ func (l *Library) register(ctx context.Context, item Item, media candidate, reus
 		telegram_media_id=excluded.telegram_media_id,telegram_media_size=excluded.telegram_media_size,status='completed' RETURNING id`,
 		item.GroupID, item.GroupName, item.MessageID, item.Name, item.Identity.Size, item.Type, filepath.ToSlash(media.path), media.sha256, item.Identity.Kind, item.Identity.ID, item.Identity.Size).Scan(&id)
 	if err != nil {
+		return Record{}, err
+	}
+	// A source-delete receipt can arrive before or during the byte transfer.
+	// Apply its state in the same transaction as catalog publication/recovery.
+	if _, err := tx.ExecContext(ctx, `UPDATE downloads SET
+      pending_until=CASE WHEN rescued_at IS NOT NULL OR (SELECT rescued_at FROM tgdl_rescue_messages WHERE group_id=? AND message_id=?) IS NOT NULL THEN NULL
+        WHEN ? THEN (SELECT pending_until FROM tgdl_rescue_messages WHERE group_id=? AND message_id=?) ELSE pending_until END,
+      rescued_at=COALESCE(rescued_at,(SELECT rescued_at FROM tgdl_rescue_messages WHERE group_id=? AND message_id=?))
+      WHERE id=? AND EXISTS(SELECT 1 FROM tgdl_rescue_messages WHERE group_id=? AND message_id=?)`,
+		item.GroupID, item.MessageID, inserted, item.GroupID, item.MessageID, item.GroupID, item.MessageID, id, item.GroupID, item.MessageID); err != nil {
 		return Record{}, err
 	}
 	if previousPath.Valid && (!previousHash.Valid || !strings.EqualFold(previousHash.String, media.sha256)) {

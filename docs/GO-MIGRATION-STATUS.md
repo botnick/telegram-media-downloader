@@ -28,6 +28,11 @@ functionality. Do not deploy this branch over a working library yet.
 
 - Authentication, first-time setup, password changes/reset, guest access,
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
+- Native periodic status/statistics pushes and rescue retention now run in Go.
+  Queue-time source receipts cover live/history/URL messages and survive source
+  deletion during transfer or publication recovery. Bounded expiration batches
+  preserve pinned and shared-file owners; actual process checks cover 503 rows,
+  ordered browser frames and restart. See [rescue scope and limits](GO-RESCUE.md).
 - Native reverse-proxy trust, live HTTPS/CSP enforcement and optional API quotas
   now apply before route dispatch. Login and share quotas use the same resolved
   client identity. Text compression streams gzip/deflate/Brotli with bounded
@@ -37,13 +42,14 @@ functionality. Do not deploy this branch over a working library yet.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
 - The latest full black-box run against the Go executable passes
-  **236 of 324 tests**, with **22 of 36 files passing** (56.51 seconds).
-  The remaining **88 failed cases in 14 files** are recorded failures, not
-  waived expectations. The HTTP transport checkpoint passed 242/324; session
+  **239 of 324 tests**, with **23 of 36 files passing** (58.42 seconds).
+  The remaining **85 failed cases in 13 files** are recorded failures, not
+  waived expectations. Both periodic WebSocket/rescue contracts now pass. The
+  prior session checkpoint passed 236/324; its snapshot-backup terminal-frame
+  timing failure is absent in this run (backup 16/17, metadata difference only).
+  The HTTP transport checkpoint passed 242/324; session
   revocation adds five failures in auth-password/system for deliberately changed
   legacy behavior, including three cascading limiter-counter expectations.
-  One snapshot-backup event capture raced the final queue-drained frame; its
-  isolated rerun passes (backup 16/17), but the full failure remains counted.
   See [session lifetime coverage and differences](GO-WEBSOCKET-SESSIONS.md).
   The FTP checkpoint passed 239/324. HTTP security now
   passes 4/5: its remaining case expects an Express framework header on the
@@ -292,9 +298,9 @@ migration; the current source tree is not yet free of Node dependencies.
   reservation boundaries. Validate encrypted backup and restore with real
   providers; S3/SFTP/FTP wire fixtures and loopback interoperability checks do
   not establish live provider or full migration E2E coverage.
-- Resolve the 14 remaining contract files: cluster/peer/cluster-WebSocket,
+- Resolve the 13 remaining contract files: cluster/peer/cluster-WebSocket,
   AI jobs, NSFW, seekbar, backup provider metadata, recovery, purge, security,
-  updates and periodic WebSocket events, plus auth-password/system compatibility
+  updates, plus auth-password/system compatibility
   for prompt session revocation. Three cleanup corrections and the
   added SFTP/FTP form fields and omitted Express response header are documented
   differences, still counted as failures.

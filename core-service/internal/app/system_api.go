@@ -29,10 +29,16 @@ func registerSystemRoutes(mux *http.ServeMux, a *App) {
 }
 
 func (a *App) handleRescueStats(w http.ResponseWriter, r *http.Request) {
-	var pending, rescued int64
-	_ = a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM downloads WHERE pending_until IS NOT NULL AND pending_until > ?`, time.Now().UnixMilli()).Scan(&pending)
-	_ = a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM downloads WHERE rescued_at IS NOT NULL`).Scan(&rescued)
-	writeJSON(w, http.StatusOK, map[string]any{"lastSweepCleared": 0, "pending": pending, "rescued": rescued})
+	var pending, rescued, cleared int64
+	err := a.db.Reader.QueryRowContext(r.Context(), `SELECT
+      (SELECT COUNT(*) FROM downloads WHERE pending_until IS NOT NULL AND rescued_at IS NULL),
+      (SELECT COUNT(*) FROM downloads WHERE rescued_at IS NOT NULL),
+      COALESCE((SELECT CAST(value AS INTEGER) FROM kv WHERE key='native_rescue_last'),0)`).Scan(&pending, &rescued, &cleared)
+	if err != nil {
+		writeJSONError(w, 500, "rescue stats query failed")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"lastSweepCleared": cleared, "pending": pending, "rescued": rescued})
 }
 
 type logFile struct {

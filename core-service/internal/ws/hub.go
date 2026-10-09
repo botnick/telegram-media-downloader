@@ -3,6 +3,7 @@ package ws
 
 import (
 	"encoding/json"
+	"errors"
 	"sync"
 )
 
@@ -11,12 +12,25 @@ type Event struct {
 	Roles   []string
 	Payload any
 	Flat    bool
+	batch   []Event
+}
+
+// Frames expands an internal transaction batch into ordinary wire events.
+// The caller must not mutate returned events or their payloads.
+func (e Event) Frames() []Event {
+	if e.batch != nil {
+		return e.batch
+	}
+	return []Event{e}
 }
 
 // Dashboard events preserve the released wire shape for each event family.
 // Most runtime events use {type,payload}; a few legacy broadcasts put their
 // fields beside type. Routing roles are internal metadata and never go wire.
 func (e Event) MarshalJSON() ([]byte, error) {
+	if e.batch != nil {
+		return nil, errors.New("event batch must be expanded before writing")
+	}
 	if e.Flat {
 		fields := map[string]json.RawMessage{}
 		if e.Payload != nil {
@@ -113,6 +127,33 @@ func (h *Hub) Broadcast(e Event) {
 		select {
 		case c.events <- e:
 		default:
+		}
+	}
+}
+
+// BroadcastBatch reserves one queue slot per transaction-sized group, so a
+// single 500-row sweep cannot overflow a healthy client's 64-slot queue.
+// Frames retain their original order and role checks. Slow clients remain
+// bounded: groups larger than 512 are split, and full queues never block work.
+func (h *Hub) BroadcastBatch(events []Event) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for start := 0; start < len(events); start += 512 {
+		part := events[start:min(start+512, len(events))]
+		for c := range h.clients {
+			frames := make([]Event, 0, len(part))
+			for _, e := range part {
+				if allowed(c.role, e.Roles) {
+					frames = append(frames, e)
+				}
+			}
+			if len(frames) == 0 {
+				continue
+			}
+			select {
+			case c.events <- Event{batch: frames}:
+			default:
+			}
 		}
 	}
 }

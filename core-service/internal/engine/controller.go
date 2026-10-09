@@ -42,6 +42,10 @@ type Target struct{ ID, Name string }
 type Filter func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error)
 type Sink func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error
 
+// UpdateObserver must persist its effects before returning. Any error prevents
+// acknowledgement of the Telegram update, just like durable queue ingestion.
+type UpdateObserver func(context.Context, string, tg.UpdateClass) error
+
 var ErrEngineNotRunning = errors.New("Engine is not running. Start the monitor first.")
 
 type Controller struct {
@@ -51,6 +55,7 @@ type Controller struct {
 	factory        Factory
 	filter         Filter
 	sink           Sink
+	observer       UpdateObserver
 	notify         func(string, error)
 	opMu           sync.Mutex
 	mu             sync.Mutex
@@ -60,6 +65,13 @@ type Controller struct {
 	run            *running
 	attemptLimit   func(int64) time.Duration
 }
+
+func (c *Controller) SetUpdateObserver(observer UpdateObserver) {
+	c.mu.Lock()
+	c.observer = observer
+	c.mu.Unlock()
+}
+
 type running struct {
 	observing    atomic.Bool
 	jobUsers     atomic.Int64
@@ -577,9 +589,10 @@ func (c *Controller) Status(ctx context.Context) (map[string]any, error) {
 }
 
 func (c *Controller) accept(ctx context.Context, run *running, accountID string, u tg.UpdatesClass) error {
-	if !run.observing.Load() && !telegram.IsHistoryRecovery(ctx) {
-		return nil
-	}
+	observe := run.observing.Load() || telegram.IsHistoryRecovery(ctx)
+	c.mu.Lock()
+	observer := c.observer
+	c.mu.Unlock()
 	var list []tg.UpdateClass
 	switch update := u.(type) {
 	case *tg.Updates:
@@ -592,6 +605,20 @@ func (c *Controller) accept(ctx context.Context, run *running, accountID string,
 		return nil
 	}
 	for _, update := range list {
+		switch update.(type) {
+		case *tg.UpdateDeleteMessages, *tg.UpdateDeleteChannelMessages:
+			// Source deletes still protect retained rescue files while an
+			// account is connected only for manual/history jobs.
+			if observer != nil {
+				if err := observer(ctx, accountID, update); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if !observe {
+			continue
+		}
 		var raw tg.MessageClass
 		var pts int
 		switch update := update.(type) {

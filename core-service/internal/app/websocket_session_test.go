@@ -379,15 +379,24 @@ func (w blockedEventHijacker) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 func TestWebSocketRevocationAndShutdownInterruptBlockedWriter(t *testing.T) {
-	for _, shutdown := range []bool{false, true} {
-		t.Run(map[bool]string{false: "logout", true: "shutdown"}[shutdown], func(t *testing.T) {
+	for _, mode := range []string{"logout", "shutdown", "batch_logout", "batch_shutdown"} {
+		t.Run(mode, func(t *testing.T) {
+			shutdown := strings.HasSuffix(mode, "shutdown")
 			a, api := socketTestApp(t)
 			entered := make(chan struct{})
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.handleWebSocket(blockedEventHijacker{w, entered}, r) }))
 			defer srv.Close()
 			token := socketToken(t, a, "admin", time.Hour)
 			conn := socketDial(t, a, srv, token)
-			a.hub.Broadcast(ws.Event{Type: "blocked_event"})
+			if strings.HasPrefix(mode, "batch_") {
+				events := make([]ws.Event, 500)
+				for i := range events {
+					events[i] = ws.Event{Type: "blocked_event"}
+				}
+				a.hub.BroadcastBatch(events)
+			} else {
+				a.hub.Broadcast(ws.Event{Type: "blocked_event"})
+			}
 			select {
 			case <-entered:
 			case <-time.After(time.Second):

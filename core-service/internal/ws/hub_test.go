@@ -69,3 +69,41 @@ func TestHubCloseAlsoRejectsNewSubscribers(t *testing.T) {
 	}
 	h.Broadcast(Event{Type: "ignored"})
 }
+
+func TestBatchFitsOneQueueSlotAndFiltersEveryFrame(t *testing.T) {
+	h := NewHub(1)
+	defer h.Close()
+	admin, guest := h.Add("admin"), h.Add("guest")
+	events := make([]Event, 0, 501)
+	for i := 0; i < 500; i++ {
+		events = append(events, Event{Type: "file_deleted", Payload: i})
+	}
+	events = append(events, Event{Type: "secret", Roles: []string{"admin"}})
+	h.BroadcastBatch(events)
+	// A slow consumer's next transaction cannot grow its queue or block.
+	h.BroadcastBatch(events)
+	for _, c := range []*Client{admin, guest} {
+		batch := <-c.Events()
+		if _, err := json.Marshal(batch); err == nil {
+			t.Fatal("internal batch leaked onto wire")
+		}
+		frames := batch.Frames()
+		want := 500
+		if c.Role() == "admin" {
+			want++
+		}
+		if len(frames) != want {
+			t.Fatalf("%s received %d frames", c.Role(), len(frames))
+		}
+		for i := 0; i < 500; i++ {
+			if frames[i].Type != "file_deleted" || frames[i].Payload != i {
+				t.Fatal("batch lost ordering", i, frames[i])
+			}
+		}
+		select {
+		case <-c.Events():
+			t.Fatal("queue grew past capacity")
+		default:
+		}
+	}
+}

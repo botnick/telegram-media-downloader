@@ -245,12 +245,18 @@ func (a *App) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if !ok || s.ctx.Err() != nil || a.ctx.Err() != nil {
 				return
 			}
-			if !time.Now().Before(expires) && !refresh() {
-				return
-			}
-			_ = conn.SetWriteDeadline(minTime(time.Now().Add(10*time.Second), expires))
-			if err := conn.WriteJSON(event); err != nil {
-				return
+			deadline := time.Now().Add(10 * time.Second)
+			for _, frame := range event.Frames() {
+				if s.ctx.Err() != nil || a.ctx.Err() != nil {
+					return
+				}
+				if !time.Now().Before(expires) && !refresh() {
+					return
+				}
+				_ = conn.SetWriteDeadline(minTime(deadline, expires))
+				if err := conn.WriteJSON(frame); err != nil {
+					return
+				}
 			}
 		}
 	}

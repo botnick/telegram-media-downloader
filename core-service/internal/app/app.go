@@ -60,6 +60,9 @@ type App struct {
 	ctx              context.Context
 	cancel           context.CancelFunc
 	bootWG           sync.WaitGroup
+	ambientWG        sync.WaitGroup
+	rescueWake       chan struct{}
+	rescueMu         sync.Mutex
 	releaseOwnership func()
 	closeOnce        sync.Once
 	closeErr         error
@@ -196,6 +199,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		fmt.Fprintf(cfg.Output, "Media cleanup remains pending: %v\n", err)
 	}
 	a.monitor = engine.New(db.Writer, db.Reader, cfg.DataDir, cfg.AccountFactory, a.monitorFilter, a.ingestWork, a.monitorEvent)
+	a.monitor.SetUpdateObserver(a.observeRescueUpdate)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -282,6 +286,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 			}
 		}()
 	}
+	a.startAmbient()
 	return a, nil
 }
 
@@ -502,6 +507,7 @@ func (a *App) Close() error {
 			a.cancel()
 		}
 		a.closeWebSockets()
+		a.ambientWG.Wait()
 		if a.backups != nil {
 			a.backups.Close()
 		}

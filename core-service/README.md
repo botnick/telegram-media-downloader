@@ -39,6 +39,10 @@ Useful commands:
   are bounded and role-filtered so a slow browser cannot block workers.
   Revocation, expiry and shutdown close the owned connection; password changes
   invalidate old admin sessions. See [session lifetime and compatibility](../docs/GO-WEBSOCKET-SESSIONS.md).
+- Native periodic status/statistics pushes and rescue retention use owned,
+  bounded workers. Source-delete receipts survive queued transfers and restart;
+  expiry retains pinned and shared-file owners. See
+  [rescue behavior, events and limitations](../docs/GO-RESCUE.md).
 - `/v1/db/*` exposes the read projections used by the gallery, maintenance,
   AI, NSFW, integrity, dedup and cluster surfaces. They run directly against
   a query-only pool and require a valid session.
