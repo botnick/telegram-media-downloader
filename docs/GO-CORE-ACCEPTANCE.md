@@ -6,9 +6,9 @@ parity and additional cloud providers are not part of this delivery. Existing
 sidecar projects remain independent.
 
 **Acceptance is incomplete.** Native implementation and the checks below are
-available, but no real Telegram account is configured in this development
-workspace. Fixture success does not establish live Telegram E2E. No release,
-production deployment or GitHub CI result is claimed.
+available, and an authorized Telegram account is now configured in the protected
+preview. Live chat listing has passed; real media transfer and deduplication E2E
+remain unverified. No release, production deployment or GitHub CI result is claimed.
 
 | Requirement | Current evidence | Limit |
 | --- | --- | --- |
@@ -42,10 +42,10 @@ files through the dashboard. Confirm that replay/restart does not create another
 physical copy and that deleting one shared reference preserves the remaining
 owner. Exercise a configured proxy if it will be used in deployment.
 
-The development workspace currently has no configured Telegram API credentials,
-account metadata or session files. That blocks this final live verification;
-repeating offline fixtures cannot resolve it. The working library and other
-rooms' accounts have not been used as test data.
+The protected preview now has API credentials and one saved account supplied by
+the owner. The earlier missing-account blocker is resolved. Live media acceptance
+still requires a designated test chat/media; other rooms' accounts have not been
+used as test data.
 
 A separate password-protected native preview is prepared for account acceptance.
 The listener binds to loopback, guest login is disabled, public setup is locked,
@@ -53,4 +53,28 @@ and HTTPS login/config access/logout and secure cookies have been checked. Durin
 publication an authoritative DNS lookup returned the new record while a recursive
 resolver retained NXDOMAIN; the TLS checks used the observed edge address without
 disabling certificate verification. This preview is a way to supply the missing
-test account, not evidence that live Telegram acceptance has passed.
+test account, not evidence that full live Telegram acceptance has passed.
+
+## Live chat browsing correction
+
+The first account's chat picker returned `503 not_connected`: saving an account
+did not start the monitor, but the dialogs route required an already connected
+engine. An administrator's chat request now opens the saved accounts in manual
+mode, without enabling live downloads or changing `monitor.autoStart`. A dialog
+session keeps its account run available during reads; account removal and hard
+shutdown still cancel those reads. The existing guest denial remains enforced.
+Telegram listing failures are reported separately from a disconnected engine.
+
+The protected preview reproduced the failure before the fix. After updating its
+native executable with the same data directory and listener, the live request
+returned HTTP 200 with 183 chats from one account in 2.15 seconds. The monitor
+remained stopped and the active/pending download counts remained zero. This
+establishes actual Telegram connectivity and listing, not media-download E2E.
+Chrome also rendered all 183 chat rows on the existing HTTPS preview after a
+reload; the monitor stayed stopped with zero active/pending downloads.
+
+Regression coverage is in `internal/app/dialogs_api_test.go` and
+`internal/engine/controller_test.go`: first-account browsing, browsing after
+monitor stop, concurrent connection reuse, no automatic live downloads, guest
+denial, incomplete archive errors, idle drain protection and hard-stop cancellation.
+The complete app/engine race suites, affected-package vet and native build pass.

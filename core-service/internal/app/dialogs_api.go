@@ -4,11 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/auth"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 )
 
@@ -17,13 +20,17 @@ func registerDialogRoutes(mux *http.ServeMux, a *App) {
 }
 
 func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
-	dialogs, err := a.monitor.Dialogs(r.Context(), 500)
+	dialogs, err := a.browseDialogs(r.Context())
 	if err != nil {
 		saved, savedErr := telegram.SavedSessions(a.dataDir)
-		if savedErr == nil && len(saved) == 0 {
+		if errors.Is(err, errNoAccounts) || (savedErr == nil && len(saved) == 0) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "no_account", "message": "No Telegram account configured"})
-		} else {
+		} else if errors.Is(err, errNoAPICredentials) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "no_api_credentials", "message": "Configure Telegram API credentials in Settings first"})
+		} else if errors.Is(err, engine.ErrEngineNotRunning) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "not_connected", "message": "Telegram client not connected"})
+		} else {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "dialogs_unavailable", "message": "Could not read Telegram chats. Check the account connection and try again."})
 		}
 		return
 	}
@@ -107,6 +114,32 @@ func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "dialogs": result, "allowDM": allowDM, "accounts": accountList})
+}
+
+func (a *App) browseDialogs(ctx context.Context) ([]engine.Dialog, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	// Pair startup with acquiring a run lease. Account changes, purge and the
+	// idle-job drain cannot slip between them. Release the operation lock before
+	// network reads so account removal/shutdown can cancel a slow listing.
+	a.monitorOp.Lock()
+	var session *engine.DialogSession
+	var err error
+	user, _ := auth.SessionFromContext(ctx)
+	if user.Role == "admin" {
+		err = a.startTelegramEngine(ctx, false)
+	}
+	if err == nil {
+		session, err = a.monitor.OpenDialogs(ctx)
+	}
+	a.monitorOp.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	// Keep the connection available for subsequent browsing. Monitor stop,
+	// account changes and shutdown retain ownership of its lifetime.
+	defer session.Close()
+	return session.List(500)
 }
 
 func (a *App) loadDialogAccess(r *http.Request) map[string]map[string]any {

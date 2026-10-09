@@ -80,6 +80,47 @@ func TestDialogsCancelsWithAccountRun(t *testing.T) {
 		t.Fatal("dialog RPC outlived its account")
 	}
 }
+
+func TestDialogsLeasePreventsIdleStopButAllowsHardStop(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	c := New(s.writer, s.reader, t.TempDir(), func(AccountConfig, *telegram.UpdateState, func(context.Context, tg.UpdatesClass) error, func(int64)) (Account, error) {
+		return &readyAccount{}, nil
+	}, func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error) {
+		return Target{}, false, nil
+	}, func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error { return nil }, nil)
+	if err := c.StartJobs(ctx, ctx, []AccountConfig{{ID: "one"}}, 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Stop(ctx)
+	lease, err := c.OpenDialogs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	if err := c.StopIdleJobs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.ctx.Err(); err != nil {
+		t.Fatalf("idle drain interrupted browsing: %v", err)
+	}
+	if err := c.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-lease.ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("hard stop did not cancel browsing")
+	}
+	if _, err := lease.List(500); !errors.Is(err, context.Canceled) {
+		t.Fatalf("stopped lease=%v", err)
+	}
+	lease.Close()
+	lease.Close()
+	if lease.run.jobUsers.Load() != 0 {
+		t.Fatal("lease did not release exactly once")
+	}
+}
 func (a *connectingAccount) Fingerprint() string { return "test-key" }
 func (a *connectingAccount) RefreshMessage(_ context.Context, m *tg.Message) (*telegram.RefreshedMessage, error) {
 	return &telegram.RefreshedMessage{Message: m, Entities: &tg.Updates{}}, nil

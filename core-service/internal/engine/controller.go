@@ -110,35 +110,66 @@ func (c *Controller) setState(state string, cause error) {
 }
 
 func (c *Controller) Dialogs(ctx context.Context, limit int) ([]Dialog, error) {
-	if limit <= 0 || limit > 1000 {
-		limit = 500
+	session, err := c.OpenDialogs(ctx)
+	if err != nil {
+		return nil, err
 	}
+	defer session.Close()
+	return session.List(limit)
+}
+
+// DialogSession keeps an account run alive while browsing, without enabling
+// live downloads. Hard stops still cancel its RPCs, as for manual downloads.
+type DialogSession struct {
+	run    *running
+	ctx    context.Context
+	cancel context.CancelFunc
+	stop   func() bool
+	once   sync.Once
+}
+
+func (c *Controller) OpenDialogs(ctx context.Context) (*DialogSession, error) {
+	c.opMu.Lock()
+	defer c.opMu.Unlock()
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	run := c.run
 	if run == nil || c.state != "running" {
-		c.mu.Unlock()
 		return nil, ErrEngineNotRunning
 	}
-	accounts := make(map[string]Account)
-	var accountIDs []string
-	if run != nil {
-		accountIDs = append(accountIDs, run.ids...)
-		for _, id := range accountIDs {
-			if account := run.accounts[id]; account != nil {
-				accounts[id] = account
-			}
-		}
-	}
-	c.mu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
 	if run.ctx != nil {
-		stop := context.AfterFunc(run.ctx, cancel)
-		defer stop()
 		if err := run.ctx.Err(); err != nil {
 			return nil, err
 		}
 	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	s := &DialogSession{run: run, ctx: ctx, cancel: cancel}
+	if run.ctx != nil {
+		s.stop = context.AfterFunc(run.ctx, cancel)
+	}
+	run.jobUsers.Add(1)
+	return s, nil
+}
+
+func (s *DialogSession) Close() {
+	s.once.Do(func() {
+		if s.stop != nil {
+			s.stop()
+		}
+		s.cancel()
+		s.run.jobUsers.Add(-1)
+	})
+}
+
+func (s *DialogSession) List(limit int) ([]Dialog, error) {
+	ctx := s.ctx
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	accounts, accountIDs := s.run.accounts, s.run.ids
 	if len(accounts) == 0 {
 		return nil, errors.New("Telegram monitor is not running")
 	}

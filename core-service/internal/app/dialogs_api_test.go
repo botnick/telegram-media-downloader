@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
@@ -72,8 +74,72 @@ func TestDialogsHTTPReturnsNativeMultiAccountProjection(t *testing.T) {
 	}
 	rec = httptest.NewRecorder()
 	a.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("stopped account appeared connected: %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("chat browsing after stopping monitor: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDialogsHTTPConnectsSavedAccountWithoutStartingMonitor(t *testing.T) {
+	var starts atomic.Int64
+	var account *dialogAppAccount
+	factory := func(_ engine.AccountConfig, _ *telegram.UpdateState, handler func(context.Context, tg.UpdatesClass) error, _ func(int64)) (engine.Account, error) {
+		starts.Add(1)
+		account = &dialogAppAccount{fixtureAccount: fixtureAccount{handle: handler}, active: []telegram.Dialog{{ID: "-1000000000042", Name: "Media", Type: "channel"}}}
+		return account, nil
+	}
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountFactory: factory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	configureMonitor(t, a)
+	cfg, err := a.config.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	autoStart := ensureMap(cfg, "monitor")["autoStart"]
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodGet, "/api/dialogs?fresh=1", nil)
+			req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+			rec := httptest.NewRecorder()
+			a.Handler().ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Errorf("saved account browse=%d %s", rec.Code, rec.Body.String())
+			}
+		}()
+	}
+	wg.Wait()
+	if t.Failed() {
+		return
+	}
+	if starts.Load() != 1 {
+		t.Fatalf("started %d account connections", starts.Load())
+	}
+	if err := account.handle(context.Background(), updateFixture()); err != nil {
+		t.Fatal(err)
+	}
+	var queued int
+	if err := a.db.Reader.QueryRow(`SELECT count(*) FROM tgdl_work`).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if queued != 0 {
+		t.Fatalf("browsing queued %d live downloads", queued)
+	}
+	status, err := a.monitor.Status(context.Background())
+	if err != nil || status["state"] != "stopped" {
+		t.Fatalf("monitor=%v err=%v", status, err)
+	}
+	cfg, err = a.config.Load(context.Background())
+	if err != nil || ensureMap(cfg, "monitor")["autoStart"] != autoStart {
+		t.Fatalf("browsing changed autoStart: %v", err)
 	}
 }
 
@@ -104,6 +170,37 @@ func TestDialogsHTTPRejectsPartialArchiveResult(t *testing.T) {
 	a.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("incomplete list appeared successful: %d %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["error"] != "dialogs_unavailable" {
+		t.Fatalf("RPC error misreported as disconnected: %v", body)
+	}
+}
+
+func TestDialogsHTTPGuestDoesNotConnectAccounts(t *testing.T) {
+	var starts atomic.Int64
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountFactory: func(_ engine.AccountConfig, _ *telegram.UpdateState, _ func(context.Context, tg.UpdatesClass) error, _ func(int64)) (engine.Account, error) {
+		starts.Add(1)
+		return nil, errors.New("guest must not start accounts")
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	configureMonitor(t, a)
+	token, err := a.sessions.Create(context.Background(), "guest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/dialogs", nil)
+	req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	rec := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || starts.Load() != 0 {
+		t.Fatalf("guest browse=%d starts=%d", rec.Code, starts.Load())
 	}
 }
 
