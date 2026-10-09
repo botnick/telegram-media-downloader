@@ -53,6 +53,11 @@ func newFixtureS3(t *testing.T) *fixtureS3 {
 func (f *fixtureS3) config() map[string]any {
 	return map[string]any{"endpoint": f.server.URL, "region": "us-east-1", "bucket": "fixture", "accessKeyId": "fixture-access", "secretAccessKey": "fixture-secret", "prefix": "library/ไทย"}
 }
+func (f *fixtureS3) setHook(h func(http.ResponseWriter, *http.Request) bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hook = h
+}
 func (f *fixtureS3) provider() *s3Provider {
 	f.t.Helper()
 	p, err := newS3(f.config())
@@ -152,8 +157,9 @@ func (f *fixtureS3) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	f.mu.Lock()
 	f.requests++
+	hook := f.hook
 	f.mu.Unlock()
-	if f.hook != nil && f.hook(w, r) {
+	if hook != nil && hook(w, r) {
 		return
 	}
 	if r.URL.Path == "/fixture" && r.Method == "HEAD" {
@@ -247,6 +253,33 @@ func (f *fixtureS3) serve(w http.ResponseWriter, r *http.Request) {
 		u := f.uploads[id]
 		if u == nil || u.key != key {
 			fixtureS3Error(w, 404, "NoSuchUpload")
+			return
+		}
+		if r.Method == "GET" {
+			numbers := make([]int, 0, len(u.parts))
+			for n := range u.parts {
+				numbers = append(numbers, n)
+			}
+			sort.Ints(numbers)
+			limit, _ := strconv.Atoi(q.Get("max-parts"))
+			if limit <= 0 {
+				limit = 1000
+			}
+			type part struct {
+				PartNumber int
+				ETag       string
+				Size       int
+			}
+			out := struct {
+				XMLName     xml.Name `xml:"ListPartsResult"`
+				IsTruncated bool
+				Parts       []part `xml:"Part"`
+			}{IsTruncated: len(numbers) > limit}
+			for _, n := range numbers[:min(len(numbers), limit)] {
+				v := u.parts[n]
+				out.Parts = append(out.Parts, part{n, v.etag, len(v.data)})
+			}
+			fixtureXML(w, out)
 			return
 		}
 		if r.Method == "DELETE" {
@@ -382,7 +415,7 @@ func TestS3MultipartParallelRetryAndBoundedProgress(t *testing.T) {
 	var retried atomic.Bool
 	barrier := make(chan struct{})
 	var once sync.Once
-	f.hook = func(w http.ResponseWriter, r *http.Request) bool {
+	f.setHook(func(w http.ResponseWriter, r *http.Request) bool {
 		if r.Method != "PUT" || r.URL.Query().Get("uploadId") == "" {
 			return false
 		}
@@ -404,7 +437,7 @@ func TestS3MultipartParallelRetryAndBoundedProgress(t *testing.T) {
 			return true
 		}
 		return false
-	}
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	var previous int64
@@ -439,7 +472,7 @@ func TestS3CancelAndCloseAbortMultipart(t *testing.T) {
 			f := newFixtureS3(t)
 			p := f.provider()
 			reached := make(chan struct{}, 4)
-			f.hook = func(w http.ResponseWriter, r *http.Request) bool {
+			f.setHook(func(w http.ResponseWriter, r *http.Request) bool {
 				if r.Method == "PUT" && r.URL.Query().Get("uploadId") != "" {
 					_, _ = io.Copy(io.Discard, r.Body)
 					reached <- struct{}{}
@@ -447,7 +480,7 @@ func TestS3CancelAndCloseAbortMultipart(t *testing.T) {
 					return true
 				}
 				return false
-			}
+			})
 			data := bytes.Repeat([]byte("x"), int(s3PartSize)*4+1)
 			f.objects[p.prefix+"/movie"] = fixtureS3Object{data: []byte("old"), etag: `"old"`}
 			ctx, cancel := context.WithCancel(context.Background())
@@ -556,13 +589,13 @@ func TestS3RejectsInvalidListing(t *testing.T) {
 		t.Run(response, func(t *testing.T) {
 			f := newFixtureS3(t)
 			p := f.provider()
-			f.hook = func(w http.ResponseWriter, r *http.Request) bool {
+			f.setHook(func(w http.ResponseWriter, r *http.Request) bool {
 				if r.URL.Query().Get("list-type") == "2" {
 					_, _ = io.WriteString(w, response)
 					return true
 				}
 				return false
-			}
+			})
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			if _, err := p.List(ctx, ""); err == nil || errors.Is(err, context.DeadlineExceeded) {
@@ -578,10 +611,10 @@ func TestS3RedirectDoesNotForwardCredentials(t *testing.T) {
 	defer other.Close()
 	f := newFixtureS3(t)
 	p := f.provider()
-	f.hook = func(w http.ResponseWriter, r *http.Request) bool {
+	f.setHook(func(w http.ResponseWriter, r *http.Request) bool {
 		http.Redirect(w, r, other.URL+"/private", http.StatusTemporaryRedirect)
 		return true
-	}
+	})
 	if _, err := p.Test(context.Background()); err == nil {
 		t.Fatal("redirect reported success")
 	}
@@ -607,13 +640,13 @@ func TestS3ErrorsPreserveCancellationAndHideServiceBodies(t *testing.T) {
 	}
 	f := newFixtureS3(t)
 	p := f.provider()
-	f.hook = func(w http.ResponseWriter, r *http.Request) bool {
+	f.setHook(func(w http.ResponseWriter, r *http.Request) bool {
 		if r.Method == "DELETE" {
 			fixtureS3Error(w, 403, "AccessDenied")
 			return true
 		}
 		return false
-	}
+	})
 	err = p.Delete(context.Background(), "object")
 	if err == nil || !strings.Contains(err.Error(), "AccessDenied") || strings.Contains(err.Error(), "server-private-detail") {
 		t.Fatalf("delete swallowed or leaked: %v", err)
@@ -623,7 +656,7 @@ func TestS3ErrorsPreserveCancellationAndHideServiceBodies(t *testing.T) {
 func TestS3MultipartFailureReportsFailedAbort(t *testing.T) {
 	f := newFixtureS3(t)
 	p := f.provider()
-	f.hook = func(w http.ResponseWriter, r *http.Request) bool {
+	f.setHook(func(w http.ResponseWriter, r *http.Request) bool {
 		if r.URL.Query().Get("uploadId") == "" {
 			return false
 		}
@@ -637,7 +670,7 @@ func TestS3MultipartFailureReportsFailedAbort(t *testing.T) {
 			return true
 		}
 		return false
-	}
+	})
 	data := bytes.Repeat([]byte{1}, int(s3PartSize)+1)
 	_, err := p.Upload(context.Background(), "movie", bytes.NewReader(data), int64(len(data)), nil)
 	if err == nil || !strings.Contains(err.Error(), "UploadPart: AccessDenied") || !strings.Contains(err.Error(), "AbortMultipartUpload: AccessDenied") {

@@ -8,6 +8,14 @@ import (
 )
 
 func registerBackupRoutes(mux *http.ServeMux, a *App) {
+	mux.Handle("GET /api/backup/cleanup", a.requireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jobs, err := a.backups.Cleanup(r.Context(), backupQueryInt(r, "limit", 50), backupQueryInt(r, "offset", 0))
+		if err != nil {
+			writeJSONError(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"success": true, "transfers": jobs})
+	})))
 	mux.Handle("GET /api/backup/providers", a.requireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"success": true, "providers": backup.Providers()})
 	})))

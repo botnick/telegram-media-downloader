@@ -11,7 +11,11 @@ functionality. Do not deploy this branch over a working library yet.
   transactional enqueue, edit revisions, real file comparison, retries, pause,
   cron, consistent archives and a durable retention outbox. Native wire fixtures
   verify signed S3 multipart transfers and SSH/SFTP with persisted host-key
-  checks. FTP/FTPS, Drive, Dropbox, hard-crash remote cleanup and
+  checks. Upload pacing is separate from network deadlines. A durable journal
+  cleans owned S3 multipart uploads and SFTP temporary files after process death,
+  including destination edits/deletion; actual child-process kill tests pass.
+  Local/snapshot staging cleanup and the empty S3 reservation boundary remain
+  open. FTP/FTPS, Drive, Dropbox and
   TGDB payload streaming/restore remain incomplete even when frozen contracts
   pass; their pending jobs display an explicit error without sending plaintext.
   See [scope and independent native tests](GO-BACKUP.md).
@@ -253,8 +257,8 @@ migration; the current source tree is not yet free of Node dependencies.
   and full browser interaction. Durable Go pause/resume/cancel/retry controls
   and the queue snapshot are implemented, but the complete queue workflow still
   needs browser and performance coverage.
-- Complete FTP/FTPS, Drive, Dropbox, encrypted payload streaming/restore and
-  durable remote temporary/multipart cleanup after process death. S3/SFTP wire
+- Complete FTP/FTPS, Drive, Dropbox, encrypted payload streaming/restore,
+  local/snapshot staging cleanup and the empty S3 reservation boundary. S3/SFTP wire
   fixtures do not establish real provider or full restore E2E coverage.
 - Resolve the 12 remaining contract files: cluster/peer/cluster-WebSocket,
   AI jobs, NSFW, seekbar, backup provider metadata, recovery, purge, security,

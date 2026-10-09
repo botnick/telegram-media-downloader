@@ -66,23 +66,47 @@ type Provider interface {
 type Factory func(context.Context, string, map[string]any) (Provider, error)
 
 func nativeProvider(_ context.Context, name string, cfg map[string]any) (Provider, error) {
+	var p Provider
+	var err error
 	switch name {
 	case "local":
-		return newLocal(cfg)
+		p, err = newLocal(cfg)
 	case "s3":
-		return newS3(cfg)
+		p, err = newS3(cfg)
 	case "sftp":
-		return newSFTP(cfg, nil)
+		p, err = newSFTP(cfg, nil)
+	default:
+		return nil, fmt.Errorf("native backup provider %q is not available yet", name)
 	}
-	return nil, fmt.Errorf("native backup provider %q is not available yet", name)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
-func (m *Manager) provider(ctx context.Context, name string, cfg map[string]any) (Provider, error) {
+func (m *Manager) provider(ctx context.Context, d destination, cfg map[string]any) (Provider, error) {
 	if m.opts.Factory != nil {
-		return m.opts.Factory(ctx, name, cfg)
+		p, err := m.opts.Factory(ctx, d.Provider, cfg)
+		if err != nil {
+			return nil, err
+		}
+		return p, nil
 	}
-	if name == "sftp" {
-		return newSFTP(cfg, m.checkSSHHost)
+	journal := &transferJournal{m, d.ID, d.Provider, append([]byte(nil), d.Blob...)}
+	if d.Provider == "sftp" {
+		p, err := newSFTP(cfg, m.checkSSHHost)
+		if err != nil {
+			return nil, err
+		}
+		p.journal = journal
+		return p, nil
 	}
-	return nativeProvider(ctx, name, cfg)
+	p, err := nativeProvider(ctx, d.Provider, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if s3, ok := p.(*s3Provider); ok {
+		s3.journal = journal
+	}
+	return p, err
 }

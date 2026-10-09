@@ -183,6 +183,7 @@ func (m *Manager) work(ctx context.Context, id int64, w *worker) {
 	defer ticker.Stop()
 	drained := false
 	var provider Provider
+	var pacer *uploadPacer
 	defer func() {
 		if provider != nil {
 			_ = provider.Close()
@@ -227,7 +228,8 @@ func (m *Manager) work(ctx context.Context, id int64, w *worker) {
 			if blockedError == "" && provider == nil {
 				cfg, e := m.config(ctx, d)
 				if e == nil {
-					provider, e = m.provider(ctx, d.Provider, cfg)
+					provider, e = m.provider(ctx, d, cfg)
+					pacer = newUploadPacer(d.Throttle.Int64)
 				}
 				if e != nil {
 					blockedError = e.Error()
@@ -258,7 +260,7 @@ func (m *Manager) work(ctx context.Context, id int64, w *worker) {
 				if e == nil {
 					drained = false
 					w.running.Store(true)
-					m.transfer(ctx, d, j, provider)
+					m.transfer(withUploadPacer(ctx, pacer), d, j, provider)
 					w.running.Store(false)
 					continue
 				}
@@ -333,30 +335,13 @@ func (m *Manager) transfer(ctx context.Context, d destination, j job, p Provider
 		}
 		if err == nil {
 			last := time.Time{}
-			start := time.Now()
-			var rateErr error
 			progress := func(n int64) {
-				if d.Throttle.Valid && d.Throttle.Int64 > 0 {
-					wait := time.Duration(float64(n)/float64(d.Throttle.Int64)*float64(time.Second)) - time.Since(start)
-					if wait > 0 {
-						timer := time.NewTimer(wait)
-						select {
-						case <-ctx.Done():
-							rateErr = ctx.Err()
-						case <-timer.C:
-						}
-						timer.Stop()
-					}
-				}
 				if time.Since(last) >= 500*time.Millisecond {
 					last = time.Now()
 					m.emit("backup_progress", map[string]any{"destinationId": d.ID, "jobId": j.ID, "downloadId": nullableInt(j.Download), "bytesUploaded": n})
 				}
 			}
 			result, err = p.Upload(ctx, j.Remote.String, file, info.Size(), progress)
-			if err == nil {
-				err = rateErr
-			}
 		}
 	}
 	if ctx.Err() != nil {

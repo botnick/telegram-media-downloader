@@ -72,9 +72,13 @@ type sftpProvider struct {
 	raw         net.Conn
 	fingerprint string
 	// These fields are owned by the gate; Close waits for operations to join.
-	client *sftp.Client
-	ssh    *ssh.Client
-	dead   chan struct{}
+	client       *sftp.Client
+	ssh          *ssh.Client
+	dead         chan struct{}
+	requestsDone chan struct{}
+	stderrDone   chan struct{}
+	rpcTimeout   time.Duration
+	journal      *transferJournal
 }
 
 func newSFTP(cfg map[string]any, check sshHostCheck) (*sftpProvider, error) {
@@ -136,7 +140,7 @@ func newSFTP(cfg map[string]any, check sshHostCheck) (*sftpProvider, error) {
 }
 func newSFTPSettings(settings sftpSettings) *sftpProvider {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &sftpProvider{settings: settings, ctx: ctx, cancel: cancel, gate: make(chan struct{}, 1)}
+	return &sftpProvider{settings: settings, ctx: ctx, cancel: cancel, gate: make(chan struct{}, 1), rpcTimeout: remoteIdleTimeout}
 }
 func sftpError(ctx context.Context, op string, err error) error {
 	if err == nil {
@@ -179,6 +183,14 @@ func (p *sftpProvider) disconnect() {
 		<-p.dead
 		p.dead = nil
 	}
+	if p.requestsDone != nil {
+		<-p.requestsDone
+		p.requestsDone = nil
+	}
+	if p.stderrDone != nil {
+		<-p.stderrDone
+		p.stderrDone = nil
+	}
 }
 func (p *sftpProvider) connection(ctx context.Context) error {
 	if p.client != nil {
@@ -220,13 +232,36 @@ func (p *sftpProvider) connection(ctx context.Context) error {
 		p.mu.Unlock()
 		return nil
 	}}
-	conn, chans, reqs, err := ssh.NewClientConn(&remoteDeadlineConn{Conn: raw}, p.settings.address, sshConfig)
+	conn, chans, reqs, err := ssh.NewClientConn(&remoteWriteConn{Conn: raw}, p.settings.address, sshConfig)
 	if err != nil {
 		p.disconnect()
 		return sftpError(dialCtx, "connect/authenticate", err)
 	}
 	p.ssh = ssh.NewClient(conn, chans, reqs)
-	p.client, err = sftp.NewClient(p.ssh, sftp.MaxConcurrentRequestsPerFile(16), sftp.MaxPacket(32<<10))
+	channel, requests, err := p.ssh.OpenChannel("session", nil)
+	if err != nil {
+		p.disconnect()
+		return sftpError(dialCtx, "open session", err)
+	}
+	p.requestsDone = make(chan struct{})
+	requestsDone := p.requestsDone
+	go func() { ssh.DiscardRequests(requests); close(requestsDone) }()
+	// SSH extended data shares the channel window with SFTP responses. Drain
+	// diagnostics without retaining/logging potentially sensitive remote text.
+	p.stderrDone = make(chan struct{})
+	stderrDone := p.stderrDone
+	go func() { _, _ = io.Copy(io.Discard, channel.Stderr()); close(stderrDone) }()
+	ok, err := channel.SendRequest("subsystem", true, ssh.Marshal(struct{ Name string }{"sftp"}))
+	if err != nil || !ok {
+		_ = channel.Close()
+		p.disconnect()
+		if err == nil {
+			err = errors.New("SFTP subsystem rejected")
+		}
+		return sftpError(dialCtx, "start subsystem", err)
+	}
+	wire := newSFTPDeadlineChannel(channel, raw, p.rpcTimeout)
+	p.client, err = sftp.NewClientPipe(wire, wire, sftp.MaxConcurrentRequestsPerFile(16), sftp.MaxPacket(32<<10))
 	if err != nil {
 		p.disconnect()
 		return sftpError(dialCtx, "start subsystem", err)
@@ -368,8 +403,25 @@ func (p *sftpProvider) removeTemporary(name string) error {
 	defer cleanup.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return cleanup.with(ctx, "remove temporary", func(ctx context.Context, c *sftp.Client) error {
+	return cleanup.removeOwnedTemporary(ctx, name)
+}
+func (p *sftpProvider) removeOwnedTemporary(ctx context.Context, name string) error {
+	prefix := strings.TrimRight(p.settings.root, "/") + "/"
+	base := path.Base(name)
+	if !strings.HasPrefix(name, prefix) || !strings.HasPrefix(base, ".tgdl-part-") || len(base) != len(".tgdl-part-")+32 {
+		return errors.New("invalid owned SFTP temporary path")
+	}
+	if _, err := hex.DecodeString(strings.TrimPrefix(base, ".tgdl-part-")); err != nil {
+		return errors.New("invalid owned SFTP temporary name")
+	}
+	if err := validObject(strings.TrimPrefix(name, prefix)); err != nil {
+		return err
+	}
+	return p.with(ctx, "remove temporary", func(ctx context.Context, c *sftp.Client) error {
 		if err := sftpDirectory(ctx, c, path.Dir(name), false); err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return sftpError(ctx, "remove temporary", err)
 		}
 		err := c.Remove(name)
@@ -430,25 +482,32 @@ func (p *sftpProvider) Upload(ctx context.Context, name string, src io.ReadSeeke
 			return e
 		}
 		temp := path.Join(path.Dir(full), tempName)
+		lease, e := p.journal.track(ctx, "sftp-temp", temp, "")
+		if e != nil {
+			return e
+		}
 		out, e := c.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY)
 		if e != nil {
-			return sftpError(ctx, "create temporary", e)
+			// A disconnected Open may have created the file without delivering its
+			// reply. Preserve the reservation for idempotent restart cleanup.
+			openErr := sftpError(ctx, "create temporary", e)
+			return errors.Join(openErr, lease.finish(os.IsExist(e), openErr))
 		}
 		published := false
 		defer func() {
 			_ = out.Close()
+			var cleanupErr error
 			if !published {
-				if e := p.removeTemporary(temp); e != nil {
-					err = errors.Join(err, e)
-				}
+				cleanupErr = p.removeTemporary(temp)
 			}
+			err = errors.Join(err, cleanupErr, lease.finish(published || cleanupErr == nil, cleanupErr))
 		}()
 		if e = out.Chmod(0600); e != nil {
 			return sftpError(ctx, "set private permissions", e)
 		}
 		hash := sha256.New()
 		tracker := newTransferProgress(size, progress)
-		reader := &sftpProgressReader{r: io.TeeReader(contextReader{ctx, io.LimitReader(src, size+1)}, hash), tracker: tracker}
+		reader := &sftpProgressReader{r: pacedReader{ctx, io.TeeReader(io.LimitReader(src, size+1), hash), uploadPacerFrom(ctx)}, tracker: tracker}
 		n, e := out.ReadFromWithConcurrency(reader, 16)
 		if e != nil {
 			return sftpError(ctx, "write", e)

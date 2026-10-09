@@ -38,6 +38,12 @@ func TestNativeBackupHTTPAndLiveTelegramIngestion(t *testing.T) {
 			t.Fatalf("guest %s status %d", method, r.Code)
 		}
 	}
+	if r := requestPurge(a, guest, "GET", "/api/backup/cleanup", ""); r.Code != 403 {
+		t.Fatalf("guest cleanup status %d", r.Code)
+	}
+	if r := requestPurge(a, admin, "GET", "/api/backup/cleanup", ""); r.Code != 200 || !strings.Contains(r.Body.String(), `"transfers":[]`) {
+		t.Fatalf("cleanup status %d %s", r.Code, r.Body.String())
+	}
 	r := requestPurge(a, admin, "POST", "/api/backup/destinations", string(body))
 	if r.Code != 200 {
 		t.Fatalf("create %d %s", r.Code, r.Body.String())

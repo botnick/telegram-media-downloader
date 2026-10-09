@@ -139,11 +139,12 @@ func (p *localProvider) Upload(ctx context.Context, name string, src io.ReadSeek
 	defer out.Close()
 	var total int64
 	buf := make([]byte, 64<<10)
+	reader := pacedReader{ctx, src, uploadPacerFrom(ctx)}
 	for {
 		if err = ctx.Err(); err != nil {
 			return UploadResult{}, err
 		}
-		n, readErr := src.Read(buf)
+		n, readErr := reader.Read(buf)
 		if n > 0 {
 			written, e := out.Write(buf[:n])
 			total += int64(written)

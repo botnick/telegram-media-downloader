@@ -61,7 +61,10 @@ Useful commands:
 - Native local, S3 and SFTP mirror/snapshot backups cover durable enqueue,
   destination controls, retry/pause, cron and retention. S3 uses bounded multipart
   uploads and checksums; SFTP persists host keys and publishes complete files.
-  FTP/FTPS, Drive, Dropbox, hard-crash remote cleanup and encrypted payload
+  Shared upload pacing respects network deadlines, and a durable journal cleans
+  owned multipart uploads/temporary files after process death or destination
+  edits/deletion. Local/snapshot staging cleanup, the empty S3 reservation gap,
+  FTP/FTPS, Drive, Dropbox and encrypted payload
   streaming/restore remain incomplete. See [backup scope and tests](../docs/GO-BACKUP.md).
 
 ## Data safety

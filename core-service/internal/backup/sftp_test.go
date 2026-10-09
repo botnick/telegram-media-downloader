@@ -35,6 +35,8 @@ type fixtureSFTP struct {
 	wg                          sync.WaitGroup
 	passwords, keys, handshakes atomic.Int32
 	stallWrite                  atomic.Bool
+	writesBeforeStall           atomic.Int32
+	stderrBytes                 atomic.Int64
 	writeStarted                chan struct{}
 	noExtensions                bool
 }
@@ -156,6 +158,11 @@ func (f *fixtureSFTP) serve(raw net.Conn) {
 					continue
 				}
 				_ = request.Reply(true, nil)
+				if n := f.stderrBytes.Load(); n > 0 {
+					if _, err := io.Copy(channel.Stderr(), strings.NewReader(strings.Repeat("x", int(n)))); err != nil {
+						return
+					}
+				}
 				wire := &fixtureSFTPWire{Channel: channel, fixture: f, closed: closed, first: true}
 				server, err := sftp.NewServer(wire)
 				if err != nil {
@@ -196,7 +203,7 @@ func (w *fixtureSFTPWire) Read(b []byte) (int, error) {
 		if _, err := io.ReadFull(w.Channel, packet[4:]); err != nil {
 			return 0, err
 		}
-		if packet[4] == 6 && w.fixture.stallWrite.Swap(false) {
+		if packet[4] == 6 && w.fixture.stallWrite.Load() && w.fixture.writesBeforeStall.Add(-1) < 0 && w.fixture.stallWrite.Swap(false) {
 			w.fixture.writeStarted <- struct{}{}
 			<-w.closed
 			return 0, io.EOF

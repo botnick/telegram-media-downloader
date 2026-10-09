@@ -16,7 +16,10 @@ uploads, so their passing result must not be treated as that coverage.
 All `/api/backup/*` routes require an administrator session. They cover provider
 metadata, destination create/update/delete, redacted config, connection tests,
 status, jobs/recent activity, retry, pause/resume, manual runs, and encryption
-key management. Backup WebSocket events and logs are flat and administrator-only.
+key management. `GET /api/backup/cleanup?limit=50&offset=0` lists transfer
+cleanup records (at most 200 per page), including their state, error and next
+retry time. It never returns credentials or multipart upload IDs. Backup
+WebSocket events and logs are flat and administrator-only.
 Provider metadata retains the released form fields and adds an optional SSH
 host fingerprint for SFTP. The presence of a form does not establish that all
 six transports are ready.
@@ -47,6 +50,17 @@ resets legacy/native `uploading` rows to pending while retaining their attempt
 history. Transfer failures wake automatically for exponential retry; missing
 sources fail explicitly. Configuration changes stop and join the old worker
 before opening a new provider.
+
+Each destination worker shares one token-bucket upload limit across files and
+concurrent multipart requests. The burst is at most 32 KiB or one tenth of the
+configured bytes/second, with a minimum of one byte. Only upload-body reads are
+paced; source hashing, destination verification and request signing are not.
+Retries consume bandwidth again without double-counting completed progress.
+Cancellation interrupts pacing promptly. Network write deadlines apply while
+writing; HTTP response headers and blocked body reads have separate deadlines.
+SFTP tracks outstanding protocol requests and clears its read deadline when
+none remain. Waiting for the next file or for the rate limiter does not count
+as a silent remote; genuinely unanswered requests still time out.
 
 Local uploads operate through `os.Root`, stream in 64 KiB buffers to exclusively
 created private temporary files, sync, close and rename only complete files.
@@ -81,16 +95,24 @@ before skipping. Object metadata or a multipart ETag alone is never treated as
 proof of identical content. Listing validates prefix ownership and continuation
 tokens. Delete failures propagate. SDK requests allow at most three attempts;
 progress callbacks are serialized and monotonic across retries. Progress counts
-source bytes processed, not remotely acknowledged durability, and may advance
-during request signing before the network transfer finishes.
+unique source bytes read by the final HTTP transport, not remotely acknowledged
+durability. Signing/checksum passes do not advance upload progress.
 
 Failed/canceled multipart uploads join all part requests, then attempt Abort
 using a fresh 30-second context. Abort errors are reported together with the
-transfer error. **A hard process crash or failed abort can still leave remote
-parts: a durable multipart cleanup journal is not implemented yet.** An abort
-lifecycle policy on the bucket is useful operational protection, not evidence
-that application crash cleanup is complete. No real AWS/R2/B2/MinIO account has
-been exercised in this migration; current evidence is a wire-protocol fixture.
+transfer error. Before sending parts, the native manager durably records the
+returned upload ID and original destination. Failed aborts and process death
+are recovered by the cleanup workers described below. After an accepted Abort,
+ListParts must confirm an empty or absent upload before the journal is removed;
+late parts or verification errors retain ownership for another attempt. The
+destination credentials therefore also need permission to list multipart parts.
+There is still a remote
+transaction boundary: CreateMultipartUpload may succeed before its upload ID
+is received or committed locally. No part bytes have been sent at that point,
+but an empty multipart reservation can remain. An abort lifecycle policy can
+collect that metadata; the application does not guess ownership of unknown
+upload IDs. No real AWS/R2/B2/MinIO account has been exercised in this migration;
+current evidence is a wire-protocol fixture.
 
 ## Native SFTP transport
 
@@ -119,11 +141,35 @@ error on replacement. The old file is never deleted to make space for a rename.
 Cancellation closes the socket and joins the transfer. Temporary cleanup uses
 a new connection to the same trusted endpoint with a separate 30-second limit;
 failure is reported. Later operations reconnect with the same authentication
-and host-key rules. Hard-crash temporary-file cleanup is still release work.
+and host-key rules. The native manager records each temporary name before
+creating it, so process death or a lost OpenFile reply can be cleaned on restart.
+SSH diagnostic output is drained without retention or logging so it cannot
+exhaust the shared channel window and block file responses.
 Path components are checked with Lstat and symlinks rejected. SFTP v3 does not
 provide directory-handle-relative opens, so this cannot prevent an untrusted
 server/account from swapping paths between checks; use a trusted remote account
 and, where appropriate, a server-side chroot. No real NAS deployment was tested.
+
+## Durable remote transfer cleanup
+
+`native_backup_transfers` records ownership before S3 part data or SFTP temporary
+files are written. Failure to persist ownership stops the transfer. Active and
+interrupted cleanup records become pending on startup. Four workers claim rows
+atomically and retry failures with exponential backoff from five seconds up to
+thirty minutes, with a 30-second limit per cleanup operation. Shutdown joins
+workers and connection probes. Completed uploads and successful cleanup remove
+their journal records; database failures remain recoverable.
+
+Each record retains the original TGDC-encrypted configuration independently of
+destination edits or deletion. Those encrypted credentials remain in SQLite
+until cleanup succeeds, allowing removal from the original endpoint rather
+than a replacement. Rotating the share secret can make these records
+undecryptable; the error remains visible and the record is retained. SFTP uses
+the same host-key checks as uploads. Cleanup validates the configured root or
+prefix and removes only the recorded random temporary name or exact multipart
+ID. It does not sweep unowned files, abort unrelated uploads or delete completed
+S3 objects. This journal covers native S3/SFTP transfers; local mirror temporary
+files and interrupted snapshot construction still need startup staging cleanup.
 
 ## Snapshots and restart recovery
 
@@ -187,6 +233,21 @@ connection reuse, cancellation/reconnect/cleanup, symlink rejection, missing
 atomic-rename support and automatic queued mirror recovery. These are protocol
 integration tests; they are not live provider or browser E2E results.
 
+Process-death regressions kill a child test executable after the fixture stores
+real S3 part bytes or an SFTP partial file, bypassing all graceful cleanup. A
+new manager recovers the queued file and removes the old transfer. Additional
+tests cover destination edits/deletion, failed cleanup retries, unrelated data
+preservation, rejected journal writes, and invalid provider configuration being
+corrected without crashing its worker. Accepted S3 aborts with remaining parts
+or denied verification retain their cleanup journal; retries remove it only
+after confirmation. A 4 MiB SSH diagnostic stream cannot block a connection
+probe, and manager shutdown cancels and joins an in-flight probe.
+Low-rate tests use shortened network
+deadlines to distinguish local pacing from a stalled remote, including shared
+limits across files/parts, fragmented SFTP replies and stalled HTTP bodies.
+The full Go race suite and vet pass; Linux, Windows amd64 and macOS arm64
+binaries build, but the foreign binaries have not been run on those platforms.
+
 The old Node contract runner is still development tooling; its removal remains
 part of the overall migration. No frozen expectations were edited. Backup
 passes 16/17: the unchanged provider-metadata snapshot lacks the new optional
@@ -200,15 +261,11 @@ the added field and the earlier VACUUM finding are documented rather than
 hidden by changing frozen expectations. See
 [the current migration totals and release gates](GO-MIGRATION-STATUS.md).
 
-Further work includes the three remaining remote transports, encrypted upload and restore
-compatibility, bounded concurrency tuning, cleanup of interrupted pre-publication
-staging files and multipart uploads, rebasing completed jobs after changing a destination's root/bucket,
-and real browser/Telegram/provider/migration E2E.
-Very low configured throttle rates also need dedicated integration coverage:
-both transports bound silent sockets to one minute, while the current queue
-throttles by sleeping in the progress callback. A local pause longer than that
-can be mistaken for a silent remote. This is an outstanding interaction to fix
-before claiming the full legacy throttle range is supported.
+Further work includes the three remaining remote transports, encrypted upload
+and restore compatibility, bounded concurrency tuning, cleanup of interrupted
+local/snapshot staging files, the empty S3 reservation boundary described above,
+rebasing completed jobs after changing a destination's root/bucket, and real
+browser/Telegram/provider/migration E2E.
 
 ## Local verification benchmark
 
@@ -230,8 +287,10 @@ values over preallocated warm memory; setup/input allocation is excluded.
 This verifies bounded inspection buffers, not upload throughput, disk speed,
 peak process RSS, or a comparison against the previous implementation.
 The comparable unstripped Linux builds grew from 33,838,568 to 38,669,142 bytes
-after adding the remote transports and dependencies (about 4.61 MiB). This is
-binary size, not resident memory. The implementation uses the maintained AWS
+after adding the remote transports and dependencies at checkpoint `84e3637`
+(about 4.61 MiB). With pacing, the cleanup journal and ListParts verification,
+the current build is 38,803,200 bytes, another 134,058 bytes. These are
+binary sizes, not resident memory. The implementation uses the maintained AWS
 S3 client and Go SSH/SFTP libraries; no deprecated S3 transfer-manager dependency
 is retained.
 
@@ -248,6 +307,8 @@ is retained.
 - [AWS PutObject integrity](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)
   and [UploadPart](https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html):
   request checksums and multipart upload semantics.
+- [AWS AbortMultipartUpload](https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html):
+  late parts can require repeated aborts; ListParts confirms removal.
 - [Cloudflare S3 compatibility](https://developers.cloudflare.com/r2/api/s3/api/):
   Content-MD5 support for PutObject/UploadPart informed the protocol choice;
   this reference is not a successful R2 deployment test.
@@ -255,5 +316,12 @@ is retained.
   and [SHA256 fingerprints](https://pkg.go.dev/golang.org/x/crypto/ssh#FingerprintSHA256).
 - [SFTP PosixRename](https://pkg.go.dev/github.com/pkg/sftp#Client.PosixRename),
   concurrent file requests and advertised extensions.
+- [Go rate limiter](https://pkg.go.dev/golang.org/x/time/rate#Limiter.WaitN):
+  a shared, cancellable token bucket controls actual upload reads.
+- [HTTP Transport](https://pkg.go.dev/net/http#Transport): response-header
+  timeout starts after the request body has been written.
+- [SSH OpenChannel](https://pkg.go.dev/golang.org/x/crypto/ssh#Client.OpenChannel)
+  and [SFTP NewClientPipe](https://pkg.go.dev/github.com/pkg/sftp#NewClientPipe):
+  request framing is observed for deadlines while pkg/sftp owns the protocol.
 - Released format definitions: `src/core/backup/credentials.js`, `encryption.js`,
   and the unchanged frozen backup HTTP/WebSocket contracts.

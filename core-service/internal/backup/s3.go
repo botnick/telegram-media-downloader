@@ -41,6 +41,7 @@ type s3Provider struct {
 	wg             sync.WaitGroup
 	mu             sync.Mutex
 	closed         bool
+	journal        *transferJournal
 }
 
 func newS3(cfg map[string]any) (*s3Provider, error) {
@@ -98,9 +99,9 @@ func newS3(cfg map[string]any) (*s3Provider, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &remoteDeadlineConn{Conn: conn}, nil
+		return &remoteWriteConn{Conn: conn}, nil
 	}
-	options := s3.Options{Region: region, Credentials: credentials.NewStaticCredentialsProvider(access, secret, text(cfg["sessionToken"])), UsePathStyle: pathStyle, RetryMaxAttempts: 3, HTTPClient: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenSupported}
+	options := s3.Options{Region: region, Credentials: credentials.NewStaticCredentialsProvider(access, secret, text(cfg["sessionToken"])), UsePathStyle: pathStyle, RetryMaxAttempts: 3, HTTPClient: &http.Client{Transport: &backupHTTPTransport{base: transport, readTimeout: remoteIdleTimeout}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired, ResponseChecksumValidation: aws.ResponseChecksumValidationWhenSupported}
 	if endpoint != "" {
 		options.BaseEndpoint = &endpoint
 	}
@@ -108,17 +109,6 @@ func newS3(cfg map[string]any) (*s3Provider, error) {
 	return &s3Provider{client: s3.New(options), transport: transport, bucket: bucket, prefix: prefix, ctx: ctx, cancel: cancel}, nil
 }
 
-// Bound a silent remote socket independently of the total size of the object.
-type remoteDeadlineConn struct{ net.Conn }
-
-func (c *remoteDeadlineConn) Read(b []byte) (int, error) {
-	_ = c.Conn.SetReadDeadline(time.Now().Add(time.Minute))
-	return c.Conn.Read(b)
-}
-func (c *remoteDeadlineConn) Write(b []byte) (int, error) {
-	_ = c.Conn.SetWriteDeadline(time.Now().Add(time.Minute))
-	return c.Conn.Write(b)
-}
 func (p *s3Provider) begin(ctx context.Context) (context.Context, func(), error) {
 	p.mu.Lock()
 	if p.closed {
@@ -291,8 +281,8 @@ func (p *s3Provider) Upload(ctx context.Context, name string, src io.ReadSeeker,
 	var etag string
 	if size <= s3PartSize {
 		tracker := newTransferProgress(size, progress)
-		body := newProgressSection(asReaderAt(src), 0, size, 0, tracker, ctx)
-		out, e := p.client.PutObject(ctx, &s3.PutObjectInput{Bucket: &p.bucket, Key: &key, Body: body, ContentLength: &size, ContentType: &contentType, Metadata: metadata, ContentMD5: &inspected.checksums[0]})
+		body := newSourceSection(asReaderAt(src), 0, size, ctx)
+		out, e := p.client.PutObject(withUploadBody(ctx, tracker, 0), &s3.PutObjectInput{Bucket: &p.bucket, Key: &key, Body: body, ContentLength: &size, ContentType: &contentType, Metadata: metadata, ContentMD5: &inspected.checksums[0]})
 		if e != nil {
 			return UploadResult{}, s3Error("PutObject", e)
 		}
@@ -329,18 +319,24 @@ func (p *s3Provider) multipart(ctx context.Context, key, contentType string, met
 		return "", errors.New("S3 omitted multipart upload ID")
 	}
 	completed := false
+	var lease *transferLease
 	defer func() {
+		removed := completed
+		var cleanupErr error
 		if !completed {
 			// Cancellation must not cancel the cleanup request itself. Join all part
 			// requests before aborting; report cleanup failure instead of hiding it.
 			cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			_, e := p.client.AbortMultipartUpload(cleanup, &s3.AbortMultipartUploadInput{Bucket: &p.bucket, Key: &key, UploadId: id})
-			if e != nil {
-				err = errors.Join(err, s3Error("AbortMultipartUpload", e))
-			}
+			cleanupErr = p.abortMultipart(cleanup, key, *id)
+			removed = cleanupErr == nil
 		}
+		err = errors.Join(err, cleanupErr, lease.finish(removed, cleanupErr))
 	}()
+	lease, err = p.journal.track(ctx, "s3-multipart", key, *id)
+	if err != nil {
+		return "", err
+	}
 	parts := make([]types.CompletedPart, count)
 	reader := asReaderAt(src)
 	tracker := newTransferProgress(size, progress)
@@ -355,8 +351,8 @@ func (p *s3Provider) multipart(ctx context.Context, key, contentType string, met
 			offset := i * partSize
 			length := min(partSize, size-offset)
 			partNumber := int32(i + 1)
-			body := newProgressSection(reader, offset, length, i, tracker, gctx)
-			out, e := p.client.UploadPart(gctx, &s3.UploadPartInput{Bucket: &p.bucket, Key: &key, UploadId: id, PartNumber: &partNumber, Body: body, ContentLength: &length, ContentMD5: &inspected.checksums[i]})
+			body := newSourceSection(reader, offset, length, gctx)
+			out, e := p.client.UploadPart(withUploadBody(gctx, tracker, i), &s3.UploadPartInput{Bucket: &p.bucket, Key: &key, UploadId: id, PartNumber: &partNumber, Body: body, ContentLength: &length, ContentMD5: &inspected.checksums[i]})
 			if e != nil {
 				return s3Error("UploadPart", e)
 			}
@@ -499,30 +495,20 @@ func (p *transferProgress) read(part, position int64) {
 	}
 }
 
-type progressSection struct {
-	section  *io.SectionReader
-	part     int64
-	progress *transferProgress
-	ctx      context.Context
+type sourceSection struct {
+	section *io.SectionReader
+	ctx     context.Context
 }
 
-func newProgressSection(r io.ReaderAt, offset, size, part int64, tracker *transferProgress, ctx context.Context) *progressSection {
-	return &progressSection{io.NewSectionReader(r, offset, size), part, tracker, ctx}
+func newSourceSection(r io.ReaderAt, offset, size int64, ctx context.Context) *sourceSection {
+	return &sourceSection{io.NewSectionReader(r, offset, size), ctx}
 }
-func (r *progressSection) Read(b []byte) (int, error) {
+func (r *sourceSection) Read(b []byte) (int, error) {
 	if err := r.ctx.Err(); err != nil {
 		return 0, err
 	}
-	n, err := r.section.Read(b)
-	pos, e := r.section.Seek(0, io.SeekCurrent)
-	if e != nil {
-		return n, e
-	}
-	if n > 0 {
-		r.progress.read(r.part, pos)
-	}
-	return n, err
+	return r.section.Read(b)
 }
-func (r *progressSection) Seek(offset int64, whence int) (int64, error) {
+func (r *sourceSection) Seek(offset int64, whence int) (int64, error) {
 	return r.section.Seek(offset, whence)
 }

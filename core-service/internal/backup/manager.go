@@ -35,15 +35,16 @@ type Options struct {
 	LockSnapshot func() func()
 }
 type Manager struct {
-	opts    Options
-	ctx     context.Context
-	cancel  context.CancelFunc
-	op      sync.Mutex
-	mu      sync.Mutex
-	closed  bool
-	workers map[int64]*worker
-	keys    map[int64][]byte
-	wg      sync.WaitGroup
+	opts              Options
+	ctx               context.Context
+	cancel            context.CancelFunc
+	op                sync.Mutex
+	mu                sync.Mutex
+	closed            bool
+	workers           map[int64]*worker
+	keys              map[int64][]byte
+	wg                sync.WaitGroup
+	strandedTransfers sync.Map
 }
 type worker struct {
 	running atomic.Bool
@@ -90,6 +91,10 @@ func NewManager(ctx context.Context, opts Options) (*Manager, error) {
 		cancel()
 		return nil, err
 	}
+	if _, err := opts.Writer.ExecContext(ctx, `UPDATE native_backup_transfers SET state='pending',next_retry_at=0 WHERE state IN ('active','cleaning')`); err != nil {
+		cancel()
+		return nil, err
+	}
 	ds, err := m.destinations(ctx)
 	if err != nil {
 		cancel()
@@ -100,8 +105,11 @@ func NewManager(ctx context.Context, opts Options) (*Manager, error) {
 			m.start(d.ID)
 		}
 	}
-	m.wg.Add(1)
+	m.wg.Add(1 + cleanupWorkers)
 	go m.schedule()
+	for range cleanupWorkers {
+		go m.cleanupTransfers()
+	}
 	return m, nil
 }
 func (m *Manager) Close() {
@@ -507,6 +515,18 @@ func (m *Manager) Pause(ctx context.Context, id int64, paused bool) error {
 	return err
 }
 func (m *Manager) Test(ctx context.Context, id int64) (bool, string, error) {
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return false, "", errors.New("backup manager is closed")
+	}
+	m.wg.Add(1)
+	m.mu.Unlock()
+	defer m.wg.Done()
+	ctx, stopTest := context.WithCancel(ctx)
+	stopLife := context.AfterFunc(m.ctx, stopTest)
+	defer stopTest()
+	defer stopLife()
 	d, err := m.load(ctx, id)
 	if err != nil {
 		return false, "", err
@@ -517,7 +537,7 @@ func (m *Manager) Test(ctx context.Context, id int64) (bool, string, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	p, err := m.provider(ctx, d.Provider, cfg)
+	p, err := m.provider(ctx, d, cfg)
 	if err != nil {
 		return false, err.Error(), nil
 	}
@@ -611,6 +631,12 @@ func (m *Manager) Encryption(ctx context.Context, id int64, enabled bool, passph
 }
 
 const backupSchema = `
+CREATE TABLE IF NOT EXISTS native_backup_transfers(
+ id TEXT PRIMARY KEY,destination_id INTEGER NOT NULL,provider TEXT NOT NULL,config_blob BLOB NOT NULL,
+ kind TEXT NOT NULL,remote_path TEXT NOT NULL,upload_id TEXT NOT NULL DEFAULT '',state TEXT NOT NULL,
+ attempts INTEGER NOT NULL DEFAULT 0,error TEXT,next_retry_at INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS native_backup_transfers_ready ON native_backup_transfers(state,next_retry_at,created_at);
 CREATE TABLE IF NOT EXISTS native_backup_host_keys(address TEXT PRIMARY KEY,public_key BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS native_backup_state(
  destination_id INTEGER PRIMARY KEY REFERENCES backup_destinations(id) ON DELETE CASCADE,
