@@ -8767,9 +8767,10 @@ html.theme-light .access-badge[data-access="migrated"] {
 .cr-row.is-selecting {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
 }
+/* Flat tint + left accent: consecutive selected rows read as one block. */
 .cr-row.is-selected {
     background: color-mix(in srgb, var(--tg-blue) 12%, transparent);
-    border-radius: 12px;
+    box-shadow: inset 3px 0 0 var(--tg-blue);
 }
 .cr-check {
     display: inline-flex;
