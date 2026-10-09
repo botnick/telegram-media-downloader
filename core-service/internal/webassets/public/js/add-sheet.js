@@ -120,7 +120,7 @@ function rowState(chat) {
  *
  * @param {object} chat  { id, name, type, members?, archived?, joined?,
  *                         inConfig?, enabled?, suspended?, dmDisabled? }
- * @param {object} [opts] { accountChips: [{id,label,title}] }
+ * @param {object} [opts] { accountChips: [{id,label,title}], selecting, selected }
  */
 export function renderChatResultRow(chat, opts = {}) {
     const id = String(chat.id);
@@ -164,7 +164,9 @@ export function renderChatResultRow(chat, opts = {}) {
     // says why); its Monitor switch stays usable so it can be stopped.
     const noBackfill = suspended || blocked || unreachable;
     return `
-        <div class="cr-row${unreachable ? ' is-unreachable' : ''}" data-chat-id="${escapeHtml(id)}" role="listitem">
+        <div class="cr-row${unreachable ? ' is-unreachable' : ''}${opts.selecting ? ' is-selecting' : ''}${opts.selected ? ' is-selected' : ''}" data-chat-id="${escapeHtml(id)}" role="listitem">
+            ${opts.selecting ? `<label class="cr-check"><input type="checkbox" data-cr-select ${opts.selected ? 'checked' : ''}
+                aria-label="${escapeHtml(i18nTf('chats.select.row_aria', { name }, `Select ${name}`))}"></label>` : ''}
             <button type="button" class="cr-main" data-cr-open
                 aria-label="${escapeHtml(i18nTf('add.row.open_aria', { name }, `Settings of ${name}`))}">
                 ${createAvatar({ id, name, type: chat.type, photoUrl: chat.photoUrl, size: 'md' })}
@@ -231,6 +233,15 @@ export function wireChatResultRows(container, opts = {}) {
         const row = e.target.closest('.cr-row[data-chat-id]');
         if (!row || !container.contains(row)) return;
         const id = row.dataset.chatId;
+
+        // Select mode: the checkbox and the row's name toggle the selection.
+        if (opts.onSelect && row.classList.contains('is-selecting') && e.target.closest('[data-cr-select], [data-cr-open]')) {
+            const box = row.querySelector('[data-cr-select]');
+            if (!e.target.closest('[data-cr-select]')) box.checked = !box.checked;
+            row.classList.toggle('is-selected', box.checked);
+            opts.onSelect(id, box.checked);
+            return;
+        }
 
         if (e.target.closest('[data-cr-open], [data-cr-customize]')) {
             leaveTo(id);

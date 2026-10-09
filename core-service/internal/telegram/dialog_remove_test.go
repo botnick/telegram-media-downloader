@@ -324,3 +324,47 @@ func TestRemoveDialogRejectsMissingOrInvalidRPCResult(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoveDialogsReadsIndexOnceAndStopsWhenAsked(t *testing.T) {
+	saved := dialogRemovalPace
+	dialogRemovalPace = 0
+	defer func() { dialogRemovalPace = saved }()
+	first := removalMapped(&tg.PeerChannel{ChannelID: 41}, &tg.Channel{ID: 41, AccessHash: 91, Broadcast: true}, nil)
+	second := removalMapped(&tg.PeerChannel{ChannelID: 42}, &tg.Channel{ID: 42, AccessHash: 92, Megagroup: true}, nil)
+	third := removalMapped(&tg.PeerChannel{ChannelID: 43}, &tg.Channel{ID: 43, AccessHash: 93, Megagroup: true}, nil)
+	reads := 0
+	index := func(_ context.Context, archived bool) ([]Dialog, error) {
+		reads++
+		if archived {
+			return nil, nil
+		}
+		return []Dialog{first, second, third}, nil
+	}
+	var left []int64
+	rpc := &removalRPC{t: t, leave: func(_ context.Context, raw tg.InputChannelClass) (tg.UpdatesClass, error) {
+		peer := raw.(*tg.InputChannel)
+		left = append(left, peer.ChannelID)
+		if peer.ChannelID == 42 {
+			return nil, errors.New("FLOOD_WAIT_30")
+		}
+		return &tg.Updates{}, nil
+	}}
+	var seen []string
+	err := removeDialogs(context.Background(), rpc, index, []string{first.ID, "-1000000000099", second.ID, third.ID}, func(id string, err error) bool {
+		seen = append(seen, fmt.Sprintf("%s:%v", id, err != nil))
+		return err == nil || !strings.Contains(err.Error(), "FLOOD_WAIT")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reads != 2 {
+		t.Fatalf("dialog index read %d times, want once per folder", reads)
+	}
+	want := []string{first.ID + ":false", "-1000000000099:true", second.ID + ":true"}
+	if !reflect.DeepEqual(seen, want) || !reflect.DeepEqual(left, []int64{41, 42}) {
+		t.Fatalf("results=%v left=%v", seen, left)
+	}
+	if err := removeDialogs(context.Background(), rpc, index, []string{"042"}, func(string, error) bool { return true }); err == nil {
+		t.Fatal("non-canonical ID accepted")
+	}
+}

@@ -132,21 +132,47 @@ func (a *App) handleAPIPurgeAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) acceptPurge(w http.ResponseWriter, r *http.Request, id string, all, filesOnly bool) bool {
+	p, err := a.claimPurge(r.Context(), id, all, filesOnly)
+	if err != nil {
+		var refused *purgeRefusal
+		if errors.As(err, &refused) {
+			if refused.code != "" {
+				writeJSON(w, refused.status, map[string]any{"error": refused.message, "code": refused.code})
+			} else {
+				writeJSONError(w, refused.status, refused.message)
+			}
+		}
+		return false
+	}
+	go func() {
+		defer a.purgeWG.Done()
+		_ = a.runPurge(a.ctx, p, false)
+	}()
+	return true
+}
+
+type purgeRefusal struct {
+	status        int
+	code, message string
+}
+
+func (e *purgeRefusal) Error() string { return e.message }
+
+// claimPurge persists and registers a purge request. On success the caller
+// owns one purgeWG slot and must run the returned record, then call Done.
+func (a *App) claimPurge(ctx context.Context, id string, all, filesOnly bool) (purgeRecord, error) {
 	a.purgeMu.Lock()
 	defer a.purgeMu.Unlock()
 	if a.recoveryWriting {
-		writeJSON(w, 409, map[string]any{"error": "Recovery is changing groups", "code": "ALREADY_RUNNING"})
-		return false
+		return purgeRecord{}, &purgeRefusal{409, "ALREADY_RUNNING", "Recovery is changing groups"}
 	}
 	if a.purgeClosed || a.ctx.Err() != nil {
-		writeJSONError(w, 503, "server is stopping")
-		return false
+		return purgeRecord{}, &purgeRefusal{503, "", "server is stopping"}
 	}
 	key := purgeKey(id, all)
 	for otherKey, other := range a.purges {
 		if other.Phase != "done" && (other.Status["running"] == true || otherKey != key) && (all || other.All || otherKey == key) {
-			writeJSON(w, 409, map[string]any{"error": "A purge is already running", "code": "ALREADY_RUNNING"})
-			return false
+			return purgeRecord{}, &purgeRefusal{409, "ALREADY_RUNNING", "A purge is already running"}
 		}
 	}
 	p, exists := a.purges[key]
@@ -159,17 +185,15 @@ func (a *App) acceptPurge(w http.ResponseWriter, r *http.Request, id string, all
 	} else {
 		p = clonePurge(p)
 		if p.FilesOnly != filesOnly {
-			writeJSON(w, 409, map[string]any{"error": "Finish the pending purge before changing its scope", "code": "ALREADY_RUNNING"})
-			return false
+			return purgeRecord{}, &purgeRefusal{409, "ALREADY_RUNNING", "Finish the pending purge before changing its scope"}
 		}
 	}
 	p.Status["running"], p.Status["stage"], p.Status["error"] = true, "starting", nil
 	p.Status["attempts"] = jobCount(p.Status["attempts"]) + 1
 	p.Status["startedAt"], p.Status["finishedAt"], p.Status["durationMs"] = time.Now().UnixMilli(), 0, 0
 	p.Status["progress"] = map[string]any{}
-	if err := savePurge(r.Context(), a.db.Writer, p); err != nil {
-		writeJSONError(w, 500, "could not persist purge request")
-		return false
+	if err := savePurge(ctx, a.db.Writer, p); err != nil {
+		return purgeRecord{}, &purgeRefusal{500, "", "could not persist purge request"}
 	}
 	if a.purges == nil {
 		a.purges = map[string]purgeRecord{}
@@ -177,11 +201,7 @@ func (a *App) acceptPurge(w http.ResponseWriter, r *http.Request, id string, all
 	a.purges[key] = clonePurge(p)
 	a.purgeWG.Add(1)
 	a.hub.Broadcast(ws.Event{Type: p.prefix() + "_progress", Flat: true, Payload: cloneConfigValue(p.Status)})
-	go func() {
-		defer a.purgeWG.Done()
-		_ = a.runPurge(a.ctx, p, false)
-	}()
-	return true
+	return p, nil
 }
 
 type purgeExecutor interface {

@@ -8744,3 +8744,87 @@ html.theme-light .access-badge[data-access="migrated"] {
 .chat-leave-name { font-weight: 600; }
 .chat-leave-status[data-kind="error"] { color: var(--tg-red); }
 .chat-leave-status:empty { display: none; }
+
+/* Chats page select mode (js/chat-select.js). */
+.chat-select-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.chat-select-bar .tg-btn,
+.chat-select-bar .tg-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+}
+.chat-select-count {
+    font-weight: 600;
+    margin-right: auto;
+}
+.cr-row.is-selecting {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+.cr-row.is-selected {
+    background: color-mix(in srgb, var(--tg-blue) 12%, transparent);
+    border-radius: 12px;
+}
+.cr-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+}
+.cr-check input {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--tg-blue);
+}
+.chat-leave-list {
+    margin: 0;
+    padding-left: 20px;
+    list-style: disc;
+    color: var(--tg-textSecondary);
+    max-height: 160px;
+    overflow: auto;
+}
+.chat-leave-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+.chat-leave-option {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid var(--tg-border);
+    border-radius: 12px;
+    cursor: pointer;
+}
+.chat-leave-option > span {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.chat-leave-option input {
+    margin-top: 3px;
+    accent-color: var(--tg-blue);
+}
+.chat-leave-option:has(input:checked) {
+    border-color: var(--tg-blue);
+}
+.chat-leave-typed {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.chat-leave-status[data-kind="warning"] { color: var(--tg-orange, #f0a43a); }
+.tg-btn.chat-leave-danger { background: var(--tg-red); }

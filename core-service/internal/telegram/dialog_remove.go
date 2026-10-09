@@ -27,36 +27,109 @@ func (a *Account) RemoveDialog(ctx context.Context, id string) error {
 }
 
 func removeDialog(ctx context.Context, api dialogRemovalAPI, dialogs func(context.Context, bool) ([]Dialog, error), id string) error {
-	numericID, err := strconv.ParseInt(id, 10, 64)
-	if err != nil || numericID == 0 || strconv.FormatInt(numericID, 10) != id {
-		return errors.New("a canonical Telegram dialog ID is required")
+	if err := canonicalDialogID(id); err != nil {
+		return err
 	}
 	// Bound the whole operation, including continued history deletion. A caller's
 	// earlier deadline still takes precedence; cancellation never becomes success.
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	var selected *Dialog
-	for _, archived := range []bool{false, true} {
+	current, err := currentDialogs(ctx, dialogs)
+	if err != nil {
+		return err
+	}
+	return removeResolvedDialog(ctx, api, current, id)
+}
+
+// RemoveDialogs removes several dialogs from this account only, reading the
+// account's dialog list once. each receives every outcome; returning false
+// stops before the next removal. Callers hold the same confirmations as for
+// RemoveDialog.
+func (a *Account) RemoveDialogs(ctx context.Context, ids []string, each func(id string, err error) bool) error {
+	if a == nil || a.API() == nil {
+		return errors.New("Telegram account is not connected")
+	}
+	return removeDialogs(ctx, a.API(), a.RecoveryDialogs, ids, each)
+}
+
+// Pause between removals so a long batch does not trip Telegram's flood limits.
+var dialogRemovalPace = 1500 * time.Millisecond
+
+func removeDialogs(ctx context.Context, api dialogRemovalAPI, dialogs func(context.Context, bool) ([]Dialog, error), ids []string, each func(id string, err error) bool) error {
+	for _, id := range ids {
+		if err := canonicalDialogID(id); err != nil {
+			return err
+		}
+	}
+	listCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	current, err := currentDialogs(listCtx, dialogs)
+	cancel()
+	if err != nil {
+		return err
+	}
+	for i, id := range ids {
+		if i > 0 && dialogRemovalPace > 0 {
+			timer := time.NewTimer(dialogRemovalPace)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		removeCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		err := removeResolvedDialog(removeCtx, api, current, id)
+		cancel()
+		if !each(id, err) {
+			return nil
+		}
+	}
+	return nil
+}
+
+func canonicalDialogID(id string) error {
+	numericID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || numericID == 0 || strconv.FormatInt(numericID, 10) != id {
+		return errors.New("a canonical Telegram dialog ID is required")
+	}
+	return nil
+}
+
+// Active dialogs are read first, so an active entry wins over an archived duplicate.
+func currentDialogs(ctx context.Context, dialogs func(context.Context, bool) ([]Dialog, error)) (map[string]Dialog, error) {
+	current := map[string]Dialog{}
+	for _, archived := range []bool{false, true} {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		items, err := dialogs(ctx, archived)
 		if err != nil {
-			return fmt.Errorf("read current account dialogs: %w", err)
+			return nil, fmt.Errorf("read current account dialogs: %w", err)
 		}
 		for _, item := range items {
-			if item.ID == id && selected == nil {
-				copy := item
-				selected = &copy
+			if _, ok := current[item.ID]; !ok {
+				current[item.ID] = item
 			}
 		}
 	}
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return current, nil
+}
+
+func removeResolvedDialog(ctx context.Context, api dialogRemovalAPI, current map[string]Dialog, id string) error {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if selected == nil {
+	dialog, ok := current[id]
+	if !ok {
 		return errors.New("dialog is not in the selected account's current dialogs")
 	}
+	selected := &dialog
 	if selected.Access.State == "" || selected.Access.State == "unknown" {
 		return errors.New("dialog has no confirmed Telegram entity; refresh before removing it")
 	}

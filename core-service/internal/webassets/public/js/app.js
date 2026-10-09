@@ -35,6 +35,7 @@ import {
     stopMonitoringChats,
     unreachableGroups,
 } from './chat-access.js';
+import { initChatSelect, isSelecting, isSelected, paintSelectBar, setSelected } from './chat-select.js';
 import { openSheet, confirmSheet } from './sheet.js';
 import {
     renderChatRow,
@@ -3459,6 +3460,14 @@ function loadAddSheetModule() {
 
 let _groupsScrollTop = 0;
 
+initChatSelect({
+    rerender: () => _paintDialogs(),
+    onFinished: async () => {
+        await loadGroups().catch(() => {});
+        if (state.currentPage === 'groups') _paintDialogs();
+    },
+});
+
 function _paintDialogs() {
     const q = document.getElementById('groups-search')?.value || '';
     if (q.trim()) filterDialogs(q);
@@ -3546,6 +3555,7 @@ function renderDialogsList(dialogs) {
                 ? _attentionChats(document.getElementById('groups-search')?.value || '')
                 : available;
 
+    paintSelectBar(filtered);
     if (filtered.length === 0) {
         list.removeAttribute('role');
         list.classList.remove('cr-list');
@@ -3583,13 +3593,14 @@ function renderDialogsList(dialogs) {
                     return { id, label: meta?.label || id, title: meta?.title || id };
                 });
             }
-            return rows.renderChatResultRow(d, { accountChips });
+            return rows.renderChatResultRow(d, { accountChips, selecting: isSelecting(), selected: isSelected(d.id) });
         })
         .join('');
     // Row taps open the chat's details page; the switch and Backfill…
     // act in place (one delegated listener, wired once).
     rows.wireChatResultRows(list, {
         getChat: (id) => _attentionChats().find((d) => String(d.id) === String(id)) || (state.allDialogs || []).find((d) => String(d.id) === String(id)),
+        onSelect: setSelected,
     });
 }
 
