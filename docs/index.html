@@ -1,7 +1,7 @@
 ---
 layout: null
 title: Telegram Media Downloader
-description: Self-hosted Telegram media downloader with a fast web dashboard. Download and back up photos, videos and files from Telegram channels, groups and DMs. Docker, PWA, dedup, face clustering, cluster mode.
+description: Self-hosted Telegram media downloader with a web dashboard. One Go binary or Docker image saves photos, videos and files from channels, groups and DMs.
 permalink: /
 ---
 {%- assign base = site.url | append: site.baseurl -%}
@@ -19,7 +19,7 @@ permalink: /
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="{{ site.title }}">
 <meta property="og:title" content="Telegram Media Downloader">
-<meta property="og:description" content="Self-hosted Telegram media downloader with a fast web dashboard. Docker, PWA, dedup, face clustering, cluster mode.">
+<meta property="og:description" content="Self-hosted Telegram media downloader with a web dashboard. One Go binary or Docker image: monitor, backfill, dedup, backups.">
 <meta property="og:url" content="{{ base }}/">
 <meta property="og:image" content="{{ base }}/assets/og.png">
 <meta property="og:image:width" content="1200">
@@ -27,7 +27,7 @@ permalink: /
 <meta property="og:image:alt" content="The Telegram Media Downloader library view">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Telegram Media Downloader">
-<meta name="twitter:description" content="Self-hosted Telegram media downloader with a fast web dashboard.">
+<meta name="twitter:description" content="Self-hosted Telegram media downloader with a web dashboard. One Go binary or Docker image.">
 <meta name="twitter:image" content="{{ base }}/assets/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -226,7 +226,7 @@ footer a:hover { color: var(--accent); }
     <div class="hero-copy">
       <span class="eyebrow">Open source &middot; MIT &middot; v{{ site.software.version }}</span>
       <h1 id="hero-title">Telegram <span>Media Downloader</span></h1>
-      <p class="sub">Self-hosted Telegram media downloader with a fast web dashboard.</p>
+      <p class="sub">Save media from Telegram channels, groups and chats with your own account. One Go binary or Docker image, with a web dashboard.</p>
       <div class="cta">
         <a class="btn primary" href="#quick-start">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
@@ -238,7 +238,7 @@ footer a:hover { color: var(--accent); }
         </a>
       </div>
       <ul class="pills" aria-label="Highlights">
-        <li>Docker</li><li>Node.js 22+</li><li>Go engine</li><li>PWA</li><li>Private channels</li>
+        <li>Docker</li><li>Single Go binary</li><li>Linux &middot; Windows &middot; macOS</li><li>PWA</li><li>Private channels</li>
       </ul>
     </div>
     <div class="frame">
@@ -257,14 +257,14 @@ footer a:hover { color: var(--accent); }
     <h2 id="features-title">Archive Telegram without the babysitting</h2>
     <p class="lead">Sign in with your own account and download Telegram channel and group media, including private chats you belong to.</p>
     <div class="grid">
-      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div><h3>Auto-download</h3><p>A realtime monitor for channels, groups, forum topics and DMs, plus bulk backfill with date and count filters. Stories and self-destructing media too.</p></article>
-      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div><h3>Web dashboard and PWA</h3><p>Gallery, live queue with speed and ETA, a full-screen viewer, seekbar previews and share links. Installable on a phone, English and Thai.</p></article>
-      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></div><h3>Dedup</h3><p>SHA-256 at download time and an on-demand library scan, with bulk delete for the duplicates it finds.</p></article>
-      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><h3>Face clustering</h3><p>Optional insightface sidecar groups the people in your photos and videos. Run it locally or on a GPU machine.</p></article>
-      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.2 8.2 8 9 4.8-.8 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>NSFW review</h3><p>A review screen with a whitelist and a hash blocklist, using a local classifier or a remote sidecar.</p></article>
-      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="m8.2 10.8 7.6-3.6M8.2 13.2l7.6 3.6"/></svg></div><h3>Cluster mode</h3><p>Pair several instances into one federated library with live sync, failover and cluster-wide search.</p></article>
-      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/><path d="M12 12v6m0-6-2 2m2-2 2 2"/></svg></div><h3>Backups</h3><p>Mirror to S3-compatible storage, SFTP, FTP, Google Drive, Dropbox or a local mount, with optional client-side encryption.</p></article>
-      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div><h3>Go engine</h3><p>tgdl-core, a small Go binary, does the hashing, integrity checks and folder walks, and serves every media byte, so playback stays smooth while the server is busy.</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div><h3>Auto-download</h3><p>A realtime monitor for channels, groups, forum topics and DMs, history backfill that resumes after restarts, <code>t.me</code> links and Stories.</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div><h3>Web dashboard and PWA</h3><p>Gallery, live queue with speed and ETA, a full-screen viewer and signed share links. Installable on a phone, English and Thai.</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></div><h3>Dedup</h3><p>Duplicates are skipped before downloading by Telegram media identity and confirmed by SHA-256. A library scan bulk-deletes the rest.</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div><h3>One-click updates</h3><p>Press Install update in the dashboard. It checks the database and saves a verified snapshot before the container is replaced.</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.2 8.2 8 9 4.8-.8 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>Secure by default</h3><p>Nothing opens until a password is set. scrypt hashes, server-side session revocation, a read-only guest role and encrypted Telegram sessions.</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="m8.2 10.8 7.6-3.6M8.2 13.2l7.6 3.6"/></svg></div><h3>Cluster mode</h3><p>Pair several instances, sync their catalogs and open or play each other&rsquo;s files from one dashboard.</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/><path d="M12 12v6m0-6-2 2m2-2 2 2"/></svg></div><h3>Backups</h3><p>Mirror or snapshot to a local disk, S3-compatible storage, SFTP or FTP/FTPS, with encrypted archives and an offline restore command.</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div><h3>One Go binary</h3><p><code>tgdl-server</code> runs the dashboard, Telegram accounts, downloads and backups. No Node.js, no runtime to install. Docker image for amd64 and arm64.</p></article>
     </div>
   </div>
 </section>
@@ -272,20 +272,26 @@ footer a:hover { color: var(--accent); }
 <section id="quick-start" aria-labelledby="qs-title">
   <div class="wrap">
     <span class="eyebrow">Quick start</span>
-    <h2 id="qs-title">Up in 60 seconds</h2>
+    <h2 id="qs-title">Up in a few minutes</h2>
     <p class="lead">You need Docker with Compose and an <code>apiId</code> / <code>apiHash</code> from <a href="https://my.telegram.org" rel="noopener">my.telegram.org</a>.</p>
     <div class="qs">
       <div>
         <div class="code">
           <div class="label"><span>bash</span><button class="copy" type="button" data-copy="#cmd">Copy</button></div>
-<pre id="cmd"><code>git clone https://github.com/botnick/telegram-media-downloader.git
-cd telegram-media-downloader
-docker compose up -d</code></pre>
+<pre id="cmd"><code>mkdir telegram-media-downloader &amp;&amp; cd telegram-media-downloader
+mkdir -p data
+curl -fsSLO https://raw.githubusercontent.com/botnick/telegram-media-downloader/main/docker-compose.yml
+docker compose up -d
+# first password, from a private one-line file:
+docker compose exec -T -u node telegram-downloader \
+  tgdl-server setup --password-stdin &lt; password.txt</code></pre>
         </div>
         <p class="upd"><b>Updating:</b> use Settings &rsaquo; Maintenance &rsaquo; <b>Install update</b>, or run <code>docker compose pull &amp;&amp; docker compose up -d</code>.</p>
+        <p class="upd"><b>Coming from 2.x?</b> 3.0 upgrades in place: same image, port, data folder and logins. <a href="{{ '/UPGRADING.html' | relative_url }}">Upgrade notes</a>.</p>
+        <p class="upd"><b>No Docker?</b> Download a <a href="{{ site.software.repository }}/releases/latest" rel="noopener">release binary</a> for Linux, Windows or macOS and run <code>TGDL_DATA_DIR=./data ./tgdl-server</code>. See the <a href="{{ '/DEPLOY.html' | relative_url }}">install guide</a>.</p>
       </div>
       <ol class="steps">
-        <li><div><b>Open the dashboard</b><span><code>http://localhost:3000</code>, then set a password.</span></div></li>
+        <li><div><b>Sign in</b><span>Open <code>http://localhost:3000</code> with the password you set.</span></div></li>
         <li><div><b>Add your API credentials</b><span>Settings &rsaquo; Telegram API.</span></div></li>
         <li><div><b>Add an account</b><span>Phone number, login code and optional 2FA.</span></div></li>
         <li><div><b>Start the monitor</b><span>Or paste a <code>t.me/</code> link to grab one message.</span></div></li>
@@ -316,28 +322,25 @@ docker compose up -d</code></pre>
 <section aria-labelledby="arch-title">
   <div class="wrap">
     <span class="eyebrow">Architecture</span>
-    <h2 id="arch-title">A Node.js app with a Go engine</h2>
+    <h2 id="arch-title">One Go server, nothing else to run</h2>
     <div class="arch">
-      <svg viewBox="0 0 840 380" role="img" aria-labelledby="arch-desc">
-        <title id="arch-desc">Diagram: the browser talks to tgdl-core on PORT, which serves media from disk and proxies other requests to the Node.js app; the app talks to Telegram and to optional faces, nsfw and seekbar sidecars.</title>
+      <svg viewBox="0 0 840 330" role="img" aria-labelledby="arch-desc">
+        <title id="arch-desc">Diagram: the browser talks to tgdl-server over HTTP and WebSocket. tgdl-server connects to Telegram over MTProto, stores state in SQLite, writes media to disk and calls ffmpeg for thumbnails.</title>
         <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z"/></marker></defs>
-        <rect class="box" x="20" y="155" width="120" height="60" rx="12"/><text x="80" y="190" text-anchor="middle">Browser</text>
-        <rect class="hot" x="190" y="135" width="190" height="100" rx="14"/><text x="285" y="170" text-anchor="middle">tgdl-core (Go)</text><text class="sm" x="285" y="192" text-anchor="middle">front server on PORT</text><text class="sm" x="285" y="210" text-anchor="middle">media, hashing, walks, DBSCAN</text>
-        <rect class="box" x="440" y="135" width="200" height="100" rx="14"/><text x="540" y="170" text-anchor="middle">Node.js app</text><text class="sm" x="540" y="192" text-anchor="middle">Express, SQLite, gramJS</text><text class="sm" x="540" y="210" text-anchor="middle">queue, monitor, API</text>
-        <rect class="box" x="700" y="155" width="120" height="60" rx="12"/><text x="760" y="180" text-anchor="middle">Telegram</text><text class="sm" x="760" y="199" text-anchor="middle">MTProto</text>
-        <rect class="box" x="190" y="295" width="190" height="50" rx="12"/><text x="285" y="326" text-anchor="middle">downloads on disk</text>
-        <rect class="box" x="425" y="295" width="66" height="50" rx="10"/><text x="458" y="325" text-anchor="middle" style="font-size:13px">faces</text>
-        <rect class="box" x="507" y="295" width="66" height="50" rx="10"/><text x="540" y="325" text-anchor="middle" style="font-size:13px">nsfw</text>
-        <rect class="box" x="589" y="295" width="66" height="50" rx="10"/><text x="622" y="325" text-anchor="middle" style="font-size:13px">seekbar</text>
-        <text class="sm" x="540" y="368" text-anchor="middle">optional sidecars, local or external</text>
-        <path class="ln" d="M140 185h48" marker-end="url(#ar)"/>
-        <path class="ln" d="M380 185h58" marker-end="url(#ar)"/><text class="sm" x="410" y="176" text-anchor="middle">API</text>
-        <path class="ln" d="M640 185h58" marker-start="url(#ar)" marker-end="url(#ar)"/>
-        <path class="ln" d="M285 293v-56" marker-end="url(#ar)"/>
-        <path class="ln" d="M540 237v56" marker-start="url(#ar)" marker-end="url(#ar)"/>
+        <rect class="box" x="20" y="105" width="140" height="60" rx="12"/><text x="90" y="133" text-anchor="middle">Browser</text><text class="sm" x="90" y="152" text-anchor="middle">dashboard / PWA</text>
+        <rect class="hot" x="270" y="85" width="300" height="100" rx="14"/><text x="420" y="120" text-anchor="middle">tgdl-server (Go)</text><text class="sm" x="420" y="142" text-anchor="middle">embedded dashboard, API, WebSocket</text><text class="sm" x="420" y="160" text-anchor="middle">accounts, durable queue, dedup, backups</text>
+        <rect class="box" x="680" y="105" width="140" height="60" rx="12"/><text x="750" y="130" text-anchor="middle">Telegram</text><text class="sm" x="750" y="150" text-anchor="middle">MTProto (gotd)</text>
+        <rect class="box" x="200" y="250" width="130" height="50" rx="12"/><text x="265" y="281" text-anchor="middle">SQLite</text>
+        <rect class="box" x="355" y="250" width="130" height="50" rx="12"/><text x="420" y="281" text-anchor="middle">media on disk</text>
+        <rect class="box" x="510" y="250" width="130" height="50" rx="12"/><text x="575" y="281" text-anchor="middle">ffmpeg</text>
+        <path class="ln" d="M160 135h108" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="sm" x="214" y="126" text-anchor="middle">HTTP + WS</text>
+        <path class="ln" d="M570 135h108" marker-start="url(#ar)" marker-end="url(#ar)"/>
+        <path class="ln" d="M330 187l-55 61" marker-start="url(#ar)" marker-end="url(#ar)"/>
+        <path class="ln" d="M420 187v61" marker-end="url(#ar)"/>
+        <path class="ln" d="M510 187l55 61" marker-end="url(#ar)"/>
       </svg>
     </div>
-    <p class="arch-note">The sidecars are optional and each one works locally or on another machine. See the <a href="{{ '/ARCHITECTURE.html' | relative_url }}">architecture guide</a> and the <a href="{{ '/GO-CORE.html' | relative_url }}">tgdl-core page</a>.</p>
+    <p class="arch-note">Downloads are written to a temporary file and published atomically, and queued work survives restarts. See the <a href="{{ '/ARCHITECTURE.html' | relative_url }}">architecture guide</a> and the <a href="{{ '/FEATURES.html' | relative_url }}">full feature list</a>.</p>
   </div>
 </section>
 
@@ -362,7 +365,9 @@ docker compose up -d</code></pre>
         <p>Self-hosted, open source, MIT licensed.</p>
       </div>
       <nav aria-label="Documentation"><h3>Docs</h3><ul>
-        <li><a href="{{ '/DEPLOY.html' | relative_url }}">Deploy</a></li>
+        <li><a href="{{ '/DEPLOY.html' | relative_url }}">Install and deploy</a></li>
+        <li><a href="{{ '/UPGRADING.html' | relative_url }}">Upgrading from 2.x</a></li>
+        <li><a href="{{ '/CONFIGURATION.html' | relative_url }}">Configuration</a></li>
         <li><a href="{{ '/TROUBLESHOOTING.html' | relative_url }}">Troubleshooting</a></li>
         <li><a href="{{ '/API.html' | relative_url }}">API</a></li>
         <li><a href="{{ '/docs/' | relative_url }}">All docs</a></li>
@@ -374,7 +379,7 @@ docker compose up -d</code></pre>
         <li><a href="{{ site.software.license }}" rel="noopener">MIT license</a></li>
       </ul></nav>
     </div>
-    <p class="fine">Not affiliated with Telegram. Uses the public MTProto user API through GramJS.</p>
+    <p class="fine">Not affiliated with Telegram. Uses the Telegram MTProto user API through gotd.</p>
   </div>
 </footer>
 

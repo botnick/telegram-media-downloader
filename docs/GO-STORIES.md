@@ -1,3 +1,10 @@
+---
+title: "Stories internals"
+description: "Engineering note on Telegram Stories listing and downloads, and the proxy connection probe."
+parent: "Developer notes"
+nav_order: 15
+---
+
 # Native Stories and proxy probe
 
 The Go server now implements `/api/stories/user`, `/api/stories/all`,

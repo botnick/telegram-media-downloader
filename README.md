@@ -8,26 +8,25 @@
 
 <h1 align="center">Telegram Media Downloader</h1>
 
-> **3.0 is a native Go server.** Existing 2.x installs upgrade in place — same
-> image, port, data folder and logins. See [upgrading from 2.x](docs/DEPLOY.md#from-2x-to-30).
-
 <p align="center">
-  <b>A self-hosted Telegram media downloader with a web dashboard.</b><br>
-  Download Telegram channel and group media, or back up any chat you belong to — photos, videos, documents,<br>
-  voice messages, GIFs, stickers and Stories — with your own account. Runs as a native Go binary or in Docker. No bot, no cloud.
+  <b>Self-hosted Telegram media downloader with a web dashboard.</b><br>
+  Download and archive photos, videos, files, voice messages and Stories from Telegram channels, groups and chats<br>
+  you belong to, with your own account. One Go binary or Docker image. No bot, no cloud.
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> &bull;
-  <a href="#faq">FAQ</a> &bull;
+  <a href="#quick-start">Quick start</a> &bull;
   <a href="#features">Features</a> &bull;
-  <a href="#dashboard-preview">Dashboard</a> &bull;
-  <a href="docs/CLUSTER.md">Cluster</a> &bull;
-  <a href="docs/AI.md">AI Faces</a> &bull;
-  <a href="docs/API.md">API</a> &bull;
-  <a href="docs/DEPLOY.md">Deploy</a> &bull;
-  <a href="docs/README.md">All docs</a>
+  <a href="#dashboard">Dashboard</a> &bull;
+  <a href="#faq">FAQ</a> &bull;
+  <a href="https://botnick.github.io/telegram-media-downloader/">Website</a> &bull;
+  <a href="docs/README.md">Docs</a>
 </p>
+
+> **3.0 is a native Go server.** Node.js is gone: one `tgdl-server` binary
+> (or the Docker image) runs everything. 2.x installs upgrade in place with the
+> same image, port, data folder and logins. See
+> [Upgrading from 2.x](docs/UPGRADING.md).
 
 <p align="center">
   <picture>
@@ -36,31 +35,115 @@
   </picture>
 </p>
 
----
-
 ## Why this tool?
 
-| Problem | Solution |
-|---------|----------|
-| Telegram bot API caps files at 50 MB / 4 GB | **User API (MTProto)** — no file size limits |
-| No way to bulk-archive a channel | **One-click backfill** with date/count filters |
-| Self-destructing media disappears | **TTL capture** — priority-queued before expiry |
-| Private channels need special access | **Your account** can read it = this tool can download it |
-| No easy way to share downloads | **Signed share links** — no login needed, revocable |
-| Scattered across devices | **Web dashboard** — access from any browser on your network |
+| Problem | What it does |
+|---------|--------------|
+| Bots only see chats they were added to, with file-size limits | Signs in as **your account** over MTProto: if you can read it, it can save it |
+| No easy way to archive a whole channel | **History backfill** that survives restarts, plus a **realtime monitor** |
+| The same video forwarded everywhere | **Skips duplicates before downloading**, then confirms by SHA-256 |
+| Files scattered across devices | **Web dashboard and PWA** on any browser in your network |
+| Sharing a file with someone without an account | **Signed, expiring share links** you can revoke |
+| Keeping a copy somewhere else | **Backups** to a local disk, S3, SFTP or FTP/FTPS, optionally encrypted |
 
----
+## Quick start
 
-## Dashboard Preview
+You need a Telegram `apiId` and `apiHash` from [my.telegram.org](https://my.telegram.org).
+
+### Docker (recommended)
+
+```bash
+mkdir telegram-media-downloader && cd telegram-media-downloader
+mkdir -p data
+curl -fsSLO https://raw.githubusercontent.com/botnick/telegram-media-downloader/main/docker-compose.yml
+docker compose up -d
+```
+
+Set the first dashboard password from a private file containing one line
+(at least 8 characters), then delete the file:
+
+```bash
+docker compose exec -T -u node telegram-downloader tgdl-server setup --password-stdin < /path/to/password-file
+```
+
+Open `http://localhost:3000` and:
+
+1. **Sign in** with that password.
+2. **Settings → Telegram API**: paste `apiId` and `apiHash`.
+3. **Settings → Accounts → Add**: phone, login code, optional 2FA.
+4. **Chats**: turn on the monitor, start a backfill, or paste a `t.me/` link.
+
+The image is multi-arch (amd64, arm64). Synology users can start from
+[`docker-compose.synology.yml`](docker-compose.synology.yml).
+
+### Native binary (no Docker)
+
+Download `tgdl-server-v<version>-<os>-<arch>.tar.gz` for Linux, Windows or
+macOS from the [latest release](https://github.com/botnick/telegram-media-downloader/releases/latest),
+then:
+
+```bash
+tar -xzf tgdl-server-v*-linux-amd64.tar.gz
+TGDL_DATA_DIR=./data ./tgdl-server
+```
+
+On the same machine, `http://localhost:3000` shows the setup form for the
+first password. Install ffmpeg for thumbnails.
+
+Prefer a git checkout? `./runner.sh` (Windows: `run_safe.bat`) downloads and
+verifies the matching release for you. Details, systemd and reverse-proxy
+examples: [Install and deploy](docs/DEPLOY.md).
+
+## Features
+
+**Downloading**
+- Realtime monitor for channels, groups, forum topics and private chats, with
+  per-chat media-type, sender and topic filters
+- History backfill (pull older, catch up, rescan) that resumes after a restart
+- `t.me/` message links and Telegram Stories
+- Several Telegram accounts; pin each chat to the account that reads it
+- SOCKS5, SOCKS4, HTTP and MTProxy proxies
+- 1–50 parallel downloads, retries and a live bandwidth limit
+- Rescue mode: keep only media whose source message was deleted
+
+**Library**
+- Duplicates skipped by Telegram media identity, confirmed by SHA-256, plus a
+  duplicate finder with bulk delete
+- Gallery with thumbnails, search, pins, bulk delete and ZIP download
+- Video player with MP4 faststart; signed, expiring share links
+- Separate tab for deleted or inaccessible chats; leave dead chats in bulk
+- Installable PWA, dark and light theme, English and Thai
+
+**Operations**
+- One-click update from the dashboard (Docker + bundled watchtower), with a
+  verified database snapshot first
+- Backups to local disk, S3-compatible storage, SFTP and FTP/FTPS, with
+  encrypted archives and offline restore
+- Cluster mode: pair instances and browse each other's files
+- Database integrity, vacuum, file verification and recovery tools
+
+**Security**
+- Fail-closed: nothing is reachable until a password is set
+- scrypt password hashes, `HttpOnly` + `SameSite=Strict` cookies revoked on
+  the server, login limited to 10 attempts per 15 minutes
+- Read-only guest password; Telegram sessions encrypted at rest
+- CSP and security headers; `TRUST_PROXY` for reverse proxies
+
+**Not in 3.0 yet:** Google Drive and Dropbox backups, hardware-accelerated
+thumbnails (`FFMPEG_HWACCEL` is ignored), new face/NSFW/seekbar AI results,
+auto-forward, self-destructing media capture and automatic disk rotation. See
+[Features](docs/FEATURES.md#not-in-30).
+
+## Dashboard
 
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/chats.webp" alt="Chats: pick which channels and groups to monitor"></td>
-    <td width="50%"><img src="docs/screenshots/chat-details.webp" alt="Chat details: monitoring, what to download, forwarding, storage"></td>
+    <td width="50%"><img src="docs/screenshots/chat-details.webp" alt="Chat details: monitoring, what to download, storage"></td>
   </tr>
   <tr>
     <td align="center"><b>Chats</b> — monitor channels, groups and DMs; backfill history</td>
-    <td align="center"><b>Chat details</b> — what to download, forwarding, storage, in one page</td>
+    <td align="center"><b>Chat details</b> — what to download and storage, in one page</td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/queue.webp" alt="Download queue with live progress, speed and ETA"></td>
@@ -72,11 +155,11 @@
   </tr>
   <tr>
     <td><img src="docs/screenshots/viewer.webp" alt="Full-screen media viewer"></td>
-    <td><img src="docs/screenshots/tools.webp" alt="Tools: library health, safety and AI, backup and sync, system"></td>
+    <td><img src="docs/screenshots/tools.webp" alt="Tools: library health, backup and sync, system"></td>
   </tr>
   <tr>
     <td align="center"><b>Viewer</b> — swipe / arrow keys, pin, share link, download</td>
-    <td align="center"><b>Tools</b> — duplicates, thumbnails, NSFW review, AI faces, backups, cluster</td>
+    <td align="center"><b>Tools</b> — duplicates, thumbnails, backups, cluster, maintenance</td>
   </tr>
 </table>
 
@@ -86,383 +169,151 @@
   <img src="docs/screenshots/mobile-queue.webp" alt="Queue on a phone" width="24%">
   <img src="docs/screenshots/mobile-chats-light.webp" alt="Chats on a phone, light theme" width="24%">
 </p>
-<p align="center"><sub>Installable as a PWA — the same dashboard on a phone, in dark or light theme. Screenshots use generated demo images and fictional chat names.</sub></p>
+<p align="center"><sub>The same dashboard on a phone, in dark or light theme. Screenshots use generated demo images and fictional chat names.</sub></p>
 
----
-
-## Quick Start
-
-### Docker
-
-Needs Docker with Compose and a Telegram `apiId` / `apiHash` from [my.telegram.org](https://my.telegram.org).
-
-```bash
-mkdir telegram-media-downloader && cd telegram-media-downloader
-mkdir -p data
-curl -fsSLO https://raw.githubusercontent.com/botnick/telegram-media-downloader/main/docker-compose.yml
-docker compose up -d
-```
-
-Set the first dashboard password from a private file containing one line
-(at least 8 characters; restrict the file to your user):
-
-```bash
-docker compose exec -T -u node telegram-downloader tgdl-server setup --password-stdin < /path/to/private-password-file
-```
-
-Remove the password file after setup. Open `http://localhost:3000`:
-
-1. **Sign in** with the password you just set
-2. **Settings > Telegram API** — paste `apiId` + `apiHash` from [my.telegram.org](https://my.telegram.org)
-3. **Settings > Accounts > Add** — phone, OTP, optional 2FA
-4. **Start monitor** — or paste a `t.me/` link to download a single message
-
-### Native (no Docker)
-
-```bash
-git clone https://github.com/botnick/telegram-media-downloader.git
-cd telegram-media-downloader
-./runner.sh          # Windows: run_safe.bat
-```
-
-The launcher downloads the verified `tgdl-server` release that matches the
-checkout (no Go or Node needed) and keeps data in `./data`; `npm start` and
-`pm2 start ecosystem.config.cjs` also work. To build from source instead:
-`make build`. See [deployment](docs/DEPLOY.md).
-
----
-
-## Features
-
-### Core Engine
-
-- **Realtime monitor** — watches unlimited channels, groups, supergroups, and forum topics
-- **Monitor resumes last state** — auto-starts on boot if it was running before shutdown
-- **Bulk backfill** — archive thousands of past messages with date/count filters
-- **Multi-account** — unlimited Telegram accounts with per-group routing
-- **Dual-lane queue** — realtime downloads never starve behind backfill
-- **TTL capture** — self-destructing media priority-queued before expiry
-- **Smart dedup** — SHA-256 at download time + on-demand library scan
-- **Auto-forward** — relay downloads to another chat or Saved Messages
-- **Integrity sweep** — hourly scan re-queues missing files, prunes orphans
-- **Disk rotation** — auto-prune oldest files when size limit exceeded
-
-### Web Dashboard
-
-- **Telegram-themed SPA** — responsive, installable PWA, works offline
-- **Gallery** — grid/compact/list views, lazy-load thumbnails, type filters, search
-- **Queue** — IDM-style per-file progress, pause/resume/cancel/retry, NSFW blocklist badges
-- **Video player** — scrub, seekbar hover preview, PiP, keyboard shortcuts
-- **Share links** — HMAC-signed URLs with TTL, revocable, no login required
-- **Bilingual** — English + Thai, runtime switchable
-
-### AI & Media Intelligence
-
-| Feature | Backend | Description |
-|---------|---------|-------------|
-| **Face clustering** | Python sidecar (insightface) + tgdl-core (DBSCAN) | Detect and group faces from photos and videos. GPU-accelerated. Local or [remote sidecar](#external-ai-sidecar). |
-| **Seekbar previews** | Go sidecar (ffmpeg) | Netflix-style hover thumbnails on the video scrub bar. Local or [remote sidecar](#external-ai-sidecar). |
-| **NSFW detection** | HuggingFace WASM or remote sidecar | Local CPU classifier with review UI and whitelist, or offload to a [remote GPU](#external-ai-sidecar) |
-| **Duplicate finder** | SHA-256 + GROUP BY | Full-library scan with bulk delete |
-
-### Backup & Sync
-
-- **5 backup providers** — S3 / R2 / B2 / Wasabi, SFTP, Google Drive, Dropbox, local mount
-- **Client-side encryption** — optional AES-256-GCM per destination
-- **Cluster mode** — federate multiple dashboards into one library with real-time sync, automatic failover, LAN auto-discovery
-
-### Security
-
-- **Fail-closed** — no password = no access
-- **scrypt password hashing** with `timingSafeEqual` verification
-- **httpOnly + sameSite=strict** session cookies
-- **Default-deny API** — guest role is read-only, mutations are admin-only
-- **Rate-limited login** — 10 attempts / 15 min / IP
-- **Symlink/traversal proof** file serving via `fs.realpath`
-- **CodeQL + Dependabot** scheduled scans
-
----
-
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
-    user[Browser SPA]
-    server[tgdl-server]
-    runtime[Go runtime]
-    monitor[Go monitor]
-    downloader[Go downloader]
-    forwarder[Go forwarder]
-    am[AccountManager]
-    db[(SQLite)]
-    fs[(downloads/)]
-    tg[(Telegram MTProto)]
-    faces[faces-service]
-    nsfw[nsfw-service]
-    seekbar[seekbar-service]
-    core[Go core libraries]
-
-    user <-- REST + WS --> server
-    server -- start/stop --> runtime
-    runtime --> monitor & downloader & forwarder
-    server --> am
-    am <-- login --> tg
-    monitor <-- events --> tg
-    downloader -- writes --> fs
-    downloader -- inserts --> db
-    db -- reads --> server
-    server -- detect --> faces
-    server -- classify --> nsfw
-    server -- sprite --> seekbar
-    server -- hash / fs --> core
-    core -- reads --> fs
+    browser[Browser / PWA] <-- HTTP + WebSocket --> server[tgdl-server]
+    server <-- MTProto via gotd --> telegram[(Telegram)]
+    server --> queue[Durable queue]
+    queue --> files[(downloads/)]
+    server <--> db[(SQLite)]
+    server -- thumbnails --> ffmpeg[ffmpeg]
 ```
 
-The production app is one pure-Go `tgdl-server` binary with the browser bundle
-embedded inside it. It owns HTTP, WebSocket, SQLite, jobs, dedup and gotd
-Telegram connections; no Node process or runtime fallback is used.
-
-- **Go core** (required): hashing, integrity checks, folder walks, face clustering (DBSCAN), SQLite projections and media jobs inside `tgdl-server`.
-- **faces-service** (Python): face detection and embeddings.
-- **nsfw-service** (Python): NSFW classification.
-- **seekbar-service** (Go): video hover previews.
-
-Each sidecar runs locally or as an external worker (see [External AI Sidecar](#external-ai-sidecar)). A missing worker returns a clear feature error; it never switches the server back to Node. Details: [Architecture](docs/ARCHITECTURE.md), [Go migration plan](docs/GO-MIGRATION.md) and [Go server](core-service/README.md).
-
----
-
-## Supported File Types
-
-Photos (JPEG, PNG, WebP, BMP) / Videos (MP4, MKV, AVI, MOV, WebM) / Audio (MP3, M4A, FLAC, WAV, OGG, voice) / Documents (PDF, ZIP, any MIME) / GIFs / Stickers (WebP, TGS) / URL extraction
-
----
-
-## Configuration
-
-All config lives in SQLite (`kv['config']`), editable from the dashboard. Legacy JSON files are auto-imported on first boot.
-
-<details>
-<summary>Full config reference</summary>
-
-```jsonc
-{
-  "telegram":   { "apiId": "...", "apiHash": "..." },
-  "accounts":   [/* populated by wizard */],
-  "groups":     [/* {id, name, enabled, filters, autoForward, monitorAccount} */],
-  "monitor":    { "autoStart": true },
-  "download":   { "concurrent": 5, "retries": 5, "maxSpeed": 0 },
-  "diskManagement": { "maxTotalSize": "50GB" },
-  "proxy":      { "type": "socks5", "host": "...", "port": 1080 },
-  "advanced": {
-    "ai":       { "enabled": false, "faces": { "detectorModel": "buffalo_l" } },
-    "seekbar":  { "enabled": false, "autoOnDownload": false },
-    "nsfw":     { "enabled": false, "threshold": 0.6 },
-    "thumbs":   { "autoOnDownload": true }
-  }
-}
-```
-
-</details>
-
-Downloads allow 1–50 concurrent files and 1–20 total attempts per file (including
-the first attempt). `download.maxSpeed` sets the shared bytes/second limit; 0 or
-null removes the limit and changes take effect immediately. Legacy `rateLimits`
-and `pollingInterval` values remain preserved in stored configuration but are
-not controls for the native engine, which receives Telegram updates directly.
-
-<details>
-<summary>Environment variables</summary>
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TGDL_PORT` | `3000` | Dashboard port (host side in the compose file) |
-| `TGDL_DATA_DIR` | `./data` | Base data directory |
-| `TGDL_BIND_HOST` | all interfaces | Literal listen IP; use `127.0.0.1` for a local reverse proxy |
-| `TGDL_DOWNLOADS_DIR` | _(unset)_ | Split downloads onto separate disk |
-| `TGDL_DEBUG` | _(unset)_ | `1` = verbose logging |
-| `FFMPEG_HWACCEL` | _(empty)_ | `cuda` / `vaapi` / `qsv` / `videotoolbox` |
-| `WATCHTOWER_HTTP_API_TOKEN` | _(auto-generated)_ | Optional override for the Install-update sidecar token |
-| `FACES_SERVICE_URL` | `http://tgdl-faces:8011` | Face clustering sidecar |
-| `TGDL_NSFW_SIDECAR_URL` | _(unset)_ | External NSFW classifier URL |
-| `SEEKBAR_SIDECAR_URL` | _(unset)_ | Seekbar sidecar URL |
-
-Full env-var reference in [docs/DEPLOY.md](docs/DEPLOY.md#environment-variables) and [docs/AI.md](docs/AI.md).
-
-</details>
-
----
+`tgdl-server` is a single Go program. It serves the embedded dashboard, owns
+the SQLite database and the Telegram connections, and runs downloads, dedup,
+backups and maintenance. Downloads are written to a `.part` file and published
+atomically, so an interrupted transfer never leaves a half file in the library.
+More in [Architecture](docs/ARCHITECTURE.md).
 
 ## Updating
 
-- **In the app:** Settings → Maintenance → **Install update** (Docker; no setup, token is auto-generated).
-- **Manually:** `docker compose pull && docker compose up -d`
+- **In the dashboard (Docker):** Settings → Maintenance → **Install update**.
+- **Docker, by hand:** `docker compose pull && docker compose up -d`
+- **Native:** replace the binary, or `git pull` and restart `./runner.sh`.
 
-- **Without Docker:** `git pull`, then restart `./runner.sh` (or `npm start` / PM2).
+Migrations run automatically. Coming from 2.x: nothing to change, see
+[Upgrading from 2.x](docs/UPGRADING.md).
 
-New versions need no config changes; migrations run automatically. Upgrading from 2.x needs nothing extra — see [docs/DEPLOY.md](docs/DEPLOY.md#from-2x-to-30).
+## Configuration
 
----
+Settings live in the dashboard and are stored in SQLite. Environment
+variables cover start-up only:
 
-## Docker Compose profiles
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `TGDL_PORT` | `3000` | Host port in `docker-compose.yml` |
+| `TGDL_DATA_DIR` | `/app/data` (Docker), `./data` (launchers) | Data folder (required for a bare binary) |
+| `TGDL_DOWNLOADS_DIR` | `<data>/downloads` | Keep media on another disk |
+| `TRUST_PROXY` | `1` in Compose | Reverse-proxy trust |
+| `TGDL_SECURE_COOKIES` | `0` | Set `1` behind HTTPS |
+| `TGDL_BIND_HOST` | all interfaces | Listen address, e.g. `127.0.0.1` |
 
-```bash
-# Base (dashboard and pure-Go server)
-docker compose up -d
+Full list: [Configuration](docs/CONFIGURATION.md).
 
-# + AI face clustering (CPU)
-docker compose --profile faces up -d
-
-# + AI face clustering (NVIDIA GPU)
-docker compose --profile faces-cuda up -d
-```
-
----
-
-## External AI Sidecar
-
-Offload face detection and NSFW classification to a remote GPU server — ideal when the main dashboard runs on a CPU-only machine.
-
-**Setup (GPU server):**
-
-```bash
-# Face detection (already included in the repo)
-cd faces-service && pip install -r requirements.txt && python -m tgdl_faces
-
-# NSFW classification
-cd nsfw-service && pip install -r requirements.txt && python main.py
-```
-
-Expose via Cloudflare Tunnel or any reverse proxy, then paste the URLs in **Maintenance > AI > System Health** (faces) and **Maintenance > NSFW** (classifier). Both fall back to local processing when no URL is set.
-
-| Service | Default Port | Env Override | Config Key |
-|---------|-------------|-------------|------------|
-| Face detection | 8011 | `FACES_SERVICE_URL` | `advanced.ai.faces.sidecarUrl` |
-| NSFW classifier | 8012 | `TGDL_NSFW_SIDECAR_URL` | `advanced.nsfw.sidecarUrl` |
-| Seekbar previews | 8089 | `SEEKBAR_SIDECAR_URL` | `advanced.seekbar.sidecarUrl` |
-
----
-
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `make build` | Build the native server |
-| `./runner.sh` | Run the dashboard with the embedded browser assets |
-| `./runner.sh version` | Show the application version |
-| `make test` | Run native Go tests |
-| `make check` | Formatting, vet and Go race checks |
-| `./runner.sh backup-restore --help` | Offline snapshot recovery |
-
-Telegram monitoring, history and account setup use the dashboard. Optional
-legacy CLI commands are not part of the native server. Development references
-below describe the previous release where noted; current delivery scope is in
-[the migration status](docs/GO-MIGRATION-STATUS.md).
-
----
-
-## File Layout
-
-```
+```text
 data/
-├── db.sqlite               # config + downloads + faces + sessions (WAL mode)
-├── secret.key              # BACK THIS UP — decrypts all sessions
-├── sessions/<id>.enc       # AES-256-GCM encrypted Telegram sessions
-├── downloads/<group>/      # organized by chat and media type
-├── thumbs/                 # server-generated WebP thumbnails
-├── seekbar/                # video sprite sheets + metadata
-├── backups/                # pre-update DB snapshots
-└── logs/                   # rotated at 5 MB
+├── db.sqlite          # settings, catalog, jobs, sessions
+├── secret.key         # BACK THIS UP: decrypts the Telegram sessions
+├── sessions/native/   # encrypted Telegram logins
+├── downloads/<chat>/  # your media
+├── thumbs/            # generated thumbnails
+└── backups/           # database snapshots (incl. pre-update)
 ```
-
----
 
 ## FAQ
 
 ### How do I download all media from a Telegram channel?
 
-Add your Telegram account (Settings > Accounts), open **Chats**, pick the channel and start a **backfill**. You can limit it by date or message count. The dashboard then shows every file in the queue with progress, speed and ETA. To keep the archive current, enable the realtime monitor for that chat.
+Add your Telegram account (Settings → Accounts), open **Chats**, pick the
+channel and start a **backfill**. Choose how many messages to read, or 0 for
+all of them. The queue shows each file with progress, speed and ETA. Turn on
+the realtime monitor for that chat to keep the archive current.
 
 ### Can it download from private channels and groups?
 
-Yes, if the Telegram account you sign in with is a member. The tool acts as that account over the Telegram user API (MTProto), so it reads what you can read in the Telegram app.
+Yes, if the Telegram account you sign in with is a member. The tool acts as
+that account over the Telegram user API (MTProto), so it reads what you can
+read in the Telegram app.
 
 ### How is this different from a Telegram bot?
 
-Bots use the Bot API, which limits file sizes and only sees chats the bot was added to. This tool logs in as your user account through MTProto, so it has no bot-style file-size cap and sees your own chats.
+Bots use the Bot API, which limits file sizes and only sees chats the bot was
+added to. This tool logs in as your user account through MTProto, so it has no
+bot-style file-size cap and sees your own chats.
 
 ### Is my Telegram session safe?
 
-Sessions are encrypted at rest (AES-256-GCM) in `data/sessions/`, with the key in `data/secret.key`. Nothing is sent to a cloud service run by this project. The dashboard fails closed: without a password nobody gets in. Put it behind HTTPS if you expose it, and back up `secret.key` (losing it makes saved sessions unrecoverable). See [SECURITY.md](SECURITY.md).
+Sessions are encrypted at rest in `data/sessions/`, with the key in
+`data/secret.key`. Nothing is sent to a service run by this project. The
+dashboard fails closed: without a password nobody gets in. Put it behind HTTPS
+if you expose it, and back up `secret.key`. See [SECURITY.md](SECURITY.md).
 
 ### Will my account get banned?
 
-Built-in rate limiting (default 15 requests per minute) and FloodWait handling keep traffic modest. Avoid lowering the limits aggressively or running many accounts from one IP. No tool can promise zero risk.
+It uses the normal user API like a Telegram app, but heavy automated
+downloading always carries some risk. Failed downloads retry with growing
+delays; keep parallel downloads and the bandwidth limit moderate, and avoid
+running many accounts from one IP. No tool can promise zero risk.
 
 ### Does it run on a Raspberry Pi or a Synology NAS?
 
-Yes on Synology and ARM boards. The multi-architecture image runs the same
-`tgdl-server` binary; bare-metal installs need Go 1.22+ only. See [Deploy](docs/DEPLOY.md).
+Yes. The Docker image is built for amd64 and arm64, and release binaries also
+cover 32-bit ARM (`linux-arm`). Synology has its own compose file. See
+[Install and deploy](docs/DEPLOY.md).
 
-### Can I download Stories or self-destructing media?
+### Can I download Stories or single messages?
 
-Yes to both. Stories are fetched from the Stories button by username. Self-destructing (TTL) media is detected and moved to the front of the queue before it expires.
+Yes. Look up a user's Stories by username and pick what to save, or paste
+`t.me/...` message links (channel, group, forum topic and private links).
 
-### How do I download a single message or a t.me link?
+### Do I need Node.js?
 
-Paste the `t.me/...` link into the dashboard's link drawer. Channel, group, forum-topic and private links are supported.
-
-### How do I update it?
-
-In Docker, use **Settings > Maintenance > Install update** or run `docker compose pull && docker compose up -d`. See [Updating](#updating).
+No. Since 3.0 the server is a single Go binary. `npm start` and PM2 still work
+for old setups; they only call the launcher, which downloads that binary.
 
 ### Where are the files stored, and can I back them up?
 
-Downloads live under `data/downloads/<chat>/` (or `TGDL_DOWNLOADS_DIR` on another disk). Native backups support S3-compatible storage, SFTP, FTP/FTPS and local mounts, with client-side encryption and offline recovery. Google Drive and Dropbox are still pending in this Go migration. See [native backup behavior and recovery](docs/GO-BACKUP.md), including FTP TLS modes and server requirements.
-
----
+Under `data/downloads/<chat>/`, or `TGDL_DOWNLOADS_DIR` on another disk.
+Backups go to a local folder, S3-compatible storage (AWS, R2, B2, Wasabi,
+MinIO), SFTP or FTP/FTPS, with optional encryption and an offline restore
+command. Google Drive and Dropbox are not available in 3.0. See
+[Backup](docs/BACKUP.md).
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Deploy](docs/DEPLOY.md) | Docker, bare metal, reverse proxies (Caddy, nginx, Traefik), env vars |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
-| [Architecture](docs/ARCHITECTURE.md) | How the pieces fit together |
-| [tgdl-core](docs/GO-CORE.md) | The Go engine and front server |
-| [Go migration status](docs/GO-MIGRATION-STATUS.md) | Current scope, verified behavior and remaining work |
-| [AI: faces and NSFW](docs/AI.md) | Sidecars, GPU, external hosts |
-| [Backup](docs/BACKUP.md) | S3, SFTP, FTP, Google Drive, Dropbox, local |
-| [Cluster mode](docs/CLUSTER.md) | Multi-machine federated library |
-| [API reference](docs/API.md) | HTTP + WebSocket endpoints |
+| Page | Contents |
+|------|----------|
+| [Install and deploy](docs/DEPLOY.md) | Docker, release binaries, systemd, reverse proxy, updating |
+| [Upgrading from 2.x](docs/UPGRADING.md) | What carries over, what changed, rolling back |
+| [Configuration](docs/CONFIGURATION.md) | Dashboard settings, environment variables, data folder |
+| [Features](docs/FEATURES.md) | Everything 3.0 does and what is not in 3.0 yet |
+| [Backup](docs/BACKUP.md) | Local, S3, SFTP, FTP/FTPS, encryption, restore |
+| [Cluster mode](docs/CLUSTER.md) | Pairing several instances |
+| [AI: faces, NSFW and previews](docs/AI.md) | What remains of the AI tools in 3.0 |
+| [API reference](docs/API.md) | HTTP and WebSocket endpoints |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common problems and fixes |
+| [Architecture](docs/ARCHITECTURE.md) | How the server is built |
 | [Changelog](CHANGELOG.md) | Release notes |
 
-The same docs are published as a searchable site from `/docs` via GitHub Pages, and [`llms.txt`](llms.txt) gives AI assistants a curated index.
-
-----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | System design deep-dive |
-| [API Reference](docs/API.md) | HTTP + WebSocket endpoints |
-| [Cluster Mode](docs/CLUSTER.md) | Multi-machine federated library |
-| [AI Face Clustering](docs/AI.md) | insightface setup, GPU, models |
-| [Backup Providers](docs/BACKUP.md) | S3, SFTP, GDrive, Dropbox |
-| [Deploy](docs/DEPLOY.md) | Reverse proxy recipes (Caddy, nginx, Traefik) |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
-
----
+The docs are also published as a searchable site at
+[botnick.github.io/telegram-media-downloader](https://botnick.github.io/telegram-media-downloader/),
+and [`llms.txt`](llms.txt) gives AI assistants a curated index.
 
 ## Contributing
 
 ```bash
-make build
-make test
-make check
+make build   # core-service/tgdl-server
+make test    # Go tests
+make check   # gofmt, go vet, race tests
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.
-
----
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE) — free for personal and commercial use.
-
-Not affiliated with Telegram. Uses the public MTProto User API via [gotd](https://gotd.dev/).
+[MIT](LICENSE). Not affiliated with Telegram. Uses the MTProto user API via
+[gotd](https://gotd.dev/).

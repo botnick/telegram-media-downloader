@@ -1,3 +1,10 @@
+---
+title: "Rescue retention"
+description: "Engineering note on rescue mode: retention deadlines, source-deletion receipts and expiry sweeps."
+parent: "Developer notes"
+nav_order: 14
+---
+
 # Native rescue retention and live dashboard status
 
 Go now records rescue retention before a message enters the download queue,

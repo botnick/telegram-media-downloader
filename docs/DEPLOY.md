@@ -1,140 +1,206 @@
 ---
-title: "Deploy"
-description: "Deploy the pure-Go Telegram media downloader."
+title: "Install and deploy"
+description: "Install Telegram Media Downloader with Docker Compose, a release binary or from source; set the first password, run behind a reverse proxy, and update."
 nav_order: 2
 ---
 
-# Deploy
+# Install and deploy
 
-Production is one `tgdl-server` process. The browser bundle is embedded in
-its binary, so the container does not install or execute Node. ffmpeg and an
-explicitly configured AI worker are the only optional external processes.
+Telegram Media Downloader is one `tgdl-server` process with the dashboard
+embedded in the binary. ffmpeg (for thumbnails and video work) is the only
+external program it calls. Pick one of the three ways to run it:
 
-## Docker
+| Option | Best for | Needs |
+|---|---|---|
+| [Docker Compose](#docker-compose) | Servers, NAS, most people | Docker with Compose |
+| [Release binary](#release-binary) | A plain Linux, Windows or macOS machine | ffmpeg |
+| [From a git checkout](#from-a-git-checkout) | Upgraded 2.x checkouts, PM2 users | ffmpeg; Go only to build yourself |
+
+All of them need a Telegram `apiId` and `apiHash` from
+[my.telegram.org](https://my.telegram.org), which you paste into the dashboard
+after the first sign-in.
+
+## Docker Compose
 
 ```sh
+mkdir telegram-media-downloader && cd telegram-media-downloader
 mkdir -p data
 curl -fsSLO https://raw.githubusercontent.com/botnick/telegram-media-downloader/main/docker-compose.yml
 docker compose up -d
 docker compose logs -f telegram-downloader
 ```
 
-The image `ghcr.io/botnick/telegram-media-downloader` listens on port `3000`
-and stores all mutable state under `/app/data`. Override the host port with
-`TGDL_PORT`. The entrypoint starts as root only to fix ownership of the
-bind-mounted data folder and to join the group of a passed-through `/dev/dri`,
-then runs the server as the unprivileged `node` user (uid 1000, as in 2.x).
-The healthcheck calls `GET /health`. Both manifests allow 60 seconds for HTTP
-draining and worker cleanup before a forced stop.
+What you get:
 
-The bundled `autoheal` service restarts a container that stops answering, and
-the idle `watchtower` service backs **Settings → Maintenance → Install update**.
+- `telegram-downloader` runs the multi-arch image
+  `ghcr.io/botnick/telegram-media-downloader:latest` (linux/amd64 and
+  linux/arm64) on port `3000`. All state lives in `./data`, mounted at
+  `/app/data`. Change the host port with `TGDL_PORT` in `.env`.
+- `autoheal` restarts the container if `/health` stops answering.
+- `watchtower` stays idle until you press **Install update** in the dashboard.
+  It has no published port and only touches containers carrying its label.
 
-For Synology, copy `docker-compose.synology.yml`, adjust the data volume path,
-and run the same command.
+The entrypoint starts as root only to fix ownership of the data folder and to
+join the group of a passed-through `/dev/dri`, then runs the server as the
+unprivileged `node` user (uid 1000, as in 2.x). Both the image and the Compose
+file allow 60 seconds for a clean shutdown.
+
+Optional settings go in a `.env` file next to `docker-compose.yml`; start from
+[`.env.example`](https://github.com/botnick/telegram-media-downloader/blob/main/.env.example)
+and see [Configuration](CONFIGURATION.md).
+
+**Synology:** download `docker-compose.synology.yml` instead, adjust the data
+volume path, and start it the same way (Container Manager project or
+`docker compose -f docker-compose.synology.yml up -d`).
+
+To build the image from source, replace the `image:` and `pull_policy:` lines
+in `docker-compose.yml` with `build: .` inside a git checkout.
 
 ## First dashboard password
 
-Create a private file readable only by your user, containing the chosen password
-on one line (8 characters minimum, UTF-8, 4096 bytes maximum). With the server
-running:
+For safety, the first password can only be set from the machine itself.
+
+- **Same machine, no Docker:** open `http://localhost:3000` and use the setup
+  form.
+- **Docker or a remote server:** put the password on one line in a private
+  file (8 characters minimum, readable only by you) and run:
 
 ```sh
-docker compose exec -T -u node telegram-downloader tgdl-server setup --password-stdin < /path/to/private-password-file
-# Bare metal, beside the running server:
-PORT=3000 ./core-service/tgdl-server setup --password-stdin < /path/to/private-password-file
+docker compose exec -T -u node telegram-downloader tgdl-server setup --password-stdin < /path/to/password-file
+# Without Docker, next to the running server:
+PORT=3000 ./tgdl-server setup --password-stdin < /path/to/password-file
 ```
 
-Delete the private file after setup and sign in through the web dashboard. This
-command uses the loopback interface inside the running container; it does not
-accept passwords as command arguments, change an existing password, or enable
-remote unauthenticated setup. A browser on the same bare-metal host can also
-use the setup form directly. Behind Docker or a proxy, use the command above.
+Delete the file afterwards and sign in at `http://<host>:3000`. The command
+talks to the running server over loopback. It never accepts a password as an
+argument and cannot replace an existing password; change the password later
+from the dashboard.
 
-## Bare metal
+Then:
 
-Install Go 1.26.8 and ffmpeg, then build and run:
+1. **Settings → Telegram API**: paste `apiId` and `apiHash`.
+2. **Settings → Accounts → Add**: phone number, login code, optional 2FA.
+3. **Chats**: turn on the monitor for a chat, start a backfill, or paste a
+   `t.me/` link.
+
+## Release binary
+
+Each [release](https://github.com/botnick/telegram-media-downloader/releases/latest)
+has `tgdl-server-v<version>-<os>-<arch>.tar.gz` archives for Linux (amd64,
+arm64, arm, 386), Windows (amd64, arm64) and macOS (amd64, arm64), plus a
+`SHA256SUMS` file.
 
 ```sh
-cd core-service
-go build -trimpath -ldflags '-s -w' -o tgdl-server ./cmd/tgdl-server
-TGDL_DATA_DIR=/var/lib/telegram-media-downloader PORT=3000 ./tgdl-server
+VERSION=3.0.0
+curl -fsSLO https://github.com/botnick/telegram-media-downloader/releases/download/v$VERSION/tgdl-server-v$VERSION-linux-amd64.tar.gz
+curl -fsSLO https://github.com/botnick/telegram-media-downloader/releases/download/v$VERSION/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf tgdl-server-v$VERSION-linux-amd64.tar.gz
+TGDL_DATA_DIR=./data PORT=3000 ./tgdl-server
 ```
 
-A systemd unit can execute the binary directly:
+Install ffmpeg from your package manager for thumbnails, or point
+`FFMPEG_PATH` at it. `./tgdl-server help` lists the commands (`setup`,
+`backup-restore`, `backup-decrypt`, `version`).
+
+### systemd
 
 ```ini
 [Unit]
-Description=Telegram media downloader
+Description=Telegram Media Downloader
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 User=tgdl
 Group=tgdl
-WorkingDirectory=/opt/telegram-media-downloader/core-service
 Environment=TGDL_DATA_DIR=/var/lib/telegram-media-downloader
 Environment=PORT=3000
-ExecStart=/opt/telegram-media-downloader/core-service/tgdl-server
+ExecStart=/opt/telegram-media-downloader/tgdl-server
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=60
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-`./runner.sh` (or `run_safe.bat` / `watchdog.ps1` on Windows) runs the server
-from a checkout. When `core-service/tgdl-server` is missing or older than the
-checkout, it downloads the matching release archive, verifies it against the
-release `SHA256SUMS` and installs it, so no Go toolchain is needed. `npm start`
-and `pm2 start ecosystem.config.cjs` call the same launcher. `TGDL_SERVER_BIN`
-selects your own build (and skips the download); `TGDL_DATA_DIR` defaults to
-the checkout's `data/`. There is no shell retry loop; configure restart
-supervision in the OS or PM2.
+## From a git checkout
 
-## Environment
+```sh
+git clone https://github.com/botnick/telegram-media-downloader.git
+cd telegram-media-downloader
+./runner.sh            # Windows: run_safe.bat (or watchdog.ps1)
+```
 
-| Variable | Default | Meaning |
-|---|---:|---|
-| `TGDL_DATA_DIR` | required (`/app/data` in Docker, `./data` with the launchers) | SQLite database, sessions, downloads, logs and backups. The directory is created with mode 0700. |
-| `TGDL_DOWNLOADS_DIR` | `<data>/downloads` | Media on another disk (split-disk installs). Thumbnails and the database stay in the data directory. |
-| `PORT` | `3000` | HTTP and WebSocket listen port. |
-| `TGDL_SESSION_TTL_DAYS` | `7` | Lifetime of a newly issued web session, from 1 to 3650 days. |
-| `FFMPEG_PATH` | `ffmpeg` | Explicit ffmpeg path for video operations. |
-| `TZ` | host | Log and display timezone. |
-| `TRUST_PROXY` | unset | Forwarded-header trust: `1` trusts one proxy hop, `loopback`, or empty for none. |
-| `WATCHTOWER_URL` / `WATCHTOWER_HTTP_API_TOKEN` | unset / generated | One-click updates through the watchtower sidecar. The token is generated in `data/watchtower/api-token` when not set. |
+When `core-service/tgdl-server` is missing or older than the checkout, the
+launcher downloads the matching release archive, verifies it against
+`SHA256SUMS` and installs it, so no Go toolchain is needed. Data goes to
+`./data` unless `TGDL_DATA_DIR` is set. `npm start` and
+`pm2 start ecosystem.config.cjs` call the same launcher (they only need the
+`node` command for the small wrapper script).
 
-2.x variables that no longer apply (`NODE_ENV`, `NODE_OPTIONS`, `TGDL_HEAP_MB`,
-`TGDL_GO_CORE`, `TGDL_GO_FEATURES`, `TGDL_CORE_BIN`, `TGDL_CORE_RELEASE_URL`,
-`FFMPEG_HWACCEL`) are ignored. Leaving them in an existing `.env` is harmless.
+The launchers do not restart a crashed server; use systemd, PM2 or the Windows
+task scheduler for that. Set `TGDL_SERVER_BIN` to run your own build.
 
-## Reverse proxy
+### Build from source
 
-Forward the same port to the proxy and preserve `Upgrade` / `Connection`
-headers for WebSocket. Terminate TLS at the proxy and set a secure cookie
-policy there. The application binds to the address supplied by the container;
-keep it private when the proxy is on another host.
+Needs Go 1.26.
+
+```sh
+make build             # writes core-service/tgdl-server
+./runner.sh            # or: TGDL_DATA_DIR=./data core-service/tgdl-server
+```
+
+## Reverse proxy and HTTPS
+
+Put a reverse proxy in front when the dashboard is reachable from outside
+your network. Forward the WebSocket upgrade headers and set:
+
+- `TGDL_SECURE_COOKIES=1` once the dashboard is served over HTTPS;
+- `TRUST_PROXY` to match your proxy (the Compose file uses `1`, one hop);
+- `TGDL_BIND_HOST=127.0.0.1` for a native install with the proxy on the same
+  host, so the port is not reachable directly.
+
+Caddy:
+
+```text
+tgdl.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name tgdl.example.com;
+    # ssl_certificate / ssl_certificate_key ...
+    client_max_body_size 0;
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 1h;
+    }
+}
+```
 
 ## Updating
 
-- **Dashboard:** Settings → Maintenance → **Install update**. It checks the
-  database, saves a verified snapshot to `data/backups/db-pre-update-*.sqlite`
-  and asks the watchtower sidecar to recreate the container.
-- **Docker, manually:** `docker compose pull && docker compose up -d`
-- **Bare metal:** `git pull`, then restart with `./runner.sh`, `npm start` or
-  PM2; the launcher fetches the matching binary.
+- **Dashboard (Docker):** Settings → Maintenance → **Install update**. It
+  checks the database, saves a verified snapshot to
+  `data/backups/db-pre-update-*.sqlite`, then asks watchtower to recreate the
+  container.
+- **Docker, by hand:** `docker compose pull && docker compose up -d`
+- **Release binary:** replace `tgdl-server` with the new one and restart.
+- **Git checkout:** `git pull`, then restart; the launcher fetches the
+  matching binary.
 
-Migrations are idempotent and run before `/health` becomes ready.
-
-### From 2.x to 3.0
-
-Nothing has to change: the image name, port, `./data` folder, container user,
-`.env`, dashboard password, sessions and Telegram logins carry over, and the
-2.x compose files keep working (their `node scripts/healthcheck.js` check and
-Synology's `node src/web/server.js` command are mapped to the Go server). Each
-saved gramJS login is converted once to `data/sessions/native/`; the original
-files are left in place. Re-downloading the compose file is optional.
-
-Known gaps in 3.0: Google Drive and Dropbox backup destinations are not
-available yet, and video thumbnails use the CPU (`FFMPEG_HWACCEL` is ignored).
-To go back to 2.32.1, restore the pre-update snapshot from `data/backups/`.
+Migrations are idempotent and run before `/health` reports ready.
+Coming from 2.x? Read [Upgrading from 2.x](UPGRADING.md).

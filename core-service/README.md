@@ -1,14 +1,15 @@
-# telegram-media-downloader Go server
+# tgdl-server (Go)
 
-`cmd/tgdl-server` is the Go backend under development. It serves the embedded
-SPA and implemented HTTP/WebSocket routes directly. Packaging selects it,
-but live Telegram verification and public API parity remain incomplete.
-See [verified coverage and remaining release work](../docs/GO-MIGRATION-STATUS.md).
-The executable does not start or proxy to a Node server.
+`cmd/tgdl-server` is the Telegram Media Downloader application: one Go binary
+that serves the embedded dashboard (`internal/webassets/public`), the HTTP API,
+media and WebSocket connections, and owns SQLite and the Telegram (gotd)
+accounts. It never starts or proxies to a Node.js server. ffmpeg is the only
+external program it calls (thumbnails and MP4 faststart).
 
-The browser JavaScript under `internal/webassets/public` is client code and runs in the
-user's browser. ffmpeg and explicitly configured AI services are external
-workers with clear errors; they are not server fallbacks.
+User documentation: [install and deploy](../docs/DEPLOY.md),
+[configuration](../docs/CONFIGURATION.md) and [features](../docs/FEATURES.md).
+`cmd/tgdl-core` and the `api`, `front`, `dbscan` and `seekbar` packages belong
+to the 2.x companion binary; they are not built for 3.x releases.
 
 ## Run
 
@@ -22,11 +23,14 @@ same idempotent schema used by existing installations. `PORT` defaults to
 `3000`; `TGDL_SESSION_TTL_DAYS` defaults to 7. The existing session cookie
 name is preserved as `tg_dl_session`.
 
-Useful commands:
+Commands:
 
 ```sh
 ./tgdl-server version
 ./tgdl-server help
+./tgdl-server setup --password-stdin < password-file   # first dashboard password, via the running server
+./tgdl-server backup-restore --help                     # offline snapshot restore
+./tgdl-server backup-decrypt --help                     # decrypt a TGDB archive
 ```
 
 ## HTTP and WebSocket surface
@@ -45,13 +49,13 @@ Useful commands:
   [rescue behavior, events and limitations](../docs/GO-RESCUE.md).
 - `/v1/db/*` exposes the read projections used by the gallery, maintenance,
   AI, NSFW, integrity, dedup and cluster surfaces. They run directly against
-  a query-only pool and require a valid session.
+  a query-only pool, require an admin session and are not a public API.
 - Pin mutations, job status/cancellation and SQLite backup
   are owned by Go and commit before broadcasting their event.
 - Cluster pairing, durable request replay checks, automatic paged catalog pulls
   and ranged peer-file proxying run in Go. Signed peer sockets wake durable
   add/edit/delete reconciliation, including disconnect recovery and native restore
-  epoch changes. Complete peer-event workflows, discovery and failover remain incomplete. See [cluster scope and evidence](../docs/GO-CLUSTER.md).
+  epoch changes. Discovery and failover are not implemented. See [cluster mode](../docs/CLUSTER.md) and [cluster internals](../docs/GO-CLUSTER.md).
 - `/api/history` runs native durable backfills using the shared account/queue
   engine, including jobs-only operation, cancellation and restart resumption.
   See [history limits, semantics and validation](../docs/GO-HISTORY.md).
@@ -77,8 +81,8 @@ Useful commands:
   and supports explicit/implicit TLS without downgrading the selected mode.
   TGDB v1 encrypted uploads and offline `backup-decrypt`/`backup-restore`
   commands use bounded buffers and authenticate before publishing output.
-  Drive, Dropbox, local/snapshot staging cleanup and empty S3/FTP reservation
-  boundaries remain incomplete. See [backup scope and tests](../docs/GO-BACKUP.md).
+  Google Drive and Dropbox are not available in 3.0. See [backup](../docs/BACKUP.md)
+  and [backup internals](../docs/GO-BACKUP.md).
 
 ## Data safety
 
@@ -114,11 +118,11 @@ SIGINT/SIGTERM stops HTTP acceptance, joins workers and closes browser sockets.
 Telegram cursors are stored per account/user/channel. Difference payloads are
 durably accepted before gotd can advance a cursor; persistence failures latch
 account shutdown. Oversized update gaps preserve a history-recovery marker and
-prevent restart until repaired. Channel-gap repair, account login and durable
-queue controls are implemented. Global account-wide gap repair, complete queue
-policy, account routing/proxies and live Telegram E2E remain release work.
-Tests use injected accounts and actual gotd update processing with fake RPCs.
-See the [migration status](../docs/GO-MIGRATION-STATUS.md) for remaining gates.
+prevent restart until repaired. Channel-gap repair, account login, account
+pinning, proxies and durable queue controls are implemented. Tests use injected
+accounts and actual gotd update processing with fake RPCs; the
+[migration status](../docs/GO-MIGRATION-STATUS.md) records the pre-release
+evidence.
 
 Transfer attempts have a deadline of two minutes plus one second per 16 KiB,
 capped at 24 hours, so internal RPC retries cannot occupy a worker forever.
@@ -149,14 +153,15 @@ References:
 
 ## Development checks
 
+From the repository root:
+
 ```sh
-/usr/local/go/bin/go test ./...
-/usr/local/go/bin/go test -race ./...
-/usr/local/go/bin/go vet ./...
-/usr/local/go/bin/go build ./cmd/tgdl-server
+make test     # go test ./...
+make check    # gofmt, go vet, go test -race ./...
+make build    # core-service/tgdl-server
 ```
 
-The recorded Node contract fixtures remain a development oracle while the
-remaining domain handlers are ported. They are never copied into the
-production image, and the production process tree contains only
-`tgdl-server` plus explicitly configured sidecars.
+Historical HTTP/WebSocket contract snapshots of the 2.x release remain under
+`tests/contract/` as reference data. They are never copied into the
+production image, and the production process tree contains only `tgdl-server`
+(plus ffmpeg while it generates media).

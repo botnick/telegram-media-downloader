@@ -1,9 +1,19 @@
+---
+title: "Go migration status"
+description: "Scope, packaging checks and test evidence recorded during the Go migration, before the 3.0.0 release."
+parent: "Developer notes"
+nav_order: 1
+---
+
 # Go migration status
 
-This branch is still under development. Its packaging runs `tgdl-server`,
-but the Go application is not yet a complete replacement for the released
-downloader. Passing package tests does not establish end-to-end Telegram
-functionality. Do not deploy this branch over a working library yet.
+> **Historical note.** This page was written on the development branch before
+> 3.0.0 was released, when the Go application was not yet a complete
+> replacement for the 2.x downloader and was not meant for production
+> libraries. 3.0.0 has since shipped; see [Install and deploy](DEPLOY.md),
+> [Upgrading from 2.x](UPGRADING.md) and [Features](FEATURES.md#not-in-30) for
+> the released behaviour and its known gaps. The evidence below is kept as a
+> record.
 
 ## Current delivery scope
 

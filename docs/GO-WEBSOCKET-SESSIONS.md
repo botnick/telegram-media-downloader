@@ -1,3 +1,10 @@
+---
+title: "Sessions and WebSockets"
+description: "Engineering note on dashboard session revocation and WebSocket lifetime in the Go server."
+parent: "Developer notes"
+nav_order: 17
+---
+
 # Dashboard session and WebSocket lifetime
 
 The Go dashboard now closes established sockets when their sessions lose access.

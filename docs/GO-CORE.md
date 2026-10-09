@@ -1,10 +1,13 @@
 ---
-title: "tgdl-core (Go engine)"
-description: "What tgdl-core does, how it is installed and supervised, and how it serves media as the front server."
-nav_order: 9
+title: "tgdl-core (2.x companion)"
+description: "The tgdl-core Go helper used by the 2.x Node app for hashing, walks and media serving; replaced by tgdl-server in 3.0."
+parent: "Developer notes"
+nav_order: 4
 ---
 
 # Go core (`tgdl-core`)
+
+> **Historical note.** This describes `tgdl-core`, the Go helper that the 2.x Node.js app started next to itself. 3.0 replaced both with the single `tgdl-server` binary and no longer builds or ships `tgdl-core`. See [Architecture](ARCHITECTURE.md).
 
 `tgdl-core` (source: [`core-service/`](https://github.com/botnick/telegram-media-downloader/blob/main/core-service/README.md)) is the
 app's Go engine. The Node app starts it, talks to it over HTTP on

@@ -1,4 +1,13 @@
+---
+title: "Core delivery verification"
+description: "Acceptance evidence for the Go server's downloads, dedup, queue, dashboard and access controls, recorded before 3.0.0."
+parent: "Developer notes"
+nav_order: 3
+---
+
 # Core delivery verification — 2026-10-09
+
+> **Historical note.** Recorded on 2026-10-09 before the 3.0.0 release. For released behaviour see [Features](FEATURES.md).
 
 The owner narrowed delivery to necessary downloads, deduplication, queue,
 library/dashboard and access controls. Optional AI workflows, advanced cluster

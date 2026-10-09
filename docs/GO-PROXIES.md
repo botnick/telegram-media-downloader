@@ -1,3 +1,10 @@
+---
+title: "Proxy routing"
+description: "Engineering note on how configured SOCKS, HTTP and MTProxy proxies reach Telegram logins, updates and media downloads."
+parent: "Developer notes"
+nav_order: 11
+---
+
 # Native Telegram proxy routing
 
 Configured Telegram proxies now reach both the login wizard and every account

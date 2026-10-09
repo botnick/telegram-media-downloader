@@ -1,3 +1,10 @@
+---
+title: "Message link downloads"
+description: "Engineering note on resolving t.me message links and queueing their media."
+parent: "Developer notes"
+nav_order: 16
+---
+
 # Native Telegram message links
 
 `POST /api/download/url` now resolves Telegram message links and accepts their

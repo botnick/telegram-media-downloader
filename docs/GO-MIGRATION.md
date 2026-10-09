@@ -1,7 +1,8 @@
 ---
 title: "Go migration plan"
-description: "The pure-Go backend cutover, data compatibility rules and verification gates."
-nav_order: 10
+description: "Original design for moving the Telegram Media Downloader backend from Node.js to Go: cutover, data compatibility and gates."
+parent: "Developer notes"
+nav_order: 2
 ---
 
 # Moving the backend to pure Go

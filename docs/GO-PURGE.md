@@ -1,3 +1,10 @@
+---
+title: "Purge internals"
+description: "Engineering note on group purge, delete-files and factory reset: what is removed and how it survives restarts."
+parent: "Developer notes"
+nav_order: 12
+---
+
 # Native Go purge behavior
 
 The group purge, delete-files and factory-reset routes run in Go. Requests are

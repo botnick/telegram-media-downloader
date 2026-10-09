@@ -1,41 +1,45 @@
 ---
 title: "Documentation"
-description: "Documentation for Telegram Media Downloader: a self-hosted Telegram channel and group media downloader with a web dashboard, Docker images and an optional Go engine."
+description: "Documentation for Telegram Media Downloader 3.0, a self-hosted Telegram channel and group media downloader: one Go binary or Docker image with a web dashboard."
 nav_order: 1
 permalink: /docs/
 ---
 
 # Documentation
 
-The Go branch uses [DEPLOY.md](DEPLOY.md), [ARCHITECTURE.md](ARCHITECTURE.md)
-and [GO-MIGRATION-STATUS.md](GO-MIGRATION-STATUS.md). Older feature guides describe
-the released application; optional features are not all available in this branch.
+Telegram Media Downloader is a self-hosted web app that downloads and backs up
+media from Telegram channels, groups and private chats using your own account.
+Version 3.0 is a single Go program, `tgdl-server`, with the dashboard built in.
+Run it with Docker or as a native binary on Linux, Windows or macOS.
 
-Guides for [Telegram Media Downloader](https://github.com/botnick/telegram-media-downloader), a self-hosted tool that downloads and archives Telegram channel, group and DM media through a web dashboard. New here? Start with the [Docker quick start](https://github.com/botnick/telegram-media-downloader#quick-start) and [DEPLOY.md](DEPLOY.md).
+## Get started
 
-| Guide | What it covers |
+| Page | Read it when you want to |
 |---|---|
-| [DEPLOY.md](DEPLOY.md) | Docker / bare-metal install, reverse proxies, split-disk setups, environment variables |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common errors and how to fix them |
-| [AI.md](AI.md) | Face clustering and NSFW review, the sidecars (local, Docker profile, external GPU host) |
-| [BACKUP.md](BACKUP.md) | Backup destinations (S3, SFTP, FTP, Google Drive, Dropbox, local), mirror vs snapshot |
-| [CLUSTER.md](CLUSTER.md) | Pairing several instances into a federated library |
-| [API.md](API.md) | HTTP + WebSocket API reference |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit together — for contributors |
-| [GO-MIGRATION-STATUS.md](GO-MIGRATION-STATUS.md) | Current scope, verified native/browser behavior and remaining work |
-| [GO-MIGRATION.md](GO-MIGRATION.md) | Historical design and data-compatibility considerations |
-| [AUDIT.md](AUDIT.md) | Security / reliability audit notes |
-| [MIGRATION-v2.9-to-v2.10.md](MIGRATION-v2.9-to-v2.10.md) | Upgrade notes for that release |
+| [Install and deploy](DEPLOY.md) | Install with Docker Compose, a release binary or a git checkout; set the first password; add a reverse proxy; update |
+| [Upgrading from 2.x](UPGRADING.md) | Move an existing 2.x install to 3.0, see what changed, roll back |
+| [Configuration](CONFIGURATION.md) | Look up dashboard settings, environment variables and the data folder layout |
+| [Troubleshooting](TROUBLESHOOTING.md) | Fix a problem with start-up, sign-in, Telegram accounts, downloads or updates |
 
-Release notes: [CHANGELOG.md](https://github.com/botnick/telegram-media-downloader/blob/main/CHANGELOG.md) (also shown in the dashboard — click the version in the status bar) and [GitHub Releases](https://github.com/botnick/telegram-media-downloader/releases).
+## Features
 
-## Components and releases
+| Page | Covers |
+|---|---|
+| [Features](FEATURES.md) | Everything 3.0 does, and what is not in 3.0 yet |
+| [Backup](BACKUP.md) | Local, S3, SFTP and FTP/FTPS backups, encryption, offline restore |
+| [Cluster mode](CLUSTER.md) | Pair several instances into one library |
+| [AI: faces, NSFW and previews](AI.md) | What remains of the AI tools in 3.0 |
+| [API reference](API.md) | HTTP and WebSocket endpoints |
 
-| Component | Tag | Artifacts |
-|---|---|---|
-| App (`tgdl-server`) | `vX.Y.Z` | Native archives + SHA-256 checksums; Docker image after candidate smoke checks |
-| faces-service | `faces-vX.Y.Z` | binaries for Windows / Linux / macOS, `ghcr.io/botnick/tgdl-faces` |
-| nsfw-service | `nsfw-vX.Y.Z` | `ghcr.io/botnick/tgdl-nsfw` (CPU and `gpu-` tags) |
-| seekbar-service | `seekbar-vX.Y.Z` | binaries for Windows / Linux / macOS (downloaded by the app on first use) |
+## Under the hood
 
-A sidecar release always ships before an app release that depends on it, so updating the app never points at a sidecar version that doesn't exist yet.
+| Page | Covers |
+|---|---|
+| [Architecture](ARCHITECTURE.md) | How the Go server, queue, storage and dashboard fit together |
+| [Developer notes](DEVELOPER-NOTES.md) | Engineering notes from the Go migration and older audits |
+| [Contributing](https://github.com/botnick/telegram-media-downloader/blob/main/CONTRIBUTING.md) | Build, test and send a pull request |
+| [Security policy](https://github.com/botnick/telegram-media-downloader/blob/main/SECURITY.md) | Report a vulnerability |
+| [Changelog](https://github.com/botnick/telegram-media-downloader/blob/main/CHANGELOG.md) | Release notes |
+
+AI assistants can use [`llms.txt`](https://botnick.github.io/telegram-media-downloader/llms.txt), a short curated index of these
+pages.

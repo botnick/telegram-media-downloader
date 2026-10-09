@@ -1,8 +1,18 @@
 title: Telegram Media Downloader
 description: >-
-  Self-hosted Telegram media downloader with a web dashboard. Download and back
-  up photos, videos and files from Telegram channels, groups and DMs. Docker,
-  PWA, dedup, face clustering, NSFW review, cluster mode.
+  Self-hosted Telegram media downloader with a web dashboard. One Go binary or
+  Docker image downloads and backs up photos, videos and files from Telegram
+  channels, groups and DMs.
+keywords: >-
+  telegram media downloader, telegram channel downloader, download telegram
+  videos, telegram backup, self-hosted, docker, go, single binary, mtproto,
+  web dashboard
+author: botnick
+logo: /assets/favicon.png
+social:
+  name: Telegram Media Downloader
+  links:
+    - https://github.com/botnick/telegram-media-downloader
 url: https://botnick.github.io
 baseurl: /telegram-media-downloader
 lang: en
@@ -11,6 +21,11 @@ remote_theme: just-the-docs/just-the-docs
 color_scheme: dark
 search_enabled: true
 heading_anchors: true
+back_to_top: true
+back_to_top_text: Back to top
+footer_content: >-
+  MIT licensed. Not affiliated with Telegram.
+  <a href="https://github.com/botnick/telegram-media-downloader/blob/main/CHANGELOG.md">Changelog</a>
 aux_links:
   GitHub: https://github.com/botnick/telegram-media-downloader
   Releases: https://github.com/botnick/telegram-media-downloader/releases
@@ -31,8 +46,20 @@ relative_links:
   enabled: true
   collections: false
 
+# Every page gets the social preview image unless it sets its own.
+defaults:
+  - scope:
+      path: ""
+    values:
+      image: /assets/og.png
+
+# Internal design notes and agent scratch files are not part of the site.
+exclude:
+  - superpowers
+  - .superpowers
+
 # Read by _includes/head_custom.html (JSON-LD). Bump on each app release.
 software:
-  version: 2.32.0
+  version: 3.0.0
   repository: https://github.com/botnick/telegram-media-downloader
   license: https://github.com/botnick/telegram-media-downloader/blob/main/LICENSE

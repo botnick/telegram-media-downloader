@@ -1,20 +1,20 @@
 - q: How do I download all media from a Telegram channel?
-  a: Add your Telegram account (Settings > Accounts), open Chats, pick the channel and start a backfill. You can limit it by date or message count. The dashboard shows every file in the queue with progress, speed and ETA. To keep the archive current, enable the realtime monitor for that chat.
+  a: Add your Telegram account (Settings > Accounts), open Chats, pick the channel and start a backfill. Choose how many messages to read, or 0 for all of them. The queue shows every file with progress, speed and ETA. To keep the archive current, turn on the realtime monitor for that chat.
 - q: Can it download from private channels and groups?
   a: Yes, if the Telegram account you sign in with is a member. The tool acts as that account over the Telegram user API (MTProto), so it reads what you can read in the Telegram app.
 - q: How is this different from a Telegram bot?
   a: Bots use the Bot API, which limits file sizes and only sees chats the bot was added to. This tool logs in as your user account through MTProto, so it has no bot-style file-size cap and sees your own chats.
+- q: Do I need Node.js or Go installed?
+  a: No. Since 3.0 the whole app is one Go binary, `tgdl-server`, with the dashboard built in. Run the Docker image or download a release archive for Linux, Windows or macOS. Go is only needed to build from source.
 - q: Is my Telegram session safe?
-  a: Sessions are encrypted at rest (AES-256-GCM) in `data/sessions/`, with the key in `data/secret.key`. Nothing is sent to a cloud service run by this project. The dashboard fails closed, so without a password nobody gets in. Put it behind HTTPS if you expose it, and back up `secret.key`, because losing it makes saved sessions unrecoverable. See the [security policy](https://github.com/botnick/telegram-media-downloader/blob/main/SECURITY.md).
+  a: Sessions are encrypted at rest in `data/sessions/`, with the key in `data/secret.key`. Nothing is sent to a service run by this project. The dashboard fails closed, so without a password nobody gets in. Put it behind HTTPS if you expose it, and back up `secret.key`, because losing it means signing in to Telegram again. See the [security policy](https://github.com/botnick/telegram-media-downloader/blob/main/SECURITY.md).
 - q: Will my account get banned?
-  a: Built-in rate limiting (default 15 requests per minute) and FloodWait handling keep traffic modest. Avoid lowering the limits aggressively or running many accounts from one IP. No tool can promise zero risk.
+  a: It uses the normal user API like a Telegram app, but heavy automated downloading always carries some risk. Failed downloads retry with growing delays; keep parallel downloads and the bandwidth limit moderate and avoid running many accounts from one IP. No tool can promise zero risk.
 - q: Does it run on a Raspberry Pi or a Synology NAS?
-  a: Yes on Synology (the repo ships `docker-compose.synology.yml`). The published Docker image targets linux/amd64; on ARM boards such as a Raspberry Pi, run it from source with Node.js 22+ (`npm ci && npm start`), because tgdl-core has ARMv7 and arm64 Linux builds that `npm install` fetches for you. See the [deploy guide](https://github.com/botnick/telegram-media-downloader/blob/main/docs/DEPLOY.md).
-- q: Can I download Stories or self-destructing media?
-  a: Yes to both. Stories are fetched from the Stories button by username. Self-destructing (TTL) media is detected and moved to the front of the queue before it expires.
-- q: How do I download a single message or a t.me link?
-  a: Paste the `t.me/...` link into the dashboard's link drawer. Channel, group, forum-topic and private links are supported.
-- q: How do I update it?
-  a: In Docker, use Settings > Maintenance > Install update, or run `docker compose pull && docker compose up -d`. Migrations run automatically.
+  a: Yes. The Docker image is built for amd64 and arm64, release binaries also cover 32-bit ARM (`linux-arm`), and the repo ships `docker-compose.synology.yml`. See the [deploy guide](https://botnick.github.io/telegram-media-downloader/DEPLOY.html).
+- q: Can I download Stories or a single t.me link?
+  a: Yes. Look up a user's Stories by username and pick what to save, or paste `t.me/...` message links into the dashboard. Channel, group, forum-topic and private links are supported.
+- q: How do I upgrade from 2.x to 3.0?
+  a: Nothing has to change. Press Install update in Settings > Maintenance, or run `docker compose pull && docker compose up -d`. The image, port, data folder, password and Telegram logins carry over. See [Upgrading from 2.x](https://botnick.github.io/telegram-media-downloader/UPGRADING.html).
 - q: Where are the files stored, and can I back them up?
-  a: Downloads live under `data/downloads/<chat>/`, or `TGDL_DOWNLOADS_DIR` on another disk. Optional backups go to S3-compatible storage, SFTP, Google Drive, Dropbox or a local mount, with client-side encryption. See the [backup guide](https://github.com/botnick/telegram-media-downloader/blob/main/docs/BACKUP.md).
+  a: Downloads live under `data/downloads/<chat>/`, or `TGDL_DOWNLOADS_DIR` on another disk. Backups go to a local folder, S3-compatible storage, SFTP or FTP/FTPS, with optional encryption and an offline restore command. Google Drive and Dropbox are not available in 3.0. See the [backup guide](https://botnick.github.io/telegram-media-downloader/BACKUP.html).

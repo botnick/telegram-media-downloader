@@ -1,4 +1,13 @@
+---
+title: "Cluster internals"
+description: "Engineering note on Go cluster pairing, peer authentication, durable catalog sync and ranged media proxying."
+parent: "Developer notes"
+nav_order: 6
+---
+
 # Native cluster foundation
+
+> **Engineering note** from the Go migration. The user guide is [Cluster mode](CLUSTER.md).
 
 The Go application now pairs two instances, authenticates peer HTTP requests,
 reconciles added/edited/deleted catalog rows automatically and proxies ranged

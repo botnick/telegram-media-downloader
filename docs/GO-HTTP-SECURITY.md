@@ -1,3 +1,10 @@
+---
+title: "HTTP policy"
+description: "Engineering note on reverse-proxy trust, HTTPS enforcement, CSP, API quotas and response compression in the Go server."
+parent: "Developer notes"
+nav_order: 9
+---
+
 # Native HTTP policy and compression
 
 The Go application now applies reverse-proxy trust, HTTPS enforcement, live CSP,

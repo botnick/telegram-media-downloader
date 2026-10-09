@@ -1,3 +1,10 @@
+---
+title: "History jobs"
+description: "Engineering note on durable Telegram history backfill jobs: modes, limits, account selection and restart resumption."
+parent: "Developer notes"
+nav_order: 8
+---
+
 # Native Telegram history jobs
 
 The Go server now owns the public history start/list/status/cancel/delete routes.

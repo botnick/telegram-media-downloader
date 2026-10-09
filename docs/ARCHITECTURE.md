@@ -1,18 +1,18 @@
 ---
 title: "Architecture"
-description: "Native Go server, durable downloads and embedded dashboard."
-nav_order: 8
+description: "How Telegram Media Downloader 3.0 works inside: one Go server with gotd MTProto accounts, a durable SQLite queue, verified downloads and an embedded dashboard."
+nav_order: 7
 ---
 
 # Architecture
 
 `core-service/cmd/tgdl-server` is the production process. It serves the embedded
 browser assets, HTTP API, media and WebSocket connections, and owns SQLite and
-Telegram account lifetimes. There is no JavaScript server or runtime fallback.
-The main build does not need npm, a bundler or generated source outside the Go
-module. [Current verification and remaining work](GO-MIGRATION-STATUS.md) is the
-release-readiness reference; package compilation alone does not prove live
-Telegram behavior.
+Telegram account lifetimes through [gotd](https://gotd.dev/). There is no
+JavaScript server or runtime fallback; the browser JavaScript is embedded in
+the binary and runs only in the browser. The build does not need npm, a bundler
+or generated source outside the Go module. ffmpeg is the only external program
+the server calls (thumbnails and MP4 faststart).
 
 ```mermaid
 flowchart LR
@@ -39,11 +39,13 @@ flowchart LR
 | `store`, `dbread` | SQLite migrations, transactional writes and bounded read projections |
 | `auth` | Password hashes, web sessions and credential revocation |
 | `webassets/public` | Browser ES modules, prebuilt styles and static pages embedded in the binary |
-| `backup`, `cluster`, `rescue` | Existing native background services; see their individual scope documents |
+| `backup`, `cluster`, `rescue` | Backups and offline restore, peer pairing and catalog sync, rescue retention |
+| `thumbs`, `faststart`, `jobs` | Thumbnails, MP4 faststart rewrites and tracked background jobs |
 
-The older Go companion packages still contain protocol and filesystem
-compatibility helpers. The only application build/release target is
-`cmd/tgdl-server`; no companion starts a Node process for it.
+`cmd/tgdl-core` and packages such as `api`, `front`, `dbscan` and `seekbar`
+belong to the 2.x companion binary. They still compile and keep protocol and
+filesystem helpers, but `tgdl-core` is not built for releases or images. The
+only application build and release target is `cmd/tgdl-server`.
 
 ## Durable download flow
 
@@ -56,8 +58,8 @@ cannot be overwritten. Journals allow a published file to be registered after a
 restart without downloading it again. Deleting one catalog owner preserves
 bytes still referenced by another owner.
 
-This behavior has native fixture/integration coverage. Actual Telegram network
-E2E still requires an account configured in this project; see the status page.
+This behavior is covered by native fixture and integration tests in
+`internal/download`, `internal/engine` and `internal/app`.
 
 ## State and process boundaries
 
@@ -89,10 +91,11 @@ Historical route snapshots, schema and media fixtures remain under
 at `aa83eed`. They document prior behavior rather than serving as a second
 runtime. New behavior and security regressions are tested in Go.
 
-Optional Python/Go sidecar projects retain their own release workflows. They
-are outside the core migration scope and are not silently substituted for a
-failed application component.
+The `faces-service`, `nsfw-service` and `seekbar-service` folders are separate
+projects with their own release workflows. The 3.0 server does not call them;
+see [AI](AI.md).
 
-Further details: [deployment](DEPLOY.md), [HTTP policy](GO-HTTP-SECURITY.md),
+Further details: [deployment](DEPLOY.md), [configuration](CONFIGURATION.md),
+and the engineering notes on [HTTP policy](GO-HTTP-SECURITY.md),
 [session lifetime](GO-WEBSOCKET-SESSIONS.md), [history](GO-HISTORY.md),
 [URL downloads](GO-URL-DOWNLOADS.md) and [recovery](GO-RECOVERY.md).

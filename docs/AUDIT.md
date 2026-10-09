@@ -1,7 +1,8 @@
 ---
-title: "Audit"
-description: "Historical security and reliability audit notes, frozen at the v2.0 release."
-nav_order: 11
+title: "Audit (v2.0)"
+description: "Historical security and reliability audit of Telegram Media Downloader, frozen at the v2.0 release."
+parent: "Developer notes"
+nav_order: 18
 ---
 
 # Project Audit — Telegram Media Downloader

@@ -1,315 +1,411 @@
 ---
-title: "API"
-description: "HTTP and WebSocket API reference for the Telegram Media Downloader dashboard."
-nav_order: 7
+title: "API reference"
+description: "HTTP and WebSocket reference for tgdl-server 3.0: dashboard login, roles, downloads, queue, backups, cluster, share links, /health and /metrics."
+parent: Features
+nav_order: 4
 ---
 
-# REST API
+# API reference
 
-Base URL: `http://localhost:3000` (or whatever you bound the dashboard to).
+This page lists every HTTP route and WebSocket event served by `tgdl-server`, the single Go binary that runs the dashboard in 3.0. The dashboard itself uses these routes, so anything it can do you can script.
 
-All API calls (except the public ones below) require the `tg_dl_session` cookie. Hit `POST /api/login` first to get one.
+Base URL: `http://<host>:3000` (`PORT` changes the port, `TGDL_BIND_HOST` the listen address). Requests and responses are JSON unless a row says otherwise.
 
-## Authorization model
+The routes are internal to the dashboard rather than a versioned public contract: names and payloads follow the dashboard and can change between releases. Request bodies are only described where they are short and stable. For anything else, watch what the dashboard sends in your browser's network tab.
 
-The session cookie carries one of two roles:
+## Authentication and access
 
-- **`admin`** — full access.
-- **`guest`** — opt-in read-only viewer. A default-deny chokepoint allowlists only the read endpoints listed below; every mutation route returns `403 {adminRequired:true}` for guest sessions.
+### Session cookie
 
-A few `/api/auth/*` routes are explicitly registered before the global auth middleware and enforce their own checks (login / setup / change-password / reset / guest-password). The public `/share/<id>` route also bypasses dashboard auth — it is gated by HMAC signature + DB row check instead.
+- `POST /api/login` with `{"password": "..."}` sets the **`tg_dl_session`** cookie (`HttpOnly`, `SameSite=Strict`, path `/`; `Secure` only when `TGDL_SECURE_COOKIES=1`). Send that cookie on every later request.
+- The password decides the role: the admin password gives **`admin`**, the optional guest password gives **`guest`**.
+- Sessions are stored server-side. They last 7 days by default (`TGDL_SESSION_TTL_DAYS`, or the dashboard's session-length setting, 1–365 days) and are renewed as they are used. Logging out, changing a password, turning guest access off or *Revoke all sessions* deletes them on the server and closes their WebSockets.
+- Until a dashboard password exists (or while the dashboard is disabled), `/api/*`, `/v1/*` and WebSocket requests get `503 {"setupRequired": true}` and pages redirect to `/setup-needed.html`. Set the first password with `tgdl-server setup --password-stdin` (see [Deploy](DEPLOY.md)).
 
-## Auth & setup
+### Access levels used in the tables
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET`  | `/api/auth_check`            | **Public.** `{configured, enabled, authenticated, role, setupRequired, guestEnabled}`. |
-| `POST` | `/api/auth/setup`            | **Public, localhost-only.** First-run password — `{password}`. |
-| `POST` | `/api/login`                 | **Public.** `{password}` → sets cookie, returns `{success, role}`. Rate-limited 10/15min/IP. Server tries the admin hash first, then the guest hash. |
-| `POST` | `/api/logout`                | Revokes the current session. |
-| `POST` | `/api/auth/change-password`  | `{currentPassword, newPassword}`. Admin only. Rejects collisions with the guest password. |
-| `POST` | `/api/auth/reset/request`    | **Public.** Prints a 10-min reset token to stdout. |
-| `POST` | `/api/auth/reset/confirm`    | **Public.** `{token, newPassword}` — resets the **admin** password and revokes every active session. |
-| `POST` | `/api/auth/guest-password`   | Admin only. `{password?, enabled?, clear?}` — manage the guest password. |
+| Level | Meaning |
+|---|---|
+| **Public** | No cookie needed. |
+| **Guest** | Any signed-in session, admin or guest. |
+| **Admin** | Admin session only. A guest gets `403 {"error":"Admin only","adminRequired":true}`. |
+| **Peer** | Called by another tgdl-server in your cluster and checked with that peer's signature, not a cookie. |
+
+Without a valid session, API calls get `401 {"error":"Unauthorized"}` and pages redirect to `/login.html`.
+
+Guest sessions are **read-only and allowlisted**. Before any route runs, a guest may only make `GET` requests under `/api/auth_check`, `/api/version`, `/api/downloads`, `/api/groups`, `/api/stats`, `/api/thumbs`, `/api/seekbar/sprite`, `/api/seekbar/meta`, `/api/monitor/status` and `/api/files/token`, plus `POST /api/logout`. Guests may also open `/files/…`, `/photos/…` and the WebSocket. Every other API call is admin-only for guests, including some routes whose handler only asks for "a session", such as `/api/config`, `/api/jobs`, `/api/dialogs`, `/api/ai/*` and `/api/update/status`. The tables below mark those as **Admin**.
+
+### Rate limits
+
+| Routes | Limit (per client IP) |
+|---|---|
+| `POST /api/login`, `/api/auth/change-password`, `/api/auth/reset/request`, `/api/auth/reset/confirm` (they share one bucket) | 10 per 15 minutes |
+| `POST /api/auth/setup` | 20 per 15 minutes |
+| `GET /share/…` | 60 per minute by default (adjustable in the share settings) |
+
+Limited responses carry `RateLimit` and `RateLimit-Policy` headers. Over the limit, the server answers `429` with `Retry-After`. The client IP is only taken from `X-Forwarded-For`/`Forwarded` when `TRUST_PROXY` says the proxy is trusted. See [Deploy](DEPLOY.md) for reverse-proxy setup.
+
+### Cross-origin protection
+
+There is no CSRF token. Instead, every `POST`, `PUT`, `PATCH` and `DELETE` that carries an `Origin` (or, failing that, `Referer`) header must come from the same host as the request, with `localhost`, `127.0.0.1` and `::1` on the same port counted as one host. A mismatch gets `403 "Cross-origin request blocked"`. Requests with neither header, such as `curl` or scripts, are allowed and depend on the cookie alone, which `SameSite=Strict` keeps out of other sites.
+
+When *Force HTTPS* is on, plain-HTTP requests from anything but loopback are redirected with `308` (`GET`/`HEAD`) or refused with `403 "HTTPS required"`. Security headers (CSP, frame options, HSTS when forced) are added to every response. `TGDL_CSP=off` drops the CSP header.
+
+### Scripting example
+
+```bash
+curl -c jar -H 'Content-Type: application/json' \
+     -d '{"password":"your-dashboard-password"}' http://localhost:3000/api/login
+curl -b jar http://localhost:3000/api/stats
+```
+
+## Health, metrics and version
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/health` | Public | Liveness only: always `200 {"ok":true,"service":"tgdl-server"}` while the process is serving HTTP. It does not check Telegram, the database or disk. Used by the Docker `HEALTHCHECK`. |
+| `GET` | `/metrics` | Public, or token | Prometheus text format. If `TGDL_METRICS_TOKEN` is set, the request must include `?token=<value>`, otherwise it gets `401`. Exposes `tgdl_accounts_loaded`, `tgdl_active_downloads`, `tgdl_queue_size`, `tgdl_workers`, `process_resident_memory_bytes`, `process_heap_bytes` and `process_uptime_seconds`. In 3.0.0 the four `tgdl_*` gauges always report `0`, so only the `process_*` values are useful. |
+| `GET` | `/api/version` | Public | `{version, commit, builtAt}`. Supports `If-None-Match`. |
+| `GET` | `/api/version/check` | Public | Kept for older clients. In 3.0 it never contacts GitHub and always returns `latest: null`, `updateAvailable: false`. |
+| `GET` | `/api/system/health` | Admin | Detailed runtime and system health for the Maintenance page. |
+
+## Auth
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/auth_check` | Public | `{configured, enabled, authenticated, role, setupRequired, guestEnabled}`. |
+| `POST` | `/api/login` | Public | `{password}` → sets the cookie and returns `{success, role}`. Wrong password: `401`. |
+| `POST` | `/api/logout` | Public | Revokes the current session (if any), closes its WebSockets and clears the cookie. |
+| `POST` | `/api/auth/setup` | Public, loopback only | First password, `{password}` (at least 8 characters). Refused through a proxy (`Forwarded`/`X-Forwarded-For` present) or from a non-loopback address. `409` once a password exists. |
+| `POST` | `/api/auth/change-password` | Admin | `{currentPassword, newPassword}`. Must differ from the guest password. Issues a fresh session. |
+| `POST` | `/api/auth/guest-password` | Admin | Exactly one of `{password}`, `{enabled}` or `{clear: true}`. Changing or disabling guest access revokes guest sessions. |
+| `POST` | `/api/auth/reset/request` | Public | Prints a single-use reset token, valid 10 minutes, to the **server log/stdout**. Nothing is returned to the caller. |
+| `POST` | `/api/auth/reset/confirm` | Public | Uses that token to set a new admin password. |
+| `POST` | `/api/maintenance/sessions/revoke-all` | Admin | Signs out every dashboard session. |
+| `POST` | `/api/maintenance/session/export` | Admin | Export one account's saved Telegram session. Requires `{confirm: true, password, accountId}` and re-checks the admin password. |
 
 ## Telegram accounts
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET`    | `/api/accounts`                          | Saved sessions. |
-| `POST`   | `/api/accounts/auth/begin`               | `{label?}` → `{sessionId, state:'phone'}`. |
-| `POST`   | `/api/accounts/auth/phone`               | `{sessionId, phone}` → `{state:'code'\|'phone'\|'error', error?, code?, seconds?}`. |
-| `POST`   | `/api/accounts/auth/code`                | `{sessionId, code}` → `{state:'password'\|'done'\|'code'\|'error', accountId?, hint?}`. |
-| `POST`   | `/api/accounts/auth/2fa`                 | `{sessionId, password}` → `{state:'done'\|'password'\|'error', accountId?}`. |
-| `POST`   | `/api/accounts/auth/cancel`              | `{sessionId}`. |
-| `GET`    | `/api/accounts/auth/:sessionId`          | Status polling. The first poll that sees `done` loads the new account into the running engine. |
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/accounts` | Admin | Loaded Telegram accounts. |
+| `POST` | `/api/accounts/auth/begin` | Admin | Start the add-account wizard. Returns a wizard `sessionId`. |
+| `POST` | `/api/accounts/auth/phone` | Admin | Wizard step: phone number. |
+| `POST` | `/api/accounts/auth/code` | Admin | Wizard step: login code. |
+| `POST` | `/api/accounts/auth/2fa` | Admin | Wizard step: two-step verification password. |
+| `POST` | `/api/accounts/auth/cancel` | Admin | Cancel the wizard. |
+| `GET` | `/api/accounts/auth/{sessionId}` | Admin | Wizard state. |
+| `DELETE` | `/api/accounts/{id}` | Admin | Remove an account. |
+| `POST` | `/api/proxy/test` | Admin | Test a proxy before it is saved. |
 
-A wrong phone number / code / password keeps the step's state and sets `error` plus `code` — the Telegram error name (`PHONE_NUMBER_INVALID`, `PHONE_CODE_INVALID`, `PHONE_CODE_EXPIRED`, `PASSWORD_HASH_INVALID`, …) or `FLOOD_WAIT` with `seconds`; submitting that step again retries. `hint` is the 2FA password hint. `begin` answers `503 {code:'NO_API_CREDS'}` until `telegram.apiId` / `apiHash` are set.
-| `DELETE` | `/api/accounts/:id`                      | Removes the saved session. |
+## Chats and groups
 
-## Monitor / engine
-
-| Method | Path | Notes |
-|---|---|---|
-| `GET`  | `/api/monitor/status` | `{state, queue, active, workers, accounts, stats, uptimeMs, hint}`, plus `core: {state, fix}` only while tgdl-core (the app's Go engine) can't run — the dashboard shows it as a banner. Also broadcast over WS as `monitor_status_push` every 3 s when at least one client is connected. |
-| `POST` | `/api/monitor/start`  | Loads `AccountManager`, starts realtime monitor in-process. |
-| `POST` | `/api/monitor/stop`   | Cleans up watchers + the worker pool. |
-
-## Stats / dialogs / groups
-
-| Method | Path | Notes |
-|---|---|---|
-| `GET`  | `/api/stats`                  | `{totalFiles, totalSize, diskUsage, telegramConnected, peerStats:[{peerId, peerName, online, totalFiles, totalSize, totalSizeFormatted}], …}`. Also broadcast over WS as `stats_push` every 30 s. `peerStats` is `[]` for non-cluster installs and for guest sessions. |
-| `GET`  | `/api/dialogs`                | Active + archived chats; DMs gated by `config.allowDmDownloads`. Each row has `access` (see *Chat access* below). Fetching the lists also syncs access for free: a chat back in an account's list flips to `ok`; a configured chat listed as forbidden / migrated is recorded. |
-| `GET`  | `/api/chats/lookup?q=`        | Resolve what the dashboard's Add box can't find by name: `@username`, `t.me/<name>`, `t.me/c/<id>`, invite links (`t.me/+…`, `joinchat/…`) and message links. → `{kind, chat?, invite?, message?}`; `chat` has `id, name, type, username, members, joined, inConfig, enabled, suspended, dmDisabled, access`. An invite this account isn't in returns an `invite` preview (`title, members, url`). 404 `not_found` / `invite_invalid`, 422 for t.me links that aren't chats, 503 `no_account`. |
-| `GET`  | `/api/groups`                 | Configured groups with photo URLs. Each own row has `access` (see *Chat access* below) and, when its auto-forward destination refused our posts, `forwardAccess: {state, code, nextCheckAt}`. |
-| `PUT`  | `/api/groups/:id`             | Update group config (filters, autoForward, topics, accounts, **cluster routing** — `ownerPeerId` / `backupPeerId`). Auto-spawns a first-add backfill when the group is newly enabled and has no rows yet. |
-| `DELETE` | `/api/groups/:id/purge`     | Drop files + DB rows + config + photo. |
-| `GET`  | `/api/groups/:id/photo`       | Cached profile photo. |
-| `POST` | `/api/groups/refresh-photos`  | Re-fetch profile photos for every configured group. |
-| `POST` | `/api/groups/refresh-info`    | Re-resolve every monitored chat name from Telegram. Chats that can't be reached are skipped (same for `refresh-photos`, `resync-dialogs` and `/api/groups/:id/photo`). |
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/dialogs` | Admin | Chats the accounts can see. Works without starting the monitor. |
+| `GET` | `/api/groups` | Guest | Configured chats with download counts and access state. |
+| `PUT` | `/api/groups/{id}` | Admin | Save one chat's settings. |
+| `GET` | `/api/groups/{id}/stats` | Guest | Per-chat statistics. |
+| `GET` | `/api/groups/{id}/files` | Guest | Files downloaded from one chat. |
+| `GET` | `/api/groups/{id}/photo` | Guest | Chat profile photo, downloaded on first request and then cached. |
+| `POST` | `/api/groups/refresh-info` | Admin | Refresh chat names and details from Telegram (background). |
+| `GET` | `/api/groups/refresh-info/status` | Guest | Progress of the above. |
+| `POST` | `/api/groups/refresh-photos` | Admin | Refresh chat profile photos (background). |
+| `GET` | `/api/groups/refresh-photos/status` | Guest | Progress of the above. |
+| `DELETE` | `/api/groups/{id}/purge` | Admin | Remove a chat's downloads, files and settings (background). |
+| `POST` | `/api/groups/{id}/delete-files` | Admin | Delete a chat's downloaded files only (background). |
+| `GET` | `/api/groups/{id}/purge/status` | Guest | Progress of either purge. |
 
 ### Chat access
 
-Whether a chat can still be used, one standard answer everywhere. A chat that no loaded account can read is **paused** — polling, the update handler, the downloader (queued files are dropped, no retries), backfill, avatar / name lookups, Stories and auto-forwarding skip it with a local check, no Telegram call — until a re-check or a dialogs sync sees it readable again. Its config entry is left as it is (`enabled` stays the operator's choice); downloaded files are never touched and nothing is left or unsubscribed in Telegram.
+Deleted, restricted and unreachable chats.
 
-`access` object (on `/api/groups`, `/api/dialogs` and `/api/chats/lookup` rows):
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/chats/access` | Admin | Chats that are deleted, restricted or no longer readable, with Telegram's reason. |
+| `POST` | `/api/chats/access/recheck` | Admin | *Check again*: re-test access (background). |
+| `GET` | `/api/chats/access/recheck/status` | Admin | Progress of the re-check. |
+| `POST` | `/api/chats/access/stop` | Admin | Stop the re-check. |
+| `POST` | `/api/chats/access/remove` | Admin | Remove dead chats from the dashboard's list. |
+| `GET` | `/api/chats/lookup?q=` | Admin | Resolve a username, link or ID to a chat. |
+| `POST` | `/api/chats/{id}/leave` | Admin | *Leave / remove from Telegram* for one chat with the selected account. |
+| `POST` | `/api/chats/leave-batch` | Admin | Leave several dead chats from one account, keeping or deleting their files. |
+| `GET` | `/api/chats/leave-batch/status` | Admin | Progress of the batch leave. |
+| `POST` | `/api/chats/{id}/follow-migration` | Admin | Move a basic group's settings to the supergroup it was upgraded to. |
 
-```json
-{ "state": "private", "code": "CHANNEL_PRIVATE", "detail": null, "migratedTo": null,
-  "firstSeenAt": 1790535647415, "checkedAt": 1790622047415, "nextCheckAt": 1790644432703,
-  "checks": 1, "accounts": [{ "id": "123", "state": "private", "code": "CHANNEL_PRIVATE", "at": 1790622047415 }] }
-```
+## Downloads and library
 
-- `state`: `ok` · `left` (no account is a member) · `banned` (kicked / banned) · `private` (private channel, access lost) · `deleted` (deactivated / doesn't exist) · `restricted` (restricted by Telegram — `detail` has Telegram's text) · `migrated` (a basic group upgraded to a supergroup — `migratedTo` is the new id) · `unknown` (couldn't tell: flood wait, timeout, no account connected — never pauses anything). A chat with nothing against it is just `{ "state": "ok" }`.
-- `code` is Telegram's error (`CHANNEL_PRIVATE`, `CHANNEL_INVALID`, `USER_BANNED_IN_CHANNEL`, `CHANNEL_PUBLIC_GROUP_NA`, …) or the entity shape (`CHANNEL_FORBIDDEN`, `CHAT_MIGRATED`, …).
-- `accounts`: each account's own answer. The chat is only paused when **no** account can read it; if one still can, it takes over (and is pinned) and the chat stays `ok` with the other account's failure listed. Empty for guest sessions.
-- Re-checks: one chat per minute at most, after 1 h, 6 h, then daily (`nextCheckAt`), for monitored chats only; `migrated` is permanent and isn't re-checked. Adding an account makes every paused chat due.
-- `legacy: true` marks an entry an older version switched off (`suspended` / `_resolveFailedAt` in the config); those flags are cleared once the chat is reachable again.
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/stats` | Guest | Library totals for the dashboard header. |
+| `GET` | `/api/downloads` | Guest | Downloads overview. |
+| `GET` | `/api/downloads/all` | Guest | Paged list of all downloads (gallery). |
+| `GET` | `/api/downloads/search` | Guest | Search downloads. |
+| `GET` | `/api/downloads/{id}` | Guest | Downloads of one chat (`{id}` is the chat ID). |
+| `POST` | `/api/downloads/{id}/pin` | Admin | Pin or unpin one download. |
+| `POST` | `/api/downloads/pin` | Admin | Pin or unpin several downloads. |
+| `POST` | `/api/downloads/bulk-delete` | Admin | Delete several downloads and their files. |
+| `POST` | `/api/downloads/bulk-zip` | Admin | Stream the selected downloads as a ZIP. |
+| `GET` | `/api/files/archive-list` | Admin | List of files for an archive download. |
+| `DELETE` | `/api/file?path=` | Admin | Delete one file under the downloads folder. |
+| `GET` | `/api/thumbs/{id}` | Guest | Thumbnail image for a download. |
+| `GET` | `/api/seekbar/meta/{id}` | Guest | Video seekbar sprite metadata. |
+| `GET` | `/api/seekbar/sprite/{id}` | Guest | Video seekbar sprite image. |
+| `GET` | `/api/files/token` | Guest | Short-lived file token, `{token, exp}`, valid 15 minutes for the caller's role. |
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET`  | `/api/chats/access`                  | Configured chats that can't be reached → `{total, byState, items:[{id, name, type, enabled, access}]}`. `?countOnly=1` → `{total, byState}`. |
-| `POST` | `/api/chats/access/recheck`          | "Check again". `{id}` → checked now (each account once, pinned first, stopping at the first that can read) → `{id, state, access, accountId, inconclusive, results}`; `inconclusive: true` means no account gave a definite answer (flood wait, timeout, none connected) and nothing changed. `{ids:[…]}` or `{all:true}` (every configured chat that can't be reached) → `{started, total}`, run in the background one chat every 2 s; progress on WS `chat_access_recheck_progress` / `chat_access_recheck_done`, status at `GET /api/chats/access/recheck/status`. 409 `ALREADY_RUNNING`. |
-| `POST` | `/api/chats/access/stop`             | `{ids}` → `enabled:false` for each → `{stopped}`. |
-| `POST` | `/api/chats/access/remove`           | `{ids}` → removes the config entries only → `{removed}`. Downloaded files and their gallery rows stay. |
-| `POST` | `/api/chats/:id/follow-migration`    | A `migrated` chat: adds the new supergroup with the old entry's settings (media types, forwarding, topics, accounts, rescue, cluster routing) and switches the old one off → `{added, group, previous}`. 409 `NOT_MIGRATED` otherwise. |
+### Media files
 
-All five are admin-only. `POST /api/history` for a chat that can't be reached answers `409 {code:'CHAT_UNREACHABLE', access}` before any Telegram call (auto-first and catch-up backfills are skipped); `POST /api/stories/*` does the same for a known chat, and `POST /api/download/url` reports `code: 'CHAT_UNREACHABLE'` per link. `GET /api/maintenance/recovery/list` includes paused chats with `resolveFailedReason: "access:<state>:<code>"` and `access`.
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET`, `HEAD` | `/files/{path}` | Guest, or file token | A file from the downloads folder (`TGDL_DOWNLOADS_DIR` if set). Supports range requests. Instead of a cookie, `?token=<value from /api/files/token>` works too, which is useful for external players. The token opens `/files/` and nothing else. |
+| `GET` | `/photos/{id}` | Guest | Cached profile photo from `data/photos/`. |
 
-## Downloads
+## Queue and jobs
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET`    | `/api/downloads`                    | Aggregate per group. |
-| `GET`    | `/api/downloads/all`                | Cross-group All-Media list, paginated. `?page=&limit=&type=`. **`?include=local\|peers\|all`** (admin-only) UNIONs `peer_downloads` into the result; **`?peerId=<id>`** narrows to one peer. Each row carries `peer_id` (`'self'` or peer's id) + `peer_name`. Default `local` is backward-compatible. |
-| `GET`    | `/api/downloads/:groupId`           | Paginated rows for one group. `?type=images\|videos\|documents\|audio`. Same `?include=` / `?peerId=` federation params as `/all`. |
-| `GET`    | `/api/downloads/search`             | `?q=…&page=&limit=&groupId=`. Optional `type=` (`images` / `videos` / `documents` / `audio`), `pinned=1`, `pinnedFirst=1` (same as the gallery feeds) and `order=newest` (default: FTS relevance). File name / chat name prefix match, falling back to a substring match when that finds nothing. Same `?include=` federation param. |
-| `POST`   | `/api/downloads/bulk-delete`        | `{ids?, paths?}`. Also purges thumbnail cache for every removed id. |
-| `POST`   | `/api/downloads/pin`                | `{ids:[…], pinned}` — pin / unpin many rows in one request (max 5000 ids, else 413). Returns the ids that exist. |
-| `POST`   | `/api/downloads/:id/pin`            | `{pinned}` — one row. |
-| `DELETE` | `/api/file?path=…`                  | Single file. |
-| `DELETE` | `/api/purge/all`                    | Factory reset. Body `{"confirm": "DELETE ALL"}` (exactly); without it `400 {code: "CONFIRM_REQUIRED"}` and nothing is touched. Starts a job: `{started: true}`, progress on `purge_all_progress` / `purge_all_done`. |
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/queue/snapshot` | Guest | Current download queue. |
+| `POST` | `/api/queue/{key}/pause` | Admin | Pause one item. |
+| `POST` | `/api/queue/{key}/resume` | Admin | Resume one item. |
+| `POST` | `/api/queue/{key}/cancel` | Admin | Cancel one item. |
+| `POST` | `/api/queue/{key}/retry` | Admin | Retry one failed item. |
+| `POST` | `/api/queue/batch` | Admin | Apply one action to several items. |
+| `POST` | `/api/queue/pause-all` | Admin | Pause everything. |
+| `POST` | `/api/queue/resume-all` | Admin | Resume everything. |
+| `POST` | `/api/queue/cancel-all` | Admin | Cancel everything. |
+| `POST` | `/api/queue/retry-all` | Admin | Retry all failed items. |
+| `POST` | `/api/queue/clear-finished` | Admin | Clear finished items. |
+| `GET` | `/api/jobs` | Admin | Background jobs on the durable work queue. |
+| `GET` | `/api/jobs/{id}` | Admin | One job. |
+| `POST` | `/api/jobs/{id}/cancel` | Admin | Cancel a job. |
 
-## Direct downloads
+## History backfill
 
-| Method | Path | Notes |
-|---|---|---|
-| `POST` | `/api/download/url`           | `{url}` or `{urls:[…]}` — t.me / tg:// URLs. Goes through the same `registerDownload` chokepoint (thumb + NSFW hooks fire). |
-| `POST` | `/api/stories/user`           | `{username}` → list of active stories. |
-| `POST` | `/api/stories/all`            | All visible stories grouped by peer. |
-| `POST` | `/api/stories/download`       | `{username, storyIds:[…]}`. |
-| `POST` | `/api/history`                | `{groupId, limit?, offsetId?, mode?}` → kicks off a backfill job. `mode` ∈ `pull-older` (default) / `catch-up` / `rescan`. Returns 409 with `code:'ALREADY_RUNNING'` if a job for the same group is in flight. |
-| `GET`  | `/api/history/jobs`           | `{active:[…], recent:[…]}`. Recent retention configurable via `advanced.history.retentionDays`. |
-| `GET`  | `/api/history/:jobId`         | One job. |
-| `POST` | `/api/history/:jobId/cancel`  | Graceful cancel — partial results are kept. |
-| `DELETE` | `/api/history/:jobId`       | Drop one finished entry. |
-| `DELETE` | `/api/history`              | Clear every finished entry. |
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `POST` | `/api/history` | Admin | Start a backfill of a chat's older messages. Returns `409` with code `CHAT_UNREACHABLE` if the chat can't be read. |
+| `GET` | `/api/history` | Admin | Running backfills. |
+| `GET` | `/api/history/jobs` | Admin | Recent backfill jobs. |
+| `GET` | `/api/history/{jobId}` | Admin | One backfill job. |
+| `POST` | `/api/history/{jobId}/cancel` | Admin | Cancel it. |
+| `DELETE` | `/api/history/{jobId}` | Admin | Remove a finished job from the list. |
+| `DELETE` | `/api/history` | Admin | Clear finished jobs. |
 
-## Thumbnails
+## Stories and URL downloads
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET` | `/api/thumbs/:id`           | `?w=120\|200\|240\|320\|480` — server-generated WebP. Image source → sharp; video source → ffmpeg first-frame. `Cache-Control: public, max-age=86400, immutable`. Allowed for guest sessions. |
-| `GET` | `/api/cluster/peer-thumbs/:remoteId`        | HMAC-only peer-to-peer thumb handler: the WebP bytes (`image/webp`, `?w=` like `/api/thumbs/:id`). Sibling of `/api/thumbs/:id` for federation. |
-| `GET` | `/api/cluster/thumbs/:peerId/:remoteId`     | Cookie-authed browser proxy that signs a request to peer's `peer-thumbs` and streams the response. Returns a 1×1 placeholder PNG with `Cache-Control: public, max-age=60` when the peer is offline or answers something that isn't an image (older versions sent a JSON object here). |
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `POST` | `/api/stories/user` | Admin | List a user's or channel's stories, `{username}`. |
+| `POST` | `/api/stories/all` | Admin | All active stories the account can see. |
+| `POST` | `/api/stories/download` | Admin | `{username, storyIds}` (at most 100 IDs) → queue those stories. |
+| `POST` | `/api/download/url` | Admin | `{urls: [...]}`: queue downloads from Telegram message links. Each link gets its own result. |
 
-## Share links
+## Monitor
 
-| Method | Path | Notes |
-|---|---|---|
-| `POST`   | `/api/share/links`            | Admin only. `{downloadId, ttlSeconds?, label?}` → `{url, expiresAt, id}`. `ttlSeconds: 0` = "never expires" sentinel. |
-| `GET`    | `/api/share/links`            | Admin only. `?downloadId=` filters to one file (Share sheet); no filter = all (Maintenance sheet). |
-| `DELETE` | `/api/share/links/:id`        | Admin only. Idempotent revoke. |
-| `GET`    | `/share/:linkId`              | **Public, gated by HMAC + DB row.** `?exp=&sig=` → streams the file via the same `safeResolveDownload` path that `/files/*` uses (Range-request friendly). 401 on bad/expired/revoked. |
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/monitor/status` | Guest | Monitor state and per-account status. |
+| `POST` | `/api/monitor/start` | Admin | Start the realtime monitor. |
+| `POST` | `/api/monitor/stop` | Admin | Stop it. |
+| `POST` | `/api/monitor/restart` | Admin | Restart it. |
+| `POST` | `/api/maintenance/restart-monitor` | Admin | Restart the monitor as a tracked maintenance task. |
+| `GET` | `/api/maintenance/restart-monitor/status` | Admin | Progress of the above. |
+| `POST` | `/api/maintenance/resync-dialogs` | Admin | Re-read every account's chat list from Telegram. |
+| `GET` | `/api/maintenance/resync-dialogs/status` | Admin | Progress of the above. |
 
 ## Maintenance
 
-| Method | Path | Notes |
-|---|---|---|
-| `POST` | `/api/maintenance/files/verify`  | Re-stat every cataloged download; prune rows whose file is missing on disk. `503 TGDL_CORE_UNAVAILABLE` (with the fix) while tgdl-core can't run. |
-| `GET`  | `/api/maintenance/files/verify/status` | JobTracker snapshot — `{running, stage, progress, result}`. |
-| `GET`  | `/api/maintenance/files/verify/stats`  | `{lastRun: {finishedAt, removed, scanned}}` — survives restart. |
-| `POST` | `/api/maintenance/reindex`       | Walk `data/downloads/` and `INSERT OR IGNORE` rows for files the catalog doesn't have yet. `503 TGDL_CORE_UNAVAILABLE` while tgdl-core can't run. |
-| `GET`  | `/api/maintenance/reindex/status`| JobTracker snapshot. |
-| `GET`  | `/api/maintenance/reindex/stats` | `{lastRun: {finishedAt, added, scanned}}`. |
-| `POST` | `/api/maintenance/resync-dialogs`| Re-resolve every group's name + profile photo. |
-| `POST` | `/api/maintenance/restart-monitor`| Stop + start the in-process monitor. |
-| `POST` | `/api/maintenance/db/integrity`  | `PRAGMA integrity_check`. |
-| `POST` | `/api/maintenance/db/vacuum`     | `VACUUM`. |
-| `POST` | `/api/maintenance/dedup/scan`    | SHA-256 catch-up + groups duplicate sets. Single in-flight guard; broadcasts `dedup_progress` over WS. `503 TGDL_CORE_UNAVAILABLE` while tgdl-core can't run. |
-| `GET`  | `/api/maintenance/dedup/status`  | JobTracker snapshot — `{running, stage, processed, total, result}`. |
-| `GET`  | `/api/maintenance/dedup/stats`   | `{totalFiles, hashed, missing, lastScan: {finishedAt, scanned, hashed, duplicateSets, extraCopies, reclaimableBytes}}`. Survives restart. |
-| `POST` | `/api/maintenance/dedup/delete`  | `{ids:[…]}` — delete from disk + DB + thumbs cache. |
-| `POST` | `/api/maintenance/thumbs/build-all`| Generate default-width thumbs for every row that doesn't have one. Broadcasts `thumbs_progress`. |
-| `GET`  | `/api/maintenance/thumbs/build/status` | JobTracker snapshot. |
-| `GET`  | `/api/maintenance/thumbs/build/stats`  | `{lastRun: {finishedAt, built, skipped, errored, scanned}}`. |
-| `POST` | `/api/maintenance/thumbs/rebuild`| Wipe cache; re-generation happens lazily on next access. |
-| `GET`  | `/api/maintenance/thumbs/stats`  | `{count, bytes, ffmpegAvailable, allowedWidths}`. |
-| `POST` | `/api/maintenance/faststart/scan`| Sweep MP4s and rewrite ones whose moov atom isn't at the head. Broadcasts `faststart_progress`. |
-| `GET`  | `/api/maintenance/faststart/status` | JobTracker snapshot. |
-| `GET`  | `/api/maintenance/faststart/stats`  | `{total, optimized, pending, missing, unknown, ext_skip, ffmpegAvailable, lastRun}`. |
-| `GET`  | `/api/maintenance/nsfw/status`   | `{enabled, running, scanned, total, candidates, keep, whitelisted, model, threshold, fileTypes}`. |
-| `POST` | `/api/maintenance/nsfw/scan`     | Start a background scan (returns 503 when feature is disabled, 409 when one is already running). |
-| `POST` | `/api/maintenance/nsfw/scan/cancel` | Abort the active scan; partial results kept. |
-| `GET`  | `/api/maintenance/nsfw/results`  | Paginated low-score rows (deletion candidates). `?page=&limit=`. |
-| `POST` | `/api/maintenance/nsfw/delete`   | `{ids:[…]}` — delete + purge thumbs. |
-| `POST` | `/api/maintenance/nsfw/whitelist`| `{ids:[…]}` — mark as confirmed-18+; future scans skip. |
-| `POST` | `/api/maintenance/nsfw/sidecar-test` | CORS proxy — test connection to an arbitrary NSFW sidecar URL. Body: `{url}`. Returns `{ok, version, model, ready}`. |
-| `GET`  | `/api/maintenance/logs`          | List `data/logs/*.log` with size + mtime. |
-| `GET`  | `/api/maintenance/logs/download` | `?name=&lines=` — tail of one logfile (50 MB cap). |
-| `GET`  | `/api/maintenance/config/raw`    | Redacted runtime config (kv-backed). |
-| `POST` | `/api/maintenance/session/export`| Password-gated session-string export. |
-| `POST` | `/api/maintenance/sessions/revoke-all` | Sign out every dashboard session. |
+Long tasks start with a `POST` and report progress through their `…/status` route and the matching [WebSocket events](#websocket).
 
-## Seekbar previews (v2.17)
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `POST` | `/api/maintenance/db/integrity` | Admin | SQLite integrity check. |
+| `GET` | `/api/maintenance/db/integrity/status` | Admin | |
+| `POST` | `/api/maintenance/db/vacuum` | Admin | Compact the database. |
+| `GET` | `/api/maintenance/db/vacuum/status` | Admin | |
+| `POST` | `/api/maintenance/db/backup` | Admin | Write a database snapshot to `data/backups/`. |
+| `POST` | `/api/maintenance/files/verify` | Admin | Check that downloaded files still exist on disk. |
+| `GET` | `/api/maintenance/files/verify/status` | Admin | |
+| `GET` | `/api/maintenance/files/verify/stats` | Admin | |
+| `POST` | `/api/maintenance/reindex` | Admin | Rebuild the library index from files on disk. |
+| `GET` | `/api/maintenance/reindex/status` | Admin | |
+| `GET` | `/api/maintenance/reindex/stats` | Admin | |
+| `GET` | `/api/maintenance/dedup/stats` | Admin | Duplicate-file summary. |
+| `GET` | `/api/maintenance/dedup/sets` | Admin | Duplicate sets. |
+| `POST` | `/api/maintenance/dedup/scan` | Admin | Scan for duplicates. |
+| `POST` | `/api/maintenance/dedup/scan/stop` | Admin | Stop the scan. |
+| `GET` | `/api/maintenance/dedup/status` | Admin | Scan progress. |
+| `POST` | `/api/maintenance/dedup/delete` | Admin | Delete chosen duplicates. |
+| `GET` | `/api/maintenance/dedup/delete/status` | Admin | Delete progress. |
+| `GET` | `/api/maintenance/thumbs/stats` | Admin | Thumbnail coverage. |
+| `GET` | `/api/maintenance/thumbs/list` | Admin | Thumbnail list. |
+| `POST` | `/api/maintenance/thumbs/build-all` | Admin | Build missing thumbnails. |
+| `GET` | `/api/maintenance/thumbs/build/status` | Admin | |
+| `GET` | `/api/maintenance/thumbs/build/stats` | Admin | |
+| `POST` | `/api/maintenance/thumbs/build/cancel` | Admin | |
+| `POST` | `/api/maintenance/thumbs/rebuild` | Admin | Rebuild all thumbnails. |
+| `GET` | `/api/maintenance/thumbs/rebuild/status` | Admin | |
+| `POST` | `/api/maintenance/thumbs/rebuild-one/{id}` | Admin | Rebuild one thumbnail. |
+| `GET` | `/api/maintenance/thumbs/hwaccel-probe` | Admin | Hardware-acceleration probe. 3.0 makes thumbnails on the CPU. |
+| `GET` | `/api/maintenance/faststart/stats` | Admin | MP4 faststart coverage. |
+| `GET` | `/api/maintenance/faststart/auto-stats` | Admin | |
+| `GET` | `/api/maintenance/faststart/status` | Admin | |
+| `POST` | `/api/maintenance/faststart/scan` | Admin | Move video metadata to the front so playback starts sooner. |
+| `GET` | `/api/maintenance/recovery/list` | Admin | Items needing recovery, including paused chats. |
+| `GET` | `/api/maintenance/recovery/status` | Admin | |
+| `POST` | `/api/maintenance/recovery/{op}` | Admin | `{op}` is `resolve`, `disable`, `ignore`, `unignore`, `reassign` or `delete`. |
+| `GET` | `/api/rescue/stats` | Admin | Rescue statistics. |
+| `GET` | `/api/maintenance/logs` | Admin | Log files. |
+| `GET` | `/api/maintenance/logs/recent` | Admin | Recent log lines. |
+| `GET` | `/api/maintenance/logs/download` | Admin | Download a log file. |
+| `DELETE` | `/api/purge/all` | Admin | Factory reset. Body must be `{"confirm": "DELETE ALL"}`. |
+| `GET` | `/api/purge/all/status` | Admin | Progress of the reset. |
 
-Opt-in feature — generates WebP sprite-sheet timeline thumbnails for video hover previews. Off by default; flip `config.advanced.seekbar.enabled` (Maintenance → Seekbar previews) to turn on. Backed by a standalone Go sidecar (`seekbar-service/`) that the dashboard auto-spawns on first use.
+## Settings
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET` | `/api/seekbar/sprite/:id` | Serves the WebP (or JPEG fallback) sprite-sheet for the given `downloads.id`. Allowed for guest sessions. `Cache-Control: public, max-age=86400, immutable`. 404 when the sprite is still pregenerating or the feature is disabled. |
-| `GET` | `/api/seekbar/meta/:id` | Returns the JSON sidecar (`{ cols, rows, frames, tile_w, tile_h, interval_sec, duration_sec, format, … }`). Guest-readable. Same 404 semantics. |
-| `POST` | `/api/maintenance/seekbar/build-all` | Admin only. Starts the JobTracker backfill — paginates `downloads WHERE file_type='video' AND id NOT IN (SELECT download_id FROM seekbar_sprites)`. Broadcasts `seekbar_progress`. |
-| `POST` | `/api/maintenance/seekbar/build/cancel` | Cancel the in-flight scan. |
-| `GET`  | `/api/maintenance/seekbar/build/status` | JobTracker snapshot. |
-| `GET`  | `/api/maintenance/seekbar/build/stats` | `{lastRun: {finishedAt, processed, generated, skipped, errored, durationMs}}`. Survives restart. |
-| `POST` | `/api/maintenance/seekbar/rebuild` | Wipe every sprite + the table; broadcasts `seekbar_rebuild_progress`. |
-| `GET`  | `/api/maintenance/seekbar/rebuild/status` | JobTracker snapshot. |
-| `POST` | `/api/maintenance/seekbar/regen/:id` | Force-regenerate one row regardless of overwrite policy. |
-| `GET`  | `/api/maintenance/seekbar/stats` | `{count, bytes, ffmpegAvailable, lastRun}`. |
-| `GET`  | `/api/maintenance/seekbar/list` | Cursor-paginated row list. `?beforeId=&limit=`. |
-| `GET`  | `/api/maintenance/seekbar/health` | `{sidecar:{ok, url, mode, version, pid?}, ffmpegAvailable}` — drives the page's status pill. |
-| `GET`  | `/api/maintenance/seekbar/hwaccel-probe` | Proxies the sidecar's hardware probe — `{candidates[], available[], recommended}`. |
-| `POST` | `/api/maintenance/seekbar/sidecar-test` | CORS proxy — test connection to an arbitrary seekbar sidecar URL. Body: `{url, token?}`. Returns `{ok, version}`. |
-| `POST` | `/api/maintenance/seekbar/sidecar/restart` | Tear down + respawn the Go sidecar. Use after changing hwaccel / concurrency / port range. Broadcasts `seekbar_sidecar_status`. |
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/config` | Admin | Effective settings, with secrets redacted. |
+| `POST` | `/api/config` | Admin | Save settings. Connected dashboards get `config_updated`. |
+| `GET` | `/api/maintenance/config/raw` | Admin | Raw stored configuration, with secrets redacted. |
+| `GET` | `/api/csp` | Admin | The Content-Security-Policy currently in effect. |
 
-## AI / Face clustering (v2.16+)
+## Backup
 
-Opt-in face detection + clustering, backed by the Python sidecar in `faces-service/`. Off by default; flip `config.advanced.ai.enabled` + `config.advanced.ai.faceClustering`. All endpoints are admin-only. See [docs/AI.md](AI.md) for the deep dive.
+Destinations and modes are covered in [Backup](BACKUP.md). Google Drive and Dropbox are not available in 3.0.
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET`    | `/api/ai/status`                    | `{enabled, faceClustering, sidecar:{ok, url, mode, version, providers_resolved, det_size, …}, scan, peopleCount, facesCount}`. |
-| `POST`   | `/api/ai/scan/start`                | `{feature:'faces'}` — kicks off Phase A (detect+embed) and Phase B (DBSCAN). Auto-flips `enabled=true` so a fresh install doesn't need a separate save round-trip. |
-| `POST`   | `/api/ai/scan/cancel`               | Cancels the active scan; partial detections are kept. |
-| `GET`    | `/api/ai/scan/status?feature=faces` | JobTracker snapshot for the re-mounted page. |
-| `GET`    | `/api/ai/faces/provider-probe`      | Sidecar provider probe — `{candidates[], available[], details[], recommended, current}`. |
-| `POST`   | `/api/ai/faces/health-test`         | CORS proxy — test connection to an arbitrary faces sidecar URL. Body: `{url}`. Returns `{ok, version, model, ready, providers}`. |
-| `POST`   | `/api/ai/faces/restart`             | Restart the faces sidecar (after switching detector model / providers / det_size). Broadcasts `ai_faces_status`. |
-| `POST`   | `/api/ai/faces/install-deps`        | Stream `python -m tgdl_faces.install` over `ai_faces_install_progress` / `ai_faces_install_done`. Accepts `{force?:'cpu'\|'gpu'\|'directml'\|'openvino', dryRun?:bool, noUninstall?:bool}`. |
-| `POST`   | `/api/ai/faces/recluster`           | Re-run DBSCAN over the existing `faces` table without re-detecting (cheap; preserves labels via centroid match). `503 TGDL_CORE_UNAVAILABLE` while tgdl-core can't run. |
-| `POST`   | `/api/ai/faces/reindex`             | Confirm-sheet gated — wipes every detection + cluster and re-scans every photo. Use after switching detector model. Broadcasts `ai_faces_reindexed`. |
-| `POST`   | `/api/ai/preload-model/:name`       | Trigger background download of a face detection model. Proxies to sidecar `POST /preload/:name`. Returns `{model, status}`. `status` ∈ `not_downloaded`, `downloading`, `ready`, `error:…`. |
-| `GET`    | `/api/ai/preload-model/:name/status`| Check model download status. Returns `{model, status}`. |
-| `GET`    | `/api/ai/people`                    | Cluster list with cover-face + face count + `video_face_count` per person. `?page=&limit=`. |
-| `GET`    | `/api/ai/people/:id/photos`         | Paginated photos in this cluster. |
-| `PATCH`  | `/api/ai/people/:id`                | `{label}` — rename. |
-| `DELETE` | `/api/ai/people/:id`                | Drop cluster; faces become unassigned. |
-| `POST`   | `/api/ai/people/:id/merge`          | `{otherId}` — fold one cluster into another. |
-| `POST`   | `/api/ai/people/:id/split`          | `{faceIds, newLabel?}` — create a new cluster from selected faces. |
-| `POST`   | `/api/ai/faces/:id/reassign`        | `{personId}` — move a single face to another cluster. |
-| `GET`    | `/api/ai/faces/by-download/:id`     | Face boxes for the gallery viewer overlay. |
-| `GET`    | `/api/ai/group-by-person`           | Maintenance grid grouped by cluster — drives the People tab. |
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/backup/providers` | Admin | Available destination types. |
+| `GET` | `/api/backup/destinations` | Admin | Configured destinations. |
+| `POST` | `/api/backup/destinations` | Admin | Add a destination. |
+| `PUT` | `/api/backup/destinations/{id}` | Admin | Edit it. |
+| `DELETE` | `/api/backup/destinations/{id}` | Admin | Remove it. |
+| `GET` | `/api/backup/destinations/{id}/config` | Admin | Its stored settings. |
+| `GET` | `/api/backup/destinations/{id}/status` | Admin | Progress and last result. |
+| `GET` | `/api/backup/destinations/{id}/jobs` | Admin | Its job history. |
+| `GET` | `/api/backup/destinations/{id}/recovery` | Admin | Recovery details for an interrupted run. |
+| `POST` | `/api/backup/destinations/{id}/test` | Admin | Test the connection. |
+| `POST` | `/api/backup/destinations/{id}/run` | Admin | Run now. |
+| `POST` | `/api/backup/destinations/{id}/pause` | Admin | Pause it. |
+| `POST` | `/api/backup/destinations/{id}/resume` | Admin | Resume it. |
+| `POST` | `/api/backup/destinations/{id}/encryption` | Admin | Turn encryption on or off, `{enabled, passphrase}`. |
+| `POST` | `/api/backup/destinations/{id}/unlock` | Admin | Unlock an encrypted destination, `{passphrase}`. |
+| `GET` | `/api/backup/jobs/recent` | Admin | Recent jobs across destinations. |
+| `POST` | `/api/backup/jobs/{id}/retry` | Admin | Retry a failed job. |
+| `GET` | `/api/backup/cleanup` | Admin | Cleanup state. |
 
-### Faces sidecar (direct)
+Restoring is done offline with `tgdl-server backup-restore` (and `backup-decrypt` for encrypted archives), not over HTTP.
 
-The dashboard proxies these via `/api/ai/preload-model/…` above, but the sidecar also exposes them on its own port (default `:7555`).
+## Cluster
 
-| Method | Path | Notes |
-|---|---|---|
-| `POST` | `/preload/{model_name}`        | Download model files without switching the active model. Allowed models: `buffalo_l`, `antelopev2`, `buffalo_m`, `buffalo_s`, `buffalo_sc`. Returns `{model, status}`. |
-| `GET`  | `/preload/{model_name}/status` | Check model download status. Returns `{model, status}`. `status` ∈ `not_downloaded`, `downloading`, `ready`, `error:…`. |
+Setup and concepts are in [Cluster](CLUSTER.md).
 
-## Auto-update
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/cluster/identity` | Admin | This server's peer ID and name. |
+| `PUT` | `/api/cluster/identity` | Admin | Rename, `{name}`. |
+| `GET` | `/api/cluster/identity/token` | Admin | Show the cluster token. |
+| `POST` | `/api/cluster/identity/set-token` | Admin | Set the cluster token. |
+| `POST` | `/api/cluster/identity/rotate-token` | Admin | Rotate the cluster token. |
+| `POST` | `/api/cluster/identity/pairing-code` | Admin | Create a one-time pairing code. |
+| `POST` | `/api/cluster/pairing-code` | Admin | Same as the above (older path). |
+| `GET` | `/api/cluster/peers` | Admin | Paired peers. |
+| `POST` | `/api/cluster/peers` | Admin | Pair with a peer using its address and pairing code. |
+| `PUT` | `/api/cluster/peers/{peerID}` | Admin | Edit a peer. |
+| `DELETE` | `/api/cluster/peers/{peerID}` | Admin | Unpair. |
+| `POST` | `/api/cluster/peers/{peerID}/test` | Admin | Test the connection. |
+| `GET` | `/api/cluster/audit` | Admin | Peer request audit log. |
+| `GET` | `/api/cluster/sync/state` | Admin | Catalog sync state. |
+| `POST` | `/api/cluster/sync/run` | Admin | Sync now. |
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET`  | `/api/update/status`             | Any signed-in session (guests too — the status bar's update sheet reads it); 401 without one. Capability probe — `{available, inDocker, watchtowerConfigured, watchtowerUrl, overlayStallMs}`. |
-| `POST` | `/api/update`                    | Admin only. Runs a 5-step pipeline: ping watchtower (5 s HEAD) → live-DB `PRAGMA quick_check` → snapshot to `data/backups/db-pre-update-<UTC>.sqlite` → verify the snapshot is openable + clean (bad files are deleted) → POST watchtower's `/v1/update`. Returns 200 `{started:true}` on success or 4xx/5xx with a structured `code`: `AUTO_UPDATE_UNAVAILABLE`, `WATCHTOWER_UNREACHABLE`, `DB_CORRUPT`, `BACKUP_FAILED`, `BACKUP_VERIFY_FAILED`, `TRIGGER_FAILED`, or `ALREADY_RUNNING`. |
-| `GET`  | `/api/update/history`            | Admin only. Last N (default 25, max 200) update attempts from the `update_history` table — `{from_version, to_version, started_at, finished_at, status, error_code, error_msg, backup_path, backup_bytes}`. `status` is `triggered` (in-flight, not yet finalised), `success` (new container booted on a different version), `failed` (pre-flight or trigger threw), or `stalled` (watchtower acked but the swap never landed within 10 min). |
-| `GET`  | `/api/auto-update/status`        | Admin only. Live `JobTracker` snapshot for the in-flight `/api/update` run (running flag, stage, durations, last error). |
+Peer-to-peer routes are not for scripts. Every request is signed with the shared cluster secret through the `X-Peer-Id`, `X-Peer-Ts` and `X-Peer-Signature` headers. Failures return `401 {"error":"cluster auth failed","code":…}` and are written to the audit log.
 
-## Config & proxy
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `POST` | `/api/cluster/handshake` | Peer (pairing code) | Pairing handshake. |
+| `GET` | `/api/cluster/health` | Peer | Peer liveness. |
+| `GET` | `/api/cluster/downloads/since` | Peer | Catalog rows since a cursor. |
+| `GET` | `/api/cluster/catalog/changes` | Peer | Catalog change feed. |
+| `GET` | `/api/cluster/search/peer` | Peer | Catalog search. |
+| `GET` | `/api/cluster/groups/snapshot` | Peer | Chat snapshot. |
+| `GET` | `/api/cluster/accounts/snapshot` | Peer | Account snapshot. |
+| `GET` | `/api/cluster/files/{path}` | Peer | Media transfer with range requests. |
+| `GET` (upgrade) | `/ws/cluster` | Peer | Peer WebSocket. |
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET`  | `/api/config`     | Admin only. Secrets are write-only: `web.password` / `web.passwordHash` are left out, and `telegram.apiHash`, `web.shareSecret`, `web.guestPasswordHash`, `proxy.password`, `advanced.nsfw.apiToken`, `advanced.seekbar.apiToken` and `advanced.ai.faces.sidecarToken` are replaced by a `<name>Set` boolean (`apiHashSet`, `shareSecretSet`, `guestPasswordHashSet`, `passwordSet`, `apiTokenSet`, `sidecarTokenSet`). |
-| `POST` | `/api/config`     | Deep-merge updates; `advanced.*` namespaces are clamped per-field on save and re-applied at runtime via `config_updated`. A secret left out of the body keeps its saved value (send `proxy.password: null` to clear it); the `<name>Set` flags are ignored. |
-| `POST` | `/api/proxy/test` | `{host, port}` → 5-s TCP probe. |
+## AI (people and faces)
 
-## File serving
+These routes read and edit the face and people data stored in the library. See [AI](AI.md).
 
-| Method | Path | Notes |
-|---|---|---|
-| `GET` | `/files/<path>`     | Serves files under `data/downloads/`. Default `Content-Disposition: attachment`; pass `?inline=1` for inline media (used by the SPA viewer). Tolerates the legacy `data/downloads/` prefix. **`?peer=<id>`** (admin-only) routes through `streamFromPeer()` to fetch the file from a paired peer (proxy mode) or 302-redirects to a signed share URL (direct stream mode). Guest sessions are 403'd when `?peer` is present. |
-| `GET` | `/photos/<id>.jpg`  | Cached profile photos. |
-| `GET` | `/share/<linkId>`   | Public share-link route — see Share links above. |
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/ai/people` | Admin | People list. Query: `limit`, `offset`, `sort` (`face_count`, `name`, `avg_quality`), `dir`. |
+| `GET` | `/api/ai/people/{id}/photos` | Admin | Photos of one person. |
+| `GET` | `/api/ai/person/{id}/face` | Admin | Cover face crop for a person. |
+| `GET` | `/api/ai/faces/by-download/{id}` | Admin | Faces found in one download. |
+| `GET` | `/api/ai/faces/{id}/crop` | Admin | One face crop image. |
+| `GET` | `/api/ai/group-by-person` | Admin | Downloads grouped by person. |
+| `PATCH` | `/api/ai/people/{id}` | Admin | Rename or edit a person. |
+| `POST` | `/api/ai/people/{id}/merge` | Admin | Merge people. |
+| `POST` | `/api/ai/people/{id}/split` | Admin | Split a person. |
+| `POST` | `/api/ai/faces/{id}/reassign` | Admin | Move a face to another person. |
+| `POST` | `/api/ai/faces/reindex` | Admin | Re-index faces. |
+| `DELETE` | `/api/ai/people/{id}` | Admin | Delete a person. |
+
+## Share links
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `POST` | `/api/share/links` | Admin | `{downloadId, ttlSeconds?, label?}` → `{success, link}`. Without `ttlSeconds` the link lasts 7 days. Values are clamped to the configured range (default 60 s to 90 days), and `0` means the link never expires. |
+| `GET` | `/api/share/links` | Admin | `{links, total, limit, offset, hasMore}`. Each link includes its `url`, `expiresAt`, `revokedAt`, `accessCount` and file details. |
+| `DELETE` | `/api/share/links/{id}` | Admin | Revoke a link → `{success, revoked}`. |
+| `GET` | `/share/{id}?s=<sig>` | Public | Serves the file inline. Add `&download=1` to force a download. |
+| `GET` | `/share/{id}/{name}?s=<sig>` | Public | Same, with a file name in the path. |
+
+Link format: `https://<host>/share/<linkId>?s=<signature>`, where the signature is an HMAC-SHA256 of the link ID and expiry made with a server-side secret. Links made by 2.x (`?sig=…&exp=…`) keep working. Revoked, expired or tampered links get `401 {"error":"Share link is not valid","code":…}`. A file missing on disk gets `404`. The public routes are rate-limited (see [Rate limits](#rate-limits)).
+
+## Update
+
+One-click update uses the watchtower sidecar, as in 2.x. See [Deploy](DEPLOY.md).
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/update/status` | Admin | `{available, inDocker, watchtowerConfigured, watchtowerUrl, overlayStallMs}`. |
+| `POST` | `/api/update` | Admin | Ping watchtower, check the database, write a verified pre-update snapshot, then trigger the update. |
+| `GET` | `/api/auto-update/status` | Admin | Progress of the current update. |
+| `GET` | `/api/update/history` | Admin | Past updates. |
 
 ## WebSocket
 
-`ws://<host>:3000` (or `wss://` behind TLS). Authenticates via the same session cookie at the upgrade handshake; the role (admin / guest) is stamped on the socket for future per-event filtering.
+Connect to `ws://<host>:3000/ws` (or `wss://` behind TLS). An upgrade on `/` is accepted too. The upgrade needs a valid `tg_dl_session` cookie, otherwise it gets `401`. Guest sessions may connect.
 
-| Event type | Payload |
+- The socket is **server-push only**. Anything the client sends is read and ignored.
+- The server pings every 30 seconds and drops the connection after 90 seconds without a pong. The socket closes when its session expires or is revoked (logout, password change, *Revoke all sessions*). Socket traffic does not extend the session.
+- Each message is one JSON object with a `type`. Most events carry their data in `payload`, as in `{"type": "...", "payload": {...}}`. Some, mainly progress events, put their fields directly beside `type`.
+
+| Area | Event types |
 |---|---|
-| `monitor_state`        | `{state, error?}` |
-| `monitor_status_push`  | Full `/api/monitor/status` snapshot every 3 s. |
-| `download_progress`    | `{payload: {key, groupId, fileName, progress, received, total, bps}}` |
-| `download_complete`    | `{payload: {key, groupId, fileName, fileSize, deduped?}}` |
-| `download_start` / `download_error` / `queue_length` / `queue_changed` / `scale` / `rate_wait` / `flood_wait` / `forward_error` / `rescued` / `monitor_download` / `monitor_urls` / `monitor_error` / `monitor_started` | Engine events, like the two above: each goes out under its own type with the event's data in `payload` (`queue_length`: `{length}`, `download_error`: `{job, error}`, `rate_wait` / `flood_wait`: `{seconds}`). There is no `monitor_event` envelope (older docs listed one; it was never sent). |
-| `stats_push`           | Full `/api/stats` snapshot every 30 s. |
-| `file_deleted`         | `{path, id?}` |
-| `bulk_delete`          | `{unlinked, dbDeleted, ids?}` |
-| `group_purged`         | `{groupId}` |
-| `purge_all`            | `{}` |
-| `groups_refreshed`     | `{updates}` |
-| `chat_access_changed`  | `{ids}` — chats whose access state changed (coalesced over 0.5 s); reload `/api/groups`. Forward-destination entries carry a `dest:` prefix. |
-| `chat_access_recheck_progress` / `chat_access_recheck_done` | Job-tracker snapshots of a bulk "Check again" (`progress: {processed, total, reachable}`, `result: {total, reachable, results}`). |
-| `history_progress`     | `{jobId, processed, downloaded, group, mode}` |
-| `history_done` / `history_cancelled` / `history_error` | as above |
-| `history_deleted` / `history_cleared`   | Cross-tab Recent-backfills sync. |
-| `history_stalled`      | `{pending, cap, stallSeconds}` |
-| `dedup_progress`       | `{stage, processed, total, hashed, errored}` |
-| `thumbs_progress`      | `{stage, processed, total, built, skipped, errored}` |
-| `nsfw_progress`        | `{scanned, total, candidates, keep, running}` |
-| `nsfw_done`            | `{scanned, candidates, keep, durationMs}` |
-| `nsfw_blocklist_deleted`| `{id, key}` — a file auto-deleted by the NSFW hash blocklist. `key` is the job key (`groupId:messageId:mediaType`) for queue UI matching. |
-| `nsfw_model_downloading` | `{percent}` (first-run only) |
-| `seekbar_progress`     | `{stage, processed, total, generated, skipped, errored}` — backfill scan. |
-| `seekbar_done`         | `{processed, generated, skipped, errored, durationMs}`. |
-| `seekbar_rebuild_progress` / `seekbar_rebuild_done` | Same shape as the build pair, fired by `/api/maintenance/seekbar/rebuild`. |
-| `seekbar_sprite_ready` | `{download_id}` — fires after a per-row pregenerate succeeds (post-download hook or `/regen/:id`); the viewer's hover preview subscribes and flips from `pending` → `ready` in place. |
-| `seekbar_sidecar_status` | `{ok, url?, mode?, version?, error?}` — emitted on sidecar boot / respawn / disable. |
-| `seekbar_config_changed` | `{}` — broadcast after `POST /api/config` touches `advanced.seekbar.*`; the viewer drops its `enabled` cache and the maintenance page reloads its KPI strip. |
-| `ai_faces_status`      | `{ok, url?, mode?, state?, error?}` — sidecar lifecycle (downloading / starting / ready / relaunching / disabled). |
-| `ai_faces_install_progress` | `{state, line}` — line-by-line output of `POST /api/ai/faces/install-deps`. |
-| `ai_faces_install_done` | `{ok, reason?, exitCode?}`. |
-| `ai_faces_dim_change`  | `{from, to}` — broadcast once after the embedding-dim guard purges stale rows on model upgrade. |
-| `ai_faces_reindexed`   | `{ts}` — fired after `/api/ai/faces/reindex` finishes. |
-| `ai_reindex`           | `{processed, indexed, durationMs}` — fired by `/api/ai/reindex`. |
-| `update_started`       | `{backup}` — fired right before watchtower kills the container. |
-| `update_done`          | `{durationMs, kind:'autoUpdate', error?}` — `error` is set when the `/api/update` pipeline threw (pre-flight or trigger). The SPA's stall-overlay handler reads this to surface a toast + tear down the spinner. |
-| `rescue_swept`         | (replaced by `file_deleted` in v2.8 — rescue sweeper now uses the canonical event so the gallery + footer drop the row in-place). |
-| `rescue_sweep_done`    | `{count}` aggregate after every Rescue Mode sweep. |
-| `config_updated`       | `{}` |
-| `sessions_revoked`     | `{}` |
+| Downloads & queue | `download_complete`, `queue_changed`, `stats_update`, `stats_push`, `file_deleted`, `bulk_delete`, `download_pinned`, `downloads_pinned` |
+| Monitor | `monitor_state`, `monitor_status_push`, `resync_dialogs_progress`/`_done`, `restart_monitor_progress`/`_done` |
+| Chats | `groups_refreshed`, `groups_refresh_info_progress`/`_done`, `groups_refresh_photos_progress`/`_done`, `chat_access_changed`, `chat_access_recheck_progress`/`_done`, `chat_leave_batch_progress`/`_done`, `group_files_deleted`, `group_purged`, `group_purge_progress`/`_done` |
+| History backfill | `history_progress`, `history_done`, `history_error`, `history_cancelled`, `history_cancelling`, `history_deleted`, `history_cleared` |
+| Maintenance | `db_integrity_progress`/`_done`, `db_vacuum_progress`/`_done`, `files_verify_progress`/`_done`, `reindex_progress`/`_done`, `dedup_progress`/`_done`, `dedup_delete_progress`/`_done`, `thumbs_progress`/`_done`, `thumbs_rebuild_progress`/`_done`, `faststart_progress`/`_done`, `recovery_bulk_progress`/`_done`, `integrity_swept`, `purge_all_progress`/`_done`, `purge_all` |
+| Rescue | `rescued`, `rescue_sweep_done` |
+| Backup (admin sockets only) | `backup_progress`, `backup_done`, `backup_error`, `backup_queue_drained`, `backup_destination_added`, `backup_destination_updated`, `backup_destination_removed`, `log` |
+| Cluster | `peer_catalog_update` |
+| Settings & AI | `config_updated`, `ai_config_changed`, `ai_faces_reindexed`, `seekbar_config_changed`, `seekbar_sidecar_status` |
+| Session & update | `sessions_revoked`, `update_started`, `update_done` |
+
+## Internal routes
+
+- **`/v1/db/*`** (`POST`, admin session) are read helpers that `tgdl-server` registers for its own use, behind the same session gate. The dashboard does not call them directly, and they are not a supported API.
+- The **`tgdl-core`** helper (`core-service/cmd/tgdl-core`) has its own `/v1/*` API secured by a bearer token. It is a development and testing tool, not part of 3.0: the Docker image, CI and the release archives only build `tgdl-server`.
+- Every path not listed here serves the embedded dashboard (HTML, JS, CSS, service worker).
+
+## See also
+
+- [Deploy](DEPLOY.md): ports, environment variables, reverse proxy, first password
+- [Configuration](CONFIGURATION.md): every setting and environment variable
+- [Upgrading](UPGRADING.md): moving from 2.x to 3.0
+- [Troubleshooting](TROUBLESHOOTING.md)
+- [Architecture](ARCHITECTURE.md)

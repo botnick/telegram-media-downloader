@@ -1,3 +1,10 @@
+---
+title: "Recovery internals"
+description: "Engineering note on the maintenance recovery page: resolving downloads whose chat or account changed."
+parent: "Developer notes"
+nav_order: 13
+---
+
 # Native recovery cleanup
 
 The maintenance recovery page now calls Go for its list, count, status, resolve,

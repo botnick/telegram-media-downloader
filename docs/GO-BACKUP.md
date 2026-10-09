@@ -1,4 +1,13 @@
+---
+title: "Backup internals"
+description: "Engineering note on the native Go backup transports, TGDB encrypted archives, publication checks and crash recovery."
+parent: "Developer notes"
+nav_order: 5
+---
+
 # Native backup migration
+
+> **Engineering note** from the Go migration. The user guide is [Backup](BACKUP.md).
 
 The Go application now implements destination management and local, S3, SFTP and
 FTP/FTPS mirror/snapshot transports. **Backup migration is incomplete.**

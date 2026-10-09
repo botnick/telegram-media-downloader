@@ -1,295 +1,424 @@
 ---
-title: "Cluster"
-description: "Pair several Telegram Media Downloader instances into one federated library with failover and cluster-wide search."
-nav_order: 6
+title: "Cluster mode"
+description: "Pair two or more Telegram Media Downloader 3.0 servers to browse, search and stream each other's files from one dashboard over signed requests."
+parent: Features
+nav_order: 2
 ---
 
 # Cluster mode
 
-> **v2.10** — per-peer tokens, real-time WS push, LAN auto-discovery,
-> relay-through-peer, backup-peer failover, live config sync,
-> cross-peer file delete, cluster-wide search. See
-> [MIGRATION-v2.9-to-v2.10.md](MIGRATION-v2.9-to-v2.10.md) for re-pair
-> instructions if you're upgrading.
+Cluster mode links several installs of Telegram Media Downloader (each one is
+a **peer**) so that an admin on any of them can see, search and play the files
+the others downloaded. Every peer stays a complete, independent install: its
+own Telegram accounts, downloads folder, SQLite database and dashboard. Nothing
+is moved or copied between disks; a peer only keeps a cached list (catalog) of
+what the others have and fetches the bytes on demand when you open a file.
 
+Typical uses:
 
-Run multiple instances of the dashboard and federate them into a single
-library. Each peer keeps its own download capacity and SQLite database;
-the dashboard merges every paired peer's catalog into one gallery, with
-a small peer-source badge on each row.
+- A home NAS and a VPS each downloading different chats, browsed from one
+  dashboard.
+- Watching a video stored on peer B while logged in to peer A, without a second
+  login or an SSH tunnel.
+- Making sure only one machine downloads a given chat.
 
-Use cluster mode when you want to:
+Cluster mode does nothing until you pair a peer. There is no public directory
+and no automatic discovery: every pairing is started by an admin with a URL
+and a pairing code.
 
-- Spread a library across two or more machines (home NAS + VPS, etc.).
-- Have one operator dashboard that controls every machine.
-- Avoid downloading the same Telegram message twice when several peers
-  watch the same group.
-- Stream a file owned by peer B in your browser while you're sitting on
-  peer A's URL — no SSH tunnels, no second login.
+## What 3.0 does and does not do
 
-Cluster mode is **off by default**. Pairing is manual: you paste a URL
-and a shared cluster token between any two peers. There is no public
-discovery service.
+3.0 is a rewrite of the cluster in Go. It keeps the 2.x wire format for signed
+requests but implements a smaller feature set than late 2.x releases.
 
-## Concepts
-
-| Term | Meaning |
+| Works in 3.0 | Not available in 3.0 |
 |---|---|
-| **peer** | A complete instance of this app — full dashboard, downloader, DB, downloads folder. |
-| **peer_id** | UUIDv4 generated once on first boot. Persisted in `kv['peer_id']`. Never changes. |
-| **cluster token** | 32-byte hex secret. Every peer in the cluster holds the **same** value (it's the HMAC key for cross-peer requests). Treat it like a password. |
-| **paired peer** | A remote peer this instance has shaken hands with. Stored in the `peers` table. |
-| **owner peer** | Optional per-group setting. Only the peer matching `groups[i].ownerPeerId` downloads the group's messages. Other peers see its catalog via sync but stay quiet on Telegram. |
-| **bridge** | When you open a file owned by peer B from peer A's dashboard, A streams it through itself (proxy) or 302-redirects you to B (direct). Per-peer setting. |
-| **stream mode** | `proxy` (default — A fetches and pipes to your browser; works behind any NAT) or `direct` (A redirects you to B; faster but needs B browser-reachable). |
+| Pairing with a one-time code (or the remote peer's cluster token) | LAN auto-discovery (the UDP beacon is gone) |
+| Per-pair secrets, signed requests, replay protection, revocation | Relay through a third peer |
+| Automatic catalog sync of added, edited and deleted files | Backup peer / automatic failover |
+| *All peers* gallery view and search over the synced catalog | Replicating settings between peers (Settings → Federation) |
+| Streaming peer files through your peer, with seeking (HTTP ranges) | *Direct* stream mode (browser fetches from the owner) |
+| *Owner peer* per chat (only that peer downloads it) | Peer thumbnails in the gallery |
+| Peer status, manual *Ping*, manual sync, audit log | Cross-peer duplicate sweep, conflicts and remote delete |
 
-## Setup
+Some 2.x controls are still visible in the dashboard but have no effect on the
+3.0 server: the **Backup peer** dropdown, **Settings → Federation**
+(replication policy and failover grace), the **Cross-peer dedup** card with
+*Run sweep*, and the *Browser fetches direct* stream mode. They are described
+under [Limitations](#limitations). The engineering status is tracked in
+[GO-CLUSTER.md](GO-CLUSTER.md#remaining-cluster-work).
 
-The first install in your cluster is the **founder**. Subsequent peers
-**join** by adopting the founder's cluster token.
+## Requirements
 
-### 1. On the founder
+### Versions
 
-Open `Maintenance → Cluster`. Click **Show token**, copy the value.
+Run the same major version on every peer. Pairing between 3.0 peers is the
+supported setup; see [Upgrading peers](#upgrading-peers) for 2.x peers.
 
-That value is your cluster's shared secret. Save it somewhere safe — a
-password manager, sealed envelope, etc. You'll paste it into every other
-peer.
+### Network
 
-### 2. On every other peer
+Both peers must be able to open HTTP(S) connections **to each other**, not
+just from your browser:
 
-Open `Maintenance → Cluster`. Click **Use cluster's token**, paste the
-founder's token. The peer now signs cross-peer requests with the same
-key as the founder.
+- The peer you pair *from* calls the other peer once to pair.
+- Afterwards each side calls the other: catalog sync pulls from the remote
+  peer, file playback streams from the peer that owns the file, and each side
+  keeps a WebSocket (`/ws/cluster`) open to the other for change hints.
 
-### 3. Pair peers
+Any route works: same LAN, VPN (Tailscale, WireGuard), or public HTTPS. A few
+rules the peer client enforces:
 
-On any peer, click **Add peer**. Paste the URL of the peer you want to
-pair with (e.g. `https://b.example.com`) plus the cluster token. The
-two peers complete a handshake and record each other.
+- The peer URL must be `http://` or `https://` with a host name, and without
+  user/password, query string or `#fragment`. A trailing `/` is dropped.
+- Redirects are **not followed**. Use the final URL (for example `https://…`
+  directly, not an `http://` address that redirects to it).
+- HTTPS certificates are verified normally; self-signed certificates fail.
+- System proxy variables (`HTTP_PROXY`, `HTTPS_PROXY`) are **not** used for
+  peer traffic.
+- Plain `http://` is accepted. Requests are signed, so they cannot be forged
+  or altered, but the content (file lists, media) is readable on the wire. Use
+  HTTPS or an encrypted network across the internet.
 
-Pair every peer with at least one other in the cluster — there's no
-star/mesh enforcement, but unreachable peers can't sync.
+### Clocks
 
-### 4. (Optional) Assign group ownership
+Every signed request carries a timestamp and is rejected if it differs from
+the receiver's clock by more than **60 seconds**. Keep NTP (`chrony`,
+`systemd-timesyncd`, Windows Time) running on every peer.
 
-If you want a specific peer to be the only one downloading a given
-group, edit the group and pick **Owner peer**. The other peers stop
-watching that group on Telegram; they still see its files via the
-cluster catalog + bridge.
+### The address this peer gives out (`PUBLIC_URL`)
 
-If `Owner peer` is left blank, every peer that has the group enabled
-will download it (with cross-peer dedup catching duplicates by hash).
+When you pair, your peer tells the other one the URL at which it can call you
+back. The other peer stores that URL and uses it for every later sync,
+WebSocket and file request. It is chosen like this:
 
-A chat's details page (Chats → the chat, or the ⚙ in its gallery) →
-**Accounts** exposes both `ownerPeerId` and `backupPeerId` as
-dropdowns whenever at least one peer is paired. Pick a backup peer to enable automatic failover —
-the backup takes over downloading if the owner stays silent past
-`cluster.failover_grace_minutes` (default 5).
+1. If the environment variable `PUBLIC_URL` is set on the peer you are pairing
+   **from**, that value is sent (for example
+   `PUBLIC_URL=https://nas.example.com`).
+2. Otherwise it is built from the address in your browser's address bar (the
+   request's `Host`) plus `https` when the request reached the server over TLS
+   or through a trusted reverse proxy that sent `X-Forwarded-Proto: https`
+   (see `TRUST_PROXY` in [Configuration](CONFIGURATION.md); its default trusts
+   proxies on loopback). Anything else gives `http`.
 
-### 5. (Optional) Tune federation in Settings → Federation
+`PUBLIC_URL` is only read at pairing time and only for this purpose; it does
+not change the listen address, cookies or links elsewhere in the app. Set it
+when the address you use in the browser is not one the other peer can reach,
+for example:
 
-Settings → Federation surfaces three cluster-wide knobs:
+- you open the dashboard as `http://localhost:3000` or through an SSH tunnel;
+- the reverse proxy is on another host and does not send
+  `X-Forwarded-Proto`, so the server would announce `http://` for an HTTPS
+  site;
+- the browser uses a LAN name but the other peer is on the internet.
 
-- **Replication policy** — segmented control per config key (`groups`,
-  `accounts`, `web`, `download`, `rescue`). Picking **Cluster** mirrors
-  every edit of that key to every paired peer (last-writer-wins).
-  **Cluster (exclusive)** mirrors but lets receivers override locally.
-  **Local** keeps the key on this peer only (default).
-- **Failover grace window** — slider for `cluster.failover_grace_minutes`.
-- **This peer summary** — read-only view of own peer ID + display name,
-  with a deep-link to **Maintenance → Cluster** for token / pairing
-  management (Settings is for cluster-wide config; the cluster page
-  owns peer/identity actions).
+Docker example (`docker-compose.yml` → `environment:` or `.env`):
 
-Replication writes to `config.cluster.replicate.<key>`; the existing
-`src/core/cluster/config-sync.js` already reads this map and broadcasts
-`config_changed` events to peers, so toggling the segmented control
-takes effect immediately without a restart.
+```env
+PUBLIC_URL=https://tgdl-nas.example.com
+```
 
-## Federated gallery (Layer 1, v2.12+)
+If a peer was stored with a wrong URL, set `PUBLIC_URL` (or open the dashboard
+at a reachable address) and pair again with a new code; pairing again updates
+the stored URL.
 
-The main dashboard gallery is **opt-in federated**. By default each peer's
-"All Media" / per-group view / search shows only that peer's files. A
-small **scope chip** in the gallery header (admin-only, hidden when no
-peers are paired) flips it to:
+### Reverse proxy
 
-- **This peer** — local-only (default).
-- **All peers** — UNIONs every paired peer's `peer_downloads`.
-- **Per-peer** — narrows to a single peer's files.
+Follow [DEPLOY.md → Reverse proxy](DEPLOY.md#reverse-proxy-and-https), and also:
 
-State persists in `localStorage['tgdl-gallery-scope']`. Federated tiles
-carry a "from {peer}" badge in grid mode (and a subtitle suffix in list
-mode). The sidebar Downloaded Groups list also merges peer-owned groups
-with the same badge; clicking a foreign group switches the scope to that
-peer and opens the per-group view filtered to its files.
+- Forward `/api/cluster/` and `/ws/cluster` unchanged, including the
+  `X-Peer-Id`, `X-Peer-Ts` and `X-Peer-Signature` headers and the WebSocket
+  `Upgrade` / `Connection` headers.
+- Do not put an extra login (basic auth, SSO, Cloudflare Access) in front of
+  those paths: peers authenticate with their own signatures and cannot answer
+  a login page.
+- Do not rewrite the path or query string; the signature covers them.
+- Allow long responses for `/api/cluster/files/` (video streaming).
 
-### Peer media routing
+## Pair two peers
 
-Peer-owned tiles route through the existing cluster bridge:
+Pairing is done by an **admin** in the dashboard. The page is
+**Settings → Tools → Cluster**. Call the peers *A* (where you start) and *B*
+(the one you add).
 
-- **Thumbnails** → `/api/cluster/thumbs/:peerId/:remoteId?w=<N>` (cookie-
-  authed browser proxy) → server signs an HMAC request to the peer's
-  `/api/cluster/peer-thumbs/:remoteId` endpoint and streams the response.
-  Offline peers return a 1×1 placeholder PNG with a 60 s cache so the
-  console isn't spammed with 404s.
-- **Full media** → `/files/<peerSidePath>?inline=1&peer=<peerId>`. The
-  same `streamFromPeer` proxy + `requestSignedShareUrl` direct-mode fork
-  the existing `_clusterref/` ghost rows already use.
+1. **Optional: name both peers.** In the *This peer* card, click **Edit** next
+   to the display name (default: the host name) and **Save**. Other peers see
+   this name on file badges and in the peer list.
+2. **On B, issue a code.** Click **Issue pairing code**. An 8-character code
+   appears. It is valid for **5 minutes** and works **once**. (At most 32
+   unused codes can be outstanding.)
+3. **On A, pair.** In *Pair a new peer*, enter B's URL as A should reach it
+   (for example `https://b.example.com` or `http://192.168.1.20:3000`) and the
+   code, then click **Connect**.
+4. A's server contacts B, both sides generate and store a fresh **per-pair
+   secret**, and the dialog shows *Successfully paired!*. B appears under
+   *Connected peers* on A, and A appears on B.
+5. Click **Ping** on the peer card to confirm that A can reach B with the new
+   secret. Ping from B as well to confirm the way back.
 
-### Backward compatibility
+Within about 30 seconds A and B start syncing their catalogs. Repeat for every
+pair of peers that should see each other: pairings are point-to-point, so in a
+cluster of three, pair A–B, A–C and B–C if all three should see everything.
 
-Every existing endpoint stays byte-identical for the local-only default —
-the federation params (`?include=peers|all` and `?peer=<id>`) are opt-in.
-Guest sessions are forced back to `local` server-side; federation is
-admin-only on every surface.
+**Pairing with a token instead of a code.** The second field also accepts the
+remote peer's **cluster token** (64 hex characters; *Show* / *Copy* in B's
+*This peer* card). The token only authorises the pairing handshake; after
+that the per-pair secret is used, exactly as with a code. Prefer codes: they
+expire and cannot be reused, while the token stays valid until you rotate it.
+**Use cluster's token** (setting a token by hand) is only needed if you want a
+peer to accept a token you already know.
 
-## How it actually works
+If pairing fails, the dialog shows the reason; see
+[Troubleshooting](#troubleshooting).
 
-### Catalog sync
+## Using a cluster
 
-Every 30 seconds, each peer polls every other peer at `GET
-/api/cluster/downloads/since?sinceId=<n>` and writes the rows it gets
-back into its local `peer_downloads` table. The merged gallery view
-unions own `downloads` with every peer's `peer_downloads`.
+### See peers' files in the gallery
 
-A peer that goes offline keeps its rows visible in the cache (greyed
-out); they refresh when it comes back online.
+Once a peer is paired, admins get a scope selector in the gallery header:
 
-### Streaming bridge
+- **This peer** — only local files (default).
+- **All peers** — local files plus the cached catalogs of every paired peer,
+  newest first, each peer file marked with its peer's name.
+- A single peer — only that peer's files, in per-chat views.
 
-When you click a file in the gallery and the row is owned by another
-peer, the local `/files/<path>` middleware:
+The choice is remembered in the browser. Guest sessions always see local files
+only, and the scope selector is hidden when no peer is paired.
 
-1. Resolves the row → finds it lives on peer B.
-2. **Proxy mode** (default): signs `GET https://b.example.com/api/cluster/files/<path>`,
-   forwards your browser's `Range` header, pipes the response back.
-3. **Direct mode**: asks B to mint a short-lived signed share URL, then
-   302-redirects your browser there. B serves the bytes directly.
+Peer files show no thumbnail preview in 3.0; open them to view or play.
 
-Stream mode is per-peer; toggle it from the peer's edit sheet on the
-Cluster page. Default is proxy because it works in every network
-topology.
+### Open and play a peer's file
 
-### Dedup (3 layers)
+Opening a peer file sends the request to *your* peer, which signs a request to
+the owning peer and streams the bytes back through itself. Seeking works
+(`Range` requests are forwarded). Browser cookies and authorisation headers
+are never forwarded to the other peer. If the owning peer cannot be reached,
+the request fails with *Peer stream unavailable* (`storage_offline`).
 
-1. **Owner-peer routing.** If a group has `ownerPeerId = B`, peers other
-   than B don't watch it on Telegram → no duplicate downloads.
-2. **Pre-download cluster check.** Before the downloader writes a file
-   to disk, it sha256s the bytes and looks the hash up in
-   `peer_downloads`. If a peer already has the file, the local copy is
-   unlinked and a synthetic row is inserted with file_path
-   `_clusterref/<peerId>/<remoteId>`. The bridge resolves it transparently.
-3. **Post-download sweep.** A nightly (or on-demand) sweep finds files
-   sharing `(file_hash, file_size)` across peers and surfaces them as
-   conflicts in the Cluster page. The operator picks which copy to keep
-   — every other copy is unlinked locally (or queued for deletion on
-   the remote peer).
+Each peer's **Edit** sheet has a *Stream mode*. Keep **Proxy through this
+peer**: the *Browser fetches direct* option is not implemented in 3.0 and
+makes the file request fail with `unsupported_stream_mode` (HTTP 501).
 
-## Token rotation
+### Search
 
-If you suspect token leakage:
+With the gallery scope set to **All peers**, the search box matches file name
+and chat name across your own files and the cached catalogs of every peer.
+Peers are not contacted while you type, so results reflect the last sync, and
+an offline peer's files are still found (they just cannot be opened until it
+is back).
 
-1. On any peer, click **Rotate token**. Every paired peer is now
-   un-pair'd in practice (their stored token doesn't match any more).
-2. Open every other peer's Cluster page → **Use cluster's token** →
-   paste the new value.
-3. Re-pair the peers (Add peer on either side).
+### Choose which peer downloads a chat (owner peer)
 
-Rotation is destructive: old paired-peer rows fail HMAC verification
-until you complete step 2 + 3 on every peer.
+When at least one peer is paired, a chat's details page (**Chats** → the chat,
+or the ⚙ in its gallery) shows an **Owner peer** dropdown under *Accounts*.
+If a chat's owner is set to another peer, this peer does not download that
+chat at all: live monitoring, history backfill, Stories and pasted message
+links for that chat are all skipped here.
+
+Chat settings are not shared between peers, so set this on **every peer except
+the owner**. On the owner itself leave it empty (its own name is not in its
+own list). An empty owner means "this peer downloads it as usual"; two peers
+that both monitor a chat with no owner set will both download it, and 3.0 does
+not de-duplicate files across peers.
+
+The **Backup peer** dropdown next to it is saved but not acted on in 3.0;
+there is no automatic failover.
+
+## What syncs between peers
+
+| Data | Synced? | How |
+|---|---|---|
+| Catalog of downloaded files (name, path, size, type, SHA-256, chat id/name, message id, date, status, NSFW score) | Yes, one way per pair (each side pulls the other) | Durable change feed, see below |
+| Added, edited and deleted file records | Yes | Deletions are sent as tombstones and remove the cached row |
+| Media files | No | Streamed on demand when opened; never copied |
+| Thumbnails | No | Not proxied in 3.0 |
+| Chat settings, accounts, Telegram sessions, dashboard settings | No | Each peer is configured separately |
+| Dashboard passwords, share links | No | Each peer has its own |
+
+**How catalog sync runs.** Each peer pulls the other's changes from
+`GET /api/cluster/catalog/changes`, 500 records per page and up to 5,000 per
+peer per pass, with up to four peers in parallel. A pass runs every
+**30 seconds**, immediately after a change hint arrives over the `/ws/cluster`
+WebSocket (so new downloads usually appear within a second or two), and when
+you trigger it manually. Progress is stored as a revision cursor, so restarts
+resume where they left off and an interrupted page is simply fetched again.
+If the remote catalog was restored from a backup (its catalog *epoch*
+changes), the local cache of that peer is cleared and rebuilt automatically.
+
+The gallery refreshes on its own when a sync changes something.
+
+## Peer status and maintenance
+
+- **Status pill.** *Online* means the peer was heard from recently (a
+  successful sync, ping, WebSocket heartbeat or incoming request). A failed
+  sync marks it *Offline*; its cached files stay listed. *Stale* / *Offline*
+  are also shown when the last contact gets old.
+- **Ping** (`POST /api/cluster/peers/{peerId}/test`) sends one signed health
+  request and records the result.
+- **Manual sync.** `POST /api/cluster/sync/run` runs a pass now (it answers
+  `409` if one is already running). `GET /api/cluster/sync/state` shows each
+  peer's cursor and last error.
+- **Recent cluster events** on the Cluster page lists pairings, pings, sync
+  failures, rejected requests and token changes.
+- **Edit** changes the local display name of a peer, its stream mode and a
+  free-text note.
+- **Remove** deletes the peer from *this* side: the pairing, its secret, its
+  cached catalog and its sync cursor go together, and further requests from
+  it are rejected. Remove it on the other peer too; otherwise that side keeps
+  trying and logs `no_secret` failures. A stream that is already playing is
+  not cut off.
+
+## Security
+
+- **Admin only.** All dashboard cluster pages and `/api/cluster/*` management
+  routes require an admin session. Guests cannot switch the gallery scope or
+  open peer files.
+- **Per-pair secrets.** Every pairing creates a new random 32-byte secret that
+  only those two peers know. Removing one peer does not affect other pairings.
+- **Signed requests.** Every peer-to-peer request carries `X-Peer-Id`,
+  `X-Peer-Ts` (milliseconds) and `X-Peer-Signature`, an HMAC-SHA256 over the
+  method, path with query, timestamp and SHA-256 of the body. The WebSocket
+  link and each of its messages are signed the same way. The receiver checks
+  the signature in constant time, rejects timestamps more than 60 seconds off,
+  and remembers accepted signatures for 120 seconds in the database so a
+  captured request cannot be replayed, even across a restart.
+- **The cluster token only opens the door for pairing.** It cannot be used to
+  sign normal peer requests. Rotating it (**Rotate**) invalidates unused
+  pairing codes and the old token for future pairings, but existing pairings
+  keep working. Rotate it if it may have leaked; remove a peer to cut it off.
+- **What a peer can read from you:** your file catalog (the fields listed
+  above), file contents inside your downloads folder (path-confined; no other
+  files), a list of your chats' settings and a list of account labels, phone
+  numbers and enabled state. Session data, API credentials and any setting
+  whose name contains *secret*, *password*, *token* or *session* are never
+  sent. Pair only with servers you trust with that information.
+- **Limits.** Peer request and JSON response bodies are capped at 1 MiB,
+  WebSocket frames at 1 MiB; peer requests time out after 10 seconds (file
+  streams after 30 seconds of inactivity).
+
+## Upgrading peers
+
+### From 2.x to 3.0
+
+Upgrade as described in [DEPLOY.md](DEPLOY.md#updating). The peer keeps its
+peer ID, name, cluster token and paired peers, because they live in the same
+database.
+
+Whether a pairing needs to be redone depends on how it was made:
+
+- **Paired on 2.10 or later** (with a pairing code, or with a token on a
+  version that installs per-pair secrets): it keeps working on 3.0 with no
+  action, because 3.0 uses the same signature format and the stored per-pair
+  secret.
+- **Paired on 2.9 or earlier** (shared cluster token only, no per-pair
+  secret): the peer is listed with `migrationRequired` and every request to
+  or from it fails with `migration_required`. 3.0 no longer accepts the old
+  shared-token fallback. Remove the peer on both sides and pair again with a
+  code. [MIGRATION-v2.9-to-v2.10.md](MIGRATION-v2.9-to-v2.10.md) describes the
+  2.10 change; its notes on discovery, failover, relay and config sync do not
+  apply to 3.0.
+
+### Mixed 2.x and 3.0 peers
+
+Upgrade every peer to 3.0. A mixed cluster only partly works:
+
+- A 3.0 peer syncs only through `/api/cluster/catalog/changes`, which 2.x does
+  not have. It **cannot list a 2.x peer's files**; sync to that peer fails
+  with `HTTP 404`.
+- A 2.x peer can still pull the catalog of a 3.0 peer
+  (`/api/cluster/downloads/since` is served) and stream its files through the
+  proxy. 2.x features that call 3.0 for direct streaming, thumbnails, relay,
+  remote delete, failover or config sync get errors or are refused.
+- Pairing a 2.x peer with a 3.0 peer uses the same handshake, but this
+  combination is not tested. If you must, pair *from* 2.30 or later; versions
+  up to 2.29.1 refuse every pairing-code handshake.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
+Errors appear in the pairing dialog, in the *Ping* result and in
+**Recent cluster events**.
+
+| Message / code | Meaning | Fix |
 |---|---|---|
-| `cluster_auth_failed` 401 in audit log | Token mismatch between peers | Use **Use cluster's token** on the lagging peer to copy the founder's value |
-| Peer status stuck on `offline` | Network or wrong URL | Click **Test** on the peer card; check the audit log for the failure reason |
-| Storage offline toast on a video | Owner peer is unreachable | Wait for it to come back, or revoke + re-pair if the URL changed |
-| `clock_skew` 401 in audit log | Peer clocks differ by > 60 seconds | `chronyd` / `w32time` — sync the system clock |
-| Duplicate files keep appearing in the gallery | Owner-peer routing not configured + sync hasn't caught up yet | Wait one sync cycle (30 s) or run **Sync now** from the Cluster page |
+| `bad_url` | Peer URL is not a plain `http(s)://host[:port]` | Remove credentials, `?query`, `#fragment` and spaces |
+| `bad_self_url` | This peer could not work out its own reachable URL | Set `PUBLIC_URL` on this peer |
+| `unreachable` | This server could not connect to the other one | Check URL, firewall, DNS and TLS certificate from the server, not the browser (for example `curl` from inside the container) |
+| `token_invalid` (pairing) | The other peer rejected the code or token | Code expired (5 min), was already used, was issued by a different peer, or the token was rotated; issue a new code |
+| `remote_error` | The other peer answered with a non-200 status | Often a reverse proxy login page or redirect in front of `/api/cluster/`; also check its logs |
+| `self` | The URL points back to this same install | Use the other peer's address |
+| `clock_skew` | Clocks differ by more than 60 s | Enable NTP on both peers |
+| `migration_required` | Pairing from 2.9 or earlier without a per-pair secret | Remove on both sides and pair again with a code |
+| `no_secret` | The caller is not (or no longer) paired here | The other side was removed here; remove it there too, or pair again |
+| `bad_signature` | Secret mismatch, or a proxy changed the path, query or body | Check the proxy passes requests unchanged; pair again |
+| `replay` | The same signed request was received twice | Usually a retrying proxy; disable retries for `/api/cluster/` |
+| Ping works from A but B shows A *Offline* | A announced an address B cannot reach (for example `localhost`) | Set `PUBLIC_URL` on A, then pair again |
+| Sync shows `HTTP 404` | The peer is still on 2.x | Upgrade it to 3.0 |
+| Peer file opens with `storage_offline` | The owning peer is down or unreachable from this peer | Bring it back; Ping to confirm |
+| Peer file fails with `unsupported_stream_mode` | Stream mode is set to *direct* | Edit the peer → *Proxy through this peer* |
+| New peer files take ~30 s to appear | The WebSocket link is blocked, so only the 30 s timer runs | Allow WebSocket upgrades for `/ws/cluster` on the proxy |
+| *Run sweep* or *Conflicts* shows an error | Cross-peer dedup is not in 3.0 | Ignore the card |
 
-## API
+For general server problems see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
-Every cluster route is admin-only by virtue of the `/api` chokepoint
-default-deny — peer-to-peer routes additionally require an HMAC signature
-that matches the local cluster token.
+## Limitations
 
-| Route | Auth | Purpose |
-|---|---|---|
-| `GET  /api/cluster/identity` | admin cookie | own peer_id + name |
-| `GET  /api/cluster/identity/token` | admin cookie | reveal token |
-| `POST /api/cluster/identity/rotate-token` | admin cookie | generate fresh token |
-| `POST /api/cluster/identity/set-token` | admin cookie | adopt an existing cluster's token |
-| `GET  /api/cluster/peers` | admin cookie | list paired peers |
-| `POST /api/cluster/peers` | admin cookie | add peer (initiates handshake) |
-| `PUT  /api/cluster/peers/:peerId` | admin cookie | rename / set stream_mode / notes |
-| `DELETE /api/cluster/peers/:peerId` | admin cookie | revoke + cascade-purge cache |
-| `POST /api/cluster/peers/:peerId/test` | admin cookie | signed health probe |
-| `GET  /api/cluster/audit` | admin cookie | audit log |
-| `GET  /api/cluster/downloads` | admin cookie | merged catalog (own + peers) |
-| `POST /api/cluster/sync/run` | admin cookie | force a sync cycle now |
-| `GET  /api/cluster/sync/state` | admin cookie | per-peer sync cursor |
-| `POST /api/cluster/sweep/run` | admin cookie | start dedup sweep |
-| `GET  /api/cluster/sweep/status` | admin cookie | sweep status + stats |
-| `GET  /api/cluster/conflicts` | admin cookie | list duplicate-file conflicts |
-| `POST /api/cluster/conflicts/:id/resolve` | admin cookie | pick keeper, unlink rest |
-| `POST /api/cluster/handshake` | HMAC | inbound pairing |
-| `GET  /api/cluster/health` | HMAC | heartbeat |
-| `GET  /api/cluster/downloads/since` | HMAC | delta sync |
-| `GET  /api/cluster/groups/snapshot` | HMAC | groups blob |
-| `GET  /api/cluster/accounts/snapshot` | HMAC | accounts (session redacted) |
-| `GET  /api/cluster/files/<path>` | HMAC | proxy stream of own files |
-| `POST /api/cluster/sign-url` | HMAC | mint short-lived share URL for direct mode: `{url, expiresAt (ms), exp (s)}`. A peer answering without `exp` (older versions, whose URLs never verified) is streamed through the proxy instead. |
+- No LAN discovery, relay through a third peer, automatic failover, settings
+  replication, direct (browser-to-owner) streaming, peer thumbnails, or
+  cross-peer duplicate detection, sweep and remote delete. The dashboard still
+  shows some of these controls from 2.x; they do nothing on a 3.0 server.
+- No NAT traversal. Peers that cannot reach each other directly need a VPN
+  such as Tailscale or WireGuard.
+- Removing a peer does not stop a file stream that is already playing.
+- Deleted-file tombstones and cluster audit entries are kept indefinitely.
+- Pairing is not one transaction across two machines. If the connection drops
+  at the wrong moment, one side may list the pairing and the other not; pair
+  again with a new code.
+- Media files are not part of backups of the database; each peer backs up its
+  own downloads. See [BACKUP.md](BACKUP.md).
 
-## v2.10 features (resolved limitations)
+## API reference
 
-- **Per-peer tokens** — each pairing exchanges a fresh secret;
-  revocation is per-peer; no more "Use cluster's token" step. See
-  the migration guide.
-- **Pairing codes** — the receiving peer issues an 8-character code
-  valid for 5 minutes; the initiator pastes URL + code; both sides
-  exchange secrets in the handshake. The two peers don't need the same
-  cluster token. Versions up to v2.29.1 refused every pairing-code
-  handshake, so both peers need a later version; pairing with the
-  cluster token works with any version.
-- **Background engines** — the catalog sync poll, the `/ws/cluster`
-  link, LAN discovery and the failover watcher run whenever at least one
-  peer is paired: from boot, and right after a pairing. An install with
-  no paired peer runs none of them (no socket, no LAN beacon).
-- **Real-time WS push** — every paired peer maintains a persistent
-  `/ws/cluster` link with HMAC handshake; catalog deltas propagate in
-  <1 s. Polling drops to a 5-min safety net.
-- **LAN auto-discovery** — UDP broadcast on port 28910 surfaces
-  reachable peers under "Discovered". One-click **Pair** with the
-  pairing-code wizard pre-filled.
-- **Relay-through-peer** — if A can't reach C but B can reach both,
-  A's signed calls to C are forwarded through B end-to-end (B can't
-  tamper or read encrypted bodies).
-- **Backup peer + failover** — `groups[i].backupPeerId` config key.
-  When the owner is silent > `cluster.failover_grace_minutes`
-  (default 5), the backup atomically takes over and broadcasts a
-  `failover_completed` event.
-- **Live config sync** — `cluster.replicate.<key>` policy chooses
-  per-key replication (`local` / `cluster` / `cluster_excl`); changes
-  propagate over WS with last-writer-wins by ts + peer_id tiebreak.
-- **Cross-peer file delete** — sweep's `resolveConflict` now actually
-  deletes losers on remote peers via signed `POST /api/cluster/files/delete`,
-  with a per-failure retry queue.
-- **Cluster-wide search** — `/api/cluster/search` fans out to every
-  online peer's `/api/cluster/search/peer`, merges + dedups by
-  `file_hash`.
-- **Cluster stats** — `/api/cluster/stats` aggregates disk + dedup +
-  egress per peer for the Cluster Stats card.
+Admin routes (dashboard session, admin role):
 
-## Remaining limitations
+| Route | Purpose |
+|---|---|
+| `GET /api/cluster/identity` | This peer's ID and name |
+| `PUT /api/cluster/identity` | Rename this peer: `{"name": "…"}` |
+| `GET /api/cluster/identity/token` | Show the cluster token |
+| `POST /api/cluster/identity/set-token` | Set the token: `{"token": "<32+ hex>"}` |
+| `POST /api/cluster/identity/rotate-token` | Generate a new token |
+| `POST /api/cluster/identity/pairing-code` (alias `POST /api/cluster/pairing-code`) | Issue a 5-minute single-use code: `{"code", "expiresAt"}` |
+| `GET /api/cluster/peers` | Paired peers (status, URL, stream mode, version, `migrationRequired`) |
+| `POST /api/cluster/peers` | Pair: `{"url", "pairingCode"}` or `{"url", "token"}` |
+| `PUT /api/cluster/peers/{peerId}` | Edit `name`, `url`, `streamMode`, `notes` |
+| `DELETE /api/cluster/peers/{peerId}` | Remove the peer and its cached data |
+| `POST /api/cluster/peers/{peerId}/test` | Ping |
+| `GET /api/cluster/audit?peerId=&kind=&limit=` | Audit log (default 200, max 2000) |
+| `GET /api/cluster/sync/state` | Per-peer sync cursor and status |
+| `POST /api/cluster/sync/run` | Run a sync pass now |
 
-- **No STUN/TURN** — peers across NAT without a relay-capable peer
-  paired by both should use Tailscale / a VPN. STUN/TURN deferred
-  pending demand.
-- **WebRTC browser-direct** — not implemented; proxy mode covers the
-  practical use cases.
-- **Auto-elect (Raft/Paxos)** — backup-peer rule is sufficient for
-  the home/SOHO scale; auto-elect deferred to avoid split-brain risk.
-- **Encrypted-destination plaintext caching** — opt-in only via
-  `cache_plaintext_for_encrypted_dest=true`; default-off.
+Gallery and media routes that read peer data (admin only):
+`GET /api/downloads/all?include=peers`,
+`GET /api/downloads/search?q=…&include=peers`, per-chat
+`GET /api/downloads/{groupId}?include=peers&peerId=…`,
+`GET /files/<path>?peer=<peerId>` and
+`GET /files/_clusterref/<peerId>/<remoteId>`.
+
+Peer-to-peer routes (signed with the per-pair secret; the handshake is signed
+with the code- or token-derived key):
+
+| Route | Purpose |
+|---|---|
+| `POST /api/cluster/handshake` | Pairing |
+| `GET /api/cluster/health` | Identity, version, liveness |
+| `GET /api/cluster/catalog/changes?after=&epoch=&limit=` | Catalog change feed (used by 3.0) |
+| `GET /api/cluster/downloads/since?sinceId=&limit=` | Catalog by row ID (kept for 2.x peers) |
+| `GET /api/cluster/search/peer?q=&limit=` | File/chat name search (kept for 2.x peers) |
+| `GET /api/cluster/groups/snapshot` | Chat settings without credentials |
+| `GET /api/cluster/accounts/snapshot` | Account ID, label, phone, disabled |
+| `GET`, `HEAD /api/cluster/files/<path>` | File bytes with HTTP ranges |
+| `GET /ws/cluster` | Signed WebSocket for change hints and heartbeats |
+
+The signing format is documented in
+[GO-CLUSTER.md](GO-CLUSTER.md#signed-http-protocol). For the rest of the API
+see [API.md](API.md); for how the server is built see
+[ARCHITECTURE.md](ARCHITECTURE.md).

@@ -1,202 +1,482 @@
 ---
 title: "Troubleshooting"
-description: "Common Telegram Media Downloader errors and how to fix them, starting with npm run doctor."
-nav_order: 3
+description: "Fix common Telegram Media Downloader 3.0 problems: startup errors, dashboard sign-in and password reset, Telegram accounts, downloads, updates and Docker."
+nav_order: 6
 ---
 
 # Troubleshooting
 
-Fixes for the problems people hit most often when installing, running and updating Telegram Media Downloader.
+Fixes for the problems people hit most often with Telegram Media Downloader
+3.0, grouped by symptom. 3.0 is a single native `tgdl-server` process with
+the dashboard built in. There is no Node.js, `npm` or gramJS any more, so
+2.x tips such as `npm run doctor`, `npm run auth` or `npm rebuild` no longer
+apply.
 
-## First stop: `npm run doctor`
+Before anything else, collect the basics:
 
-One-shot diagnostics — Node version + ABI, config load, `better-sqlite3` open + row count, `data/` writability, port availability (honours `PORT`), and `ffmpeg` on `PATH`. Cross-platform, non-interactive (safe to run inside CI / Docker / over SSH). Exits `1` on any blocking failure.
+```sh
+# Docker
+docker compose ps
+docker compose logs --tail=200 telegram-downloader
+docker compose exec telegram-downloader tgdl-server version
+curl -s http://127.0.0.1:3000/health      # {"ok":true,"service":"tgdl-server"}
 
-```bash
-npm run doctor
+# Bare metal
+./core-service/tgdl-server version
 ```
 
-If a check fails it prints what to do next. The most common hit is `SQLite (better-sqlite3): NODE_MODULE_VERSION ... was compiled against a different Node.js version` after a Node upgrade — `npm rebuild better-sqlite3` clears it.
+See [Getting help and logs](#getting-help-and-logs) for where the server
+writes its output.
 
-## "Web dashboard not initialised — run `npm run auth`"
+## Install & start
 
-The dashboard fails closed when no password is configured. Either:
+### The server exits with `TGDL_DATA_DIR is required`
 
-- Open `http://localhost:3000` from the same machine — the setup wizard lets you set the password from the browser, or
-- Run `npm run auth` on the host, choose **Set / Change Password**, then reload the dashboard.
+The binary needs to know where its data folder is. The Docker image sets
+`TGDL_DATA_DIR=/app/data`, and `./runner.sh`, `run_safe.bat` and
+`watchdog.ps1` default it to the checkout's `data/` folder. If you start
+`tgdl-server` directly (systemd, a script, a NAS task), set it yourself:
 
-This was a deliberate change: earlier versions defaulted to **open access**, which exposed every download to anyone on the LAN.
-
-## "503 — No Telegram accounts loaded" / `NO_API_CREDS`
-
-You haven't entered the Telegram API credentials yet. Settings → Telegram API → paste `apiId` + `apiHash` from <https://my.telegram.org>, save, then add an account under **Telegram Accounts → Add account**.
-
-## Settings → Groups is empty after an upgrade — but the media folders are still on disk
-
-A failed JSON→SQLite migration (or any other write that wiped `kv['config'].groups`) leaves the dashboard with an empty Groups list while `data/downloads/<group>/…` and the SQLite `downloads` table still hold every file you ever pulled. **Don't re-add groups through the dialogs picker** — Telegram may return a slightly different display name than the folder was sanitised against, and the next download lands in `Group A (2)/` while the old `Group A/` sits orphaned.
-
-Run the recovery script instead:
-
-```bash
-npm run recover                 # dry-run — print what would change
-npm run recover -- --apply      # commit to kv['config'] (still disabled by default)
-npm run recover -- --apply --enable   # commit AND flip enabled=true on every restored group
-
-# Inside Docker:
-docker exec <container> node scripts/recover_groups.js
-docker exec <container> node scripts/recover_groups.js --apply
+```sh
+TGDL_DATA_DIR=/var/lib/telegram-media-downloader PORT=3000 ./tgdl-server
 ```
 
-The script tries two sources in order:
+### Other startup errors
+
+The server checks its settings before it opens the database and exits right
+away when one is invalid:
+
+| Message | Fix |
+|---|---|
+| `PORT: invalid port "..."` | `PORT` must be a number from 1 to 65535. In Docker, change the host side with `TGDL_PORT` in `.env`; the container always listens on 3000. |
+| `TGDL_BIND_HOST must be a literal IPv4 or IPv6 address` | Use an IP address such as `127.0.0.1` or `0.0.0.0`, not a host name. Leave it unset to listen on all interfaces. |
+| `TGDL_SESSION_TTL_DAYS: invalid value "..."` | Use a whole number of days from 1 to 3650. |
+| `TRUST_PROXY must contain IP addresses, CIDRs, known network names or a hop count` | See [Reverse proxy](#reverse-proxy) for the accepted values. |
+| `COMPRESSION_LEVEL must be 0-9` | Use a number from 0 to 9, or remove the line. |
+| `listen tcp ...: bind: address already in use` | Another program (or a second copy of the downloader) already uses the port. Stop it or pick another port. |
+
+### `another engine owns this data directory`
+
+Two servers are pointed at the same data folder, for example a leftover
+bare-metal process next to the Docker container, or two containers with the
+same volume. Only one server may use a data folder at a time. Stop the extra
+one and start the monitor again.
+
+### The launcher can't download `tgdl-server` (bare metal, Windows)
+
+After a `git pull`, `./runner.sh`, `run_safe.bat` / `watchdog.ps1` (and
+`npm start` or PM2, which call the same launcher) download the release binary
+that matches the checkout, check it against the release `SHA256SUMS` file and
+install it into `core-service/`. Messages you may see:
+
+- `Release X is not downloadable` or a network error: the host can't reach
+  GitHub, or the release isn't published yet. If an older binary is present
+  the launcher prints `Keeping the existing tgdl-server ...` and starts that
+  one.
+- `Checksum mismatch for ...; refusing to install.`: the download was
+  corrupted or altered (often a proxy or captive portal). Nothing was
+  installed. Retry on a clean connection.
+- `Neither curl nor wget is installed` (Linux/macOS): install one of them.
+- `Unsupported OS` / `Unsupported CPU`: there's no prebuilt binary for this
+  platform; build it yourself.
+
+To skip the download entirely, build or download the binary yourself and
+point the launcher at it with `TGDL_SERVER_BIN`:
+
+```sh
+make build                     # needs Go 1.26; writes core-service/tgdl-server
+TGDL_SERVER_BIN=/opt/tgdl/tgdl-server ./runner.sh
+```
+
+With `TGDL_SERVER_BIN` set, the launcher never downloads or replaces
+anything. On Linux/macOS, `TGDL_RELEASE_BASE_URL` can point `runner.sh` at a
+mirror that holds the same release archive and `SHA256SUMS`. More in
+[Install and deploy](DEPLOY.md#from-a-git-checkout).
+
+### Video thumbnails are missing or Maintenance says "ffmpeg unavailable — image-only"
+
+Video thumbnails and faststart need `ffmpeg`. The Docker image includes it.
+On bare metal install it (`apt install ffmpeg` or your platform's package),
+or set `FFMPEG_PATH` to the executable. In 3.0 thumbnails are always made on
+the CPU: `FFMPEG_HWACCEL` is ignored, and passing `/dev/dri` through won't
+speed them up.
+
+## Sign-in & dashboard
+
+### "Web dashboard not initialised" / the setup page
+
+No dashboard password has been set yet. For safety, the first password can
+only be set from the machine the server runs on. With Docker, or behind a
+reverse proxy, set it with the `setup` command beside the running server:
+
+```sh
+docker compose exec -T -u node telegram-downloader tgdl-server setup --password-stdin < /path/to/private-password-file
+# Bare metal, on the same host as the running server:
+PORT=3000 ./core-service/tgdl-server setup --password-stdin < /path/to/private-password-file
+```
+
+The file holds the password on one line (8 characters minimum). Delete it
+afterwards. Errors from this command:
+
+- `Cannot reach setup endpoint`: the server isn't running, or you ran the
+  command on another machine or outside the container.
+- `Initial setup requires a loopback listener`: `TGDL_BIND_HOST` is set to a
+  specific non-loopback address. Temporarily use `TGDL_BIND_HOST=127.0.0.1`
+  (or unset it) while setting the password.
+- `Dashboard is already configured`: a password exists. Sign in, or see the
+  next item if you forgot it.
+
+A browser request that comes through a proxy is never treated as local, so
+the setup form behind a reverse proxy answers with *Initial setup must be
+done from the local machine*. Use the command above. Full steps:
+[Deploy](DEPLOY.md#first-dashboard-password).
+
+### I forgot the dashboard password
+
+`tgdl-server setup` only sets the *first* password. To reset an existing
+one, use the reset flow on the sign-in page:
+
+1. On the sign-in page, click **Forgot password?** and then send the reset
+   request.
+2. The server prints a one-time token to its own output (not the browser):
+
+   ```sh
+   docker compose logs --since 15m telegram-downloader | grep 'Token:'
+   ```
 
-1. **`data/config.json.migrated`** — the original config archived by the failed migration. Authoritative when present because it preserves filter settings, auto-forward destinations, monitor / forward account assignments, and forum-topic whitelists exactly as they were.
-2. **`SELECT DISTINCT group_id, group_name FROM downloads`** — every chat that ever produced a file. Used when the archive is missing / empty / has no `groups[]`. Restored entries get default filters; re-enter auto-forward etc. through Settings → Groups afterwards.
+   On bare metal, look in the terminal, `journalctl -u <your unit>` or
+   `pm2 logs`.
+3. Paste the token and a new password (8 characters minimum) into the form
+   and press **Reset and sign in**.
 
-Because the script restores the **exact `group_id` + `group_name`** the existing rows were stored under, `sanitizeName(group.name)` resolves to the same folder on the next download — no `Group A (2)` duplication. Restored groups land with `enabled: false` by default; flip them on individually in Settings → Groups (or use `--enable` to flip them all at once).
+The token is valid for 10 minutes and works once. Resetting signs out every
+other browser. Only someone who can read the server output can finish a
+reset. If you're still signed in somewhere, use **Settings → Change
+Password** instead.
 
-## Add-account wizard never advances past "Phone"
+### "Too many login attempts. Try again in 15 minutes."
 
-- Make sure the phone number includes the country code (`+66...` not `0...`).
-- Telegram occasionally rate-limits new logins. Wait 5–15 minutes and retry — the wizard will surface a `FLOOD_WAIT_xxx` error if that's what's happening.
-- Check `data/logs/network.log` (or set `TGDL_DEBUG=1` and watch stderr) for the actual gramJS error.
+Sign-in and password reset allow 10 attempts per client address in 15
+minutes. Wait, or restart the server to clear the counter. If *everyone* gets
+locked out at once behind a reverse proxy, the server is seeing the proxy's
+address for every visitor: set `TRUST_PROXY` (see
+[Reverse proxy](#reverse-proxy)).
 
-## "database is locked"
+### Signing in succeeds but you land back on the sign-in page
 
-Two processes are writing to `data/db.sqlite` at once. SQLite WAL mode allows many readers + one writer. Either:
+The browser isn't keeping the session cookie:
 
-- Run only the in-process monitor (the dashboard's Engine card).
-- Or run the headless `monitor` and use the dashboard for read-only browsing.
+- `TGDL_SECURE_COOKIES=1` marks the cookie HTTPS-only. Use it only when you
+  open the dashboard over `https://`. Over plain `http://` set it to `0`.
+- When you use HTTPS, set `TGDL_SECURE_COOKIES=1` so the cookie can't leak
+  over HTTP.
+- Make sure the proxy doesn't strip `Set-Cookie` / `Cookie` headers and that
+  the dashboard is served from a single origin (no mixing of
+  `http://ip:3000` and `https://name`).
 
-A future release will add IPC isolation so both can write simultaneously.
+### Actions fail with "Cross-origin request blocked" (403)
+
+Saves and other changes are refused when the browser's `Origin` doesn't match
+the `Host` header the server receives. Behind a reverse proxy, forward the
+original host (nginx: `proxy_set_header Host $host;`). Open the dashboard
+through the same address the proxy publishes.
 
-## "FloodWait" / Telegram rate-limits
+### The dashboard keeps redirecting to HTTPS, or says "HTTPS required"
+
+**Force HTTPS** is on, but the server can't tell the request came in over
+HTTPS. It only trusts `X-Forwarded-Proto` from a trusted proxy, so set
+`TRUST_PROXY` correctly and make sure the proxy sends
+`X-Forwarded-Proto: https`. Requests from the loopback address are exempt,
+so on bare metal you can still reach the dashboard from the host itself to
+turn the switch off.
 
-The downloader pauses for the duration Telegram requests automatically. If they hit you frequently:
+### The dashboard shows an old version after an update
 
-- Lower **Settings → Rate Limits → Requests/Minute** (15 is safe; 30+ is aggressive).
-- Lower concurrent workers (1–3 is conservative).
-- Don't restart the app to skip the wait — Telegram tracks the limit by account, not session.
+Hard-refresh the browser (Ctrl/Cmd+Shift+R). If an installed app (PWA) still
+shows the old screens, close every dashboard tab and open it again.
 
-## Missing files / errors after the upgrade to v2.0.0
+## Telegram accounts
 
-- Old `config.web.password` (plaintext) is auto-rehashed on first successful web login. If you can no longer log in, run `npm run auth` to reset.
-- Old AES session blobs (`v=1`) still decrypt — no manual migration needed.
-- The web server now refuses to open its own TelegramClient when the CLI is already running. Stop one and run only the other if you see "database is locked" or duplicate-event symptoms.
+### "Telegram API credentials not configured" / `NO_API_CREDS` / "No Telegram accounts loaded"
 
-## Files don't show up in the gallery after a successful download
+Open **Settings → Telegram API**, paste the API ID and API hash from
+<https://my.telegram.org>, press **Save Credentials**, then add an account
+under **Settings → Telegram Accounts → Add account**. The monitor won't start
+until at least one account is signed in.
 
-- The DB record points at the canonical sanitised folder name. If you downloaded under v1 and then renamed the group, run `migrateFolders` (it runs automatically at monitor start) or just restart the dashboard.
-- Hard-refresh the browser (Ctrl/Cmd+Shift+R) — the SPA caches the gallery.
+### The add-account wizard fails
 
-## `Set-Cookie` not arriving / can't log in
+- Enter the phone number in international format (`+66…`, not `0…`).
+- `FLOOD_WAIT` with a number of seconds: Telegram is rate-limiting sign-ins
+  for that number. Wait at least that long before trying again; restarting the
+  app doesn't help, because Telegram tracks the limit on its side.
+- `PASSWORD_HASH_INVALID`: the two-step verification (cloud) password is
+  wrong.
+- Other `UPPER_CASE` codes (for example `PHONE_CODE_INVALID`,
+  `PHONE_CODE_EXPIRED`) come straight from Telegram. Request a new code and
+  try again.
+- The wizard can't connect or times out: the host can't reach Telegram's
+  servers. Check the firewall/DNS, or set a proxy under **Settings → Proxy**;
+  Telegram connections use it.
 
-Check that no reverse-proxy is stripping cookies and that the request is hitting the same origin the SPA is served from. If you're using HTTPS with `NODE_ENV=production`, the cookie has the `Secure` flag and won't be sent over plain HTTP.
+### An account from 2.x won't connect after upgrading
 
-## Path traversal blocked / 403 on `/files`
+On first start 3.0 converts each saved 2.x login once into
+`data/sessions/native/`; the original files stay where they were. The
+conversion needs `data/secret.key`, the same key 2.x used. Never delete or
+replace that file. If the log shows `import Telegram session: ...` or
+`load native Telegram session: ...`, the saved login can't be read (missing or
+changed `secret.key`, or a damaged file). Remove the account in **Settings →
+Telegram Accounts** and sign it in again; downloaded files and history stay.
 
-`/files/*` runs every request through `safeResolveDownload`: NUL bytes are rejected, paths are normalised, and `fs.realpath` resolves symlinks. If you see 403 on a file you expect to be there, check that the symlink target is still inside `data/downloads/`.
+An old single-account `data/session.enc` left next to accounts that were
+already migrated is ignored, as in 2.x. You don't need to delete it.
 
-## I want more logs
+### Telegram banned or limited my account
 
-Set `TGDL_DEBUG=1` (or `DEBUG=1`) in the environment. The noise classifier will then echo gramJS reconnect chatter to stderr in addition to writing it to `data/logs/network.log`.
+Use Telegram's own recovery at <https://telegram.org/support>; the downloader
+can't lift a ban. Before you resume, reduce **Concurrent Downloads** and
+avoid running many large history backfills at once.
 
-## I want fewer logs
+## Downloads
 
-The noise classifier already drops the recoverable internals from stderr by default. If you're still seeing spam, file an issue with the redacted output and we'll add the pattern.
+### Downloads fail or keep retrying
 
-## Telegram banned my account
+A failed download, including one Telegram rate-limited, is retried
+automatically after a growing pause, up to **Maximum Download Attempts**
+(Settings, 1–20, counting the first try). After that it's marked failed.
+Use **Retry all** on the **Queue** page once the cause is fixed.
 
-Use the official account-recovery flow at <https://telegram.org/support>. We can't help with that — the goal of the rate limits is to stay well under the threshold, but no client guarantees zero risk. If it happened during a long history backfill, lower the concurrency and the per-minute limit before retrying.
+If Telegram rate-limits you often (`FLOOD_WAIT` in the queue errors):
 
-## Thumbnails don't render for video files
+- Lower **Concurrent Downloads** (1–3 is conservative).
+- Set a **Max Download Speed** limit; it applies to all downloads together
+  and takes effect immediately.
+- Don't restart to "skip" a wait: Telegram tracks it per account.
 
-`/api/thumbs/<id>` needs `ffmpeg` on PATH for video first-frame extraction. The Docker image includes it via `apt-get install ffmpeg`. For standalone installs the optional `@ffmpeg-installer/ffmpeg` npm package ships static binaries for Win / macOS / glibc-Linux. Hosts without a system `ffmpeg` and without the npm shim fall through to "image-only" — Settings → Maintenance shows `ffmpeg unavailable — image-only` in that state. Override with the `FFMPEG_PATH` env var if needed.
+### A file isn't downloaded again
 
-## NSFW scan fails with "Failed to load @huggingface/transformers"
+3.0 skips media it already has, first by Telegram's media identity before
+downloading, then by SHA-256 after the transfer. A re-post of a file you
+already have is recorded as a duplicate instead of saved twice.
 
-The model classifier is an optional feature. Run `npm install @huggingface/transformers` (or rebuild the Docker image; it's already a dependency in the published image). The first scan downloads ~80 MB of model weights to `data/models/` — make sure that path is writable and the host can reach `huggingface.co`.
+### A chat stopped downloading and appears under "Deleted / unavailable"
 
-## "Install update" button is greyed out
+The **Chats** page keeps deleted, restricted and inaccessible chats in their
+own **Deleted / unavailable** tab, with Telegram's reason. Monitoring,
+backfill and forwarding pause for those chats; downloaded files are kept.
 
-Two reasons: either the dashboard isn't running inside Docker (`/.dockerenv` heuristic), or the watchtower sidecar isn't reachable. Make sure the compose file includes the `watchtower` service (re-download it if it is old) and run `docker compose up -d`; the token is generated automatically. If you set `WATCHTOWER_HTTP_API_TOKEN` in `.env`, it must match on both services. The button hover-tip explains which check failed.
+- **Check again** refreshes the chat's status from Telegram. If you rejoined
+  the chat with one of your accounts, this brings it back.
+- **Leave / remove from Telegram** leaves the chat using the account you
+  confirm. "No account is confirmed for this chat" means you have to press
+  **Check again** first.
+- To clean up many chats, use **Select** / **Select all** and leave them
+  from one confirmed account, either keeping the downloaded files or deleting
+  their files, history and settings (you type the count to confirm). Chats
+  are removed one at a time, and the batch stops if Telegram asks you to
+  wait; run it again later. Chats that still work are never removed in bulk.
+
+### Files are on another disk (`TGDL_DOWNLOADS_DIR`) but don't show up
+
+In Docker the path has to exist *inside the container*: mount the disk in
+`docker-compose.yml` at the same path you put in `TGDL_DOWNLOADS_DIR` (the
+compose file has a commented example). Thumbnails and the database stay in
+the data folder.
+
+### Faces, NSFW scores or hover previews don't appear for new files
 
-## Share link returns "Share link is not valid"
+3.0 shows the results 2.x produced but doesn't create new ones. See
+[AI troubleshooting](AI.md#troubleshooting).
+
+### A share link says "Share link is not valid"
+
+The `code` in the response tells you why: `expired` (past its expiry date),
+`revoked` (someone revoked it), `not_found` (the link or its file was
+deleted) or `bad_sig` (the URL was altered). Create a new link from the
+Share sheet.
+
+## Updates & upgrading from 2.x
 
-The body's `code` field tells you which gate failed:
+For the full upgrade procedure see [Upgrading](UPGRADING.md). Common snags:
 
-- `bad_sig` — the signature didn't verify. Either the URL was tampered with, or `config.web.shareSecret` was rotated since the link was issued.
-- `expired` — `expires_at` passed (skip this check by re-issuing with `ttlSeconds: 0`).
-- `revoked` — admin pressed Revoke. Issue a new link from the Share sheet.
+### "Install update" is greyed out or unavailable
 
-## Backfill returns 409 with `code: 'ALREADY_RUNNING'`
+One-click updates need all of the following:
 
-Per-group lock — only one backfill per group at a time. Either wait for the active job to finish, or cancel it from the Backfill page (Recent backfills → ✕). Auto-spawned backfills (first add, post-restart catch-up) appear with `mode: 'auto-first'` / `'catch-up'`.
+- the app running in Docker;
+- `WATCHTOWER_URL` set (the bundled compose file sets
+  `http://watchtower:8080`);
+- the `watchtower` service from the bundled compose file running, with
+  `./data/watchtower` mounted.
 
-## Auto-update finished but the version chip didn't bump
+Compose files from older 2.x releases may lack the sidecar or the variable.
+Download the current `docker-compose.yml` (keep your own volume paths and
+`.env`), then run `docker compose up -d`. Manual updates always work:
+`docker compose pull && docker compose up -d`.
+
+### The update fails with an error code
 
-Hard-refresh the browser (Ctrl/Cmd+Shift+R) — the SPA cache may be holding the previous bundle. The status-bar reconnect logic auto-reloads the page when it detects a version change, but if reconnect happened during a brief WS disconnect the heuristic can miss the version flip.
+**Maintenance → Updates** lists every attempt with its `error_code`:
 
-## "Maintenance → … 409 ALREADY_RUNNING" sticks after a failed run (pre-v2.10)
+| Code | Meaning and fix |
+|---|---|
+| `AUTO_UPDATE_UNAVAILABLE` | The sidecar isn't configured. See the previous item. |
+| `WATCHTOWER_UNREACHABLE` | The app couldn't reach the sidecar: it's stopped, on another network, or `WATCHTOWER_URL` is wrong. Run `docker compose up -d` and check `docker compose logs watchtower`. |
+| `WATCHTOWER_UNAUTHENTICATED` | The sidecar rejected the token. If `.env` sets `WATCHTOWER_HTTP_API_TOKEN`, both services must get the same value; otherwise both read the token generated in `data/watchtower/api-token`. Fix it, then `docker compose up -d --force-recreate watchtower`. |
+| `DB_CORRUPT` | The database integrity check failed, so no snapshot was taken. Run **Maintenance → DB integrity** and recover before retrying. |
+| `BACKUP_FAILED` / `BACKUP_VERIFY_FAILED` | The pre-update snapshot in `data/backups/` couldn't be written or verified. Check free disk space and disk health. On a very large database you can raise `UPDATE_SNAPSHOT_TIMEOUT_MS` (default 60000). |
+| `TRIGGER_FAILED` | The sidecar refused the update request; the snapshot was kept. See `docker compose logs watchtower`. |
+| `STALL_TIMEOUT` | The update never reported back (default 10 minutes). Check `docker compose ps` and the logs; a manual `docker compose pull && docker compose up -d` finishes it. |
 
-Pre-v2.10 builds had a race in `thumbs/build-all`, `faststart/scan`, `dedup/scan`, and `reindex` where the `${prefix}_done` broadcast fired before the running flag was reset, so a retry after error landed a spurious 409 even though no job was actually in flight. Fixed in v2.10 by migrating all four routes to `JobTracker` (running-flag reset + WS broadcast happen atomically). If you're stuck on a v2.8.x build, restart the dashboard process — the in-memory flag is process-local so a restart unblocks the next click.
+If the "Update appears stalled" overlay shows up on a slow disk while the
+update is still running, raise `UPDATE_OVERLAY_STALL_MS` (default 120000) on
+the app service.
 
-## Cluster — pairing fails with "Token rejected"
+### The container exits with "node: not available"
 
-Two reasons:
+3.0 has no Node runtime. A small `node` shim is kept only so the 2.x
+healthcheck (`node scripts/healthcheck.js`) and start command
+(`node src/web/server.js`, used by the Synology compose file) keep working.
+Any other `node ...` command in a custom `command:`, `entrypoint:` or
+healthcheck fails with this message. Remove the override or switch to the
+current compose file.
 
-1. The two peers don't share the same cluster token. Open `Maintenance → Cluster → Show token` on the founder, copy, paste into "Use cluster's token" on the joiner. v2.10 prefers the per-pair-secret pairing-code workflow — issue a code on the receiver and paste URL + code on the initiator instead of token-shuffling.
-2. v2.9-paired peers connecting to v2.10 with stale state. The Cluster page flags them `migrationRequired`. Re-pair via `Issue pairing code` — both sides install fresh per-pair secrets and the flag clears within seconds. See [`docs/MIGRATION-v2.9-to-v2.10.md`](MIGRATION-v2.9-to-v2.10.md).
+### 2.x commands and settings that no longer exist
 
-## Cluster — peer shows "Online" but the gallery is empty / out of date
+- `npm run doctor`, `npm run auth`, `npm run recover` and the other npm
+  scripts are gone. Use the checks at the top of this page,
+  `tgdl-server setup` for the first password, and the reset flow for a
+  forgotten one.
+- `NODE_ENV`, `NODE_OPTIONS`, `TGDL_HEAP_MB`, `TGDL_GO_CORE`,
+  `TGDL_GO_FEATURES`, `TGDL_CORE_BIN`, `TGDL_CORE_RELEASE_URL` and
+  `FFMPEG_HWACCEL` are ignored; leaving them in `.env` does no harm. See
+  [Configuration](CONFIGURATION.md) for the current list.
+- Google Drive and Dropbox backup destinations aren't available in 3.0 yet.
+  Use local, S3, SFTP or FTP/FTPS destinations ([Backup](BACKUP.md)).
 
-Sync runs over `/ws/cluster` (live) with a 5-min HTTP polling fallback. To force-refresh:
+### Going back to 2.32.1
 
-- Click the peer's row → **Test** to confirm the HMAC handshake.
-- `POST /api/cluster/sync/run` (or refresh the Cluster page — it triggers the same fan-out).
-- Watch `data/logs/network.log` for `cluster_auth_failed` audit entries — a clock skew >60 s between peers will reject every signed call (sync NTP).
+If 3.0 doesn't work for you, roll back with the database snapshot taken right
+before the update. The dashboard's **Install update** saves it as
+`data/backups/db-pre-update-<date>-<time>.sqlite`. A manual
+`docker compose pull` doesn't make one; use your own backup in that case.
 
-## Cluster — backup peer didn't take over after the owner went silent
-
-The grace window defaults to 5 minutes (`cluster.failover_grace_minutes`). Inside the grace, the system assumes the owner is just briefly disconnected. If you want a tighter window (e.g. 60 s) for fast-failover setups, edit the value in `Maintenance → Cluster → Settings`. Manual failover for one group is `POST /api/cluster/failover/run {groupId,toPeerId}`. Check `peer_failover_log` (or `GET /api/cluster/failover-log`) for the audit trail.
-
-## Cluster — LAN auto-discovery shows nothing on a hairpinned router
-
-Some consumer routers block intra-LAN UDP broadcasts (so-called "AP isolation" / "client isolation"). Disable that toggle on the router admin page, or pair manually via URL + pairing code (the LAN feature is a convenience only — every cluster operation works fine without it).
-
-## Seekbar previews not showing on hover
-
-The video player's hover tile is opt-in. Three reasons it can be missing:
-
-1. **Feature is off.** Maintenance → Seekbar previews → flip the master toggle. The viewer subscribes to `seekbar_config_changed`, so the preview lights up without a reload.
-2. **Sprite hasn't been generated yet for that video.** The viewer paints a "Generating preview…" shimmer for ≤60 s (poll backoff 4 / 8 / 16 / 32 / 60 s) and flips to the real tile when `seekbar_sprite_ready` fires. For old videos, run **Scan now** from the Maintenance page.
-3. **Federated row from a peer.** The current Layer 1 cluster build returns `null` for `peer_id != 'self'` — the viewer falls back to time-only tooltip on remote rows. Tracked for a future release.
-
-If the sidecar itself won't come up, check **Maintenance → Seekbar previews → Health pill**. Common failures:
-
-- *Sidecar binary download blocked* — set `SEEKBAR_SIDECAR_URL` to a corporate mirror, or build from `seekbar-service/` and drop the binary at `data/seekbar-service/bin/`.
-- *ffmpeg missing on PATH* — the sidecar relies on `ffmpeg` + `ffprobe`. On Docker this is preinstalled; on bare metal `apt-get install ffmpeg` (Debian/Ubuntu) or the equivalent.
-- *Port exhaustion* — the spawn module probes a random high port; if every candidate is taken, the sidecar fails to bind. Restart the dashboard.
-
-## "database is locked" during a seekbar / dedup scan
-
-Pre-v2.17 builds streamed the seekbar backfill via better-sqlite3's `.iterate()` cursor, which holds an exclusive connection lock across `await` boundaries — so a long-running scan could block the realtime downloader's `kv['queue_history']` writer for minutes and surface as `TypeError: This database connection is busy executing a query`. v2.17 rewrote the scan-runner to keyset pagination (`.all()` per batch); upgrade to fix.
-
-## NSFW classifier won't load: "sharp not loadable"
-
-The classifier's lazy loader couldn't `require('sharp')`. Common causes + fixes:
-
-- **Linux without libvips** — `apt-get install libvips42` (Debian/Ubuntu) or `apk add vips-dev` (Alpine; expect to set `npm config set sharp_libvips_local_prebuilds true` first).
-- **Node ABI mismatch after upgrade** — `npm rebuild sharp`.
-- **Alpine / musl** — sharp ships musl prebuilds; if you got the glibc tarball, rebuild explicitly via `npm install --include=optional sharp`.
-- **Apple Silicon under Rosetta** — install Node 20+ natively; Rosetta-emulated Node ships a binding that segfaults on first call.
-
-## Re-auth modal didn't appear after my session expired
-
-Two paths:
-
-1. **The 401 came from a route the modal can't intercept** (`/api/auth_check`, `/api/login`, the share-link gate). Those bypass the modal by design and fall through to the legacy `/login.html` redirect.
-2. **The SPA never initialised the modal.** Hard-refresh the browser (Ctrl/Cmd+Shift+R) — `app.js` installs `window.__tgdlReauth` early in boot; if it didn't load, `api.js` falls back to the redirect.
-
-## "Update appears stalled" overlay sticks past the timeout
-
-The watchtower swap took longer than `UPDATE_OVERLAY_STALL_MS` (default 120 s). On slow disks or large DBs the snapshot phase alone can run minutes — bump the env var on both the dashboard service and the watchtower sidecar (the dashboard broadcasts the value to the SPA at boot). Check `Maintenance → Updates` for the audit row's `error_code`; `STALLED` rows include the elapsed time so you can pick a sane new value.
+```sh
+docker compose down
+ls data/backups/db-pre-update-*.sqlite         # pick the one from before 3.0
+mkdir -p data/3.0-db
+mv data/db.sqlite data/db.sqlite-wal data/db.sqlite-shm data/3.0-db/ 2>/dev/null
+cp data/backups/db-pre-update-YYYYMMDD-HHMMSS.sqlite data/db.sqlite
+# In docker-compose.yml set: image: ghcr.io/botnick/telegram-media-downloader:2.32.1
+docker compose up -d
+```
+
+2.x logins still work because the original session files were left in place.
+Accounts added under 3.0, and downloads recorded after the snapshot, aren't
+in the restored database. Their files stay on disk. On bare metal, check out
+`v2.32.1` and start it the way that release's README describes.
+
+## Docker / NAS
+
+### "Permission denied" on `/app/data`
+
+The container starts as root only long enough to create the data folders and
+give them to the `node` user (uid 1000, as in 2.x), then runs as that user.
+Ownership isn't fixed when:
+
+- `FAST_BOOT=1` is set (it skips that step), or
+- the container is started as a non-root user (`user:` in compose, or a NAS
+  UI setting).
+
+Fix the folder once from the host, then restart:
+
+```sh
+sudo chown -R 1000:1000 ./data
+docker compose up -d
+```
+
+On a NAS, give uid 1000 read/write access to the shared folder. For a split
+download disk, the folder in `TGDL_DOWNLOADS_DIR` needs the same access.
+
+### Compose fails with an error about `/dev/dri`
+
+`docker-compose.synology.yml` passes the iGPU (`/dev/dri`) through. A host
+without that device can't start the container. 3.0 doesn't need the GPU,
+since thumbnails use the CPU, so delete the `devices:` block. When the device
+is present, the entrypoint adds the `node` user to its group by itself
+(`ENTRYPOINT_DEBUG_GPU=1` prints what it did).
+
+### The container restarts by itself or is killed for memory
+
+The bundled `autoheal` service restarts the container when `/health` stops
+answering. Check `docker compose logs telegram-downloader` for the reason.
+If the logs end abruptly or `docker inspect telegram-downloader` reports
+`OOMKilled`, raise `TGDL_MEM_LIMIT` in `.env` (default `8g`, `2g` in the
+Synology file).
+
+### The NAS UI shows the container as "unhealthy"
+
+The healthcheck calls `http://127.0.0.1:3000/health` inside the container.
+The server answers once database migrations finish, which can take longer
+than usual on the first 3.0 start with a large library. If it stays
+unhealthy, read the logs for a startup error ([Install & start](#install--start)).
+
+## Reverse proxy
+
+### Live updates don't work / the dashboard says it's disconnected
+
+The dashboard uses WebSockets on the same port. Forward the `Upgrade` and
+`Connection` headers (nginx: `proxy_http_version 1.1;`,
+`proxy_set_header Upgrade $http_upgrade;`,
+`proxy_set_header Connection "upgrade";`) and preserve `Host`.
+
+### `TRUST_PROXY` values
+
+`TRUST_PROXY` decides whose `X-Forwarded-For` / `X-Forwarded-Proto` headers
+the server believes. This affects rate limits, the HTTPS detection used by
+Force HTTPS, and the "local machine" check.
+
+| Value | Meaning |
+|---|---|
+| unset (bare metal default) | Trust proxies on loopback (`127.0.0.0/8`, `::1`) only. |
+| `1` (compose default) | Trust one proxy hop, whatever its address. |
+| empty (`TRUST_PROXY=`) | Trust no proxy. Use this when the dashboard is exposed directly with no proxy, so clients can't fake their address. |
+| `loopback`, `linklocal`, `uniquelocal`, IP addresses or CIDRs (comma-separated) | Trust proxies from those networks. |
+| a number from 0 to 256 | Trust that many proxy hops. |
+
+A proxy on another machine in front of a bare-metal install needs `1` or the
+proxy's address; the loopback default ignores it. Set
+`TGDL_SECURE_COOKIES=1` when the proxy serves HTTPS. See also
+[Deploy](DEPLOY.md#reverse-proxy-and-https).
+
+## Cluster
+
+For pairing, sync and peer problems see [Cluster](CLUSTER.md). A clock
+difference of more than 60 seconds between peers makes signed requests fail,
+so keep the system clocks synced (NTP).
+
+## Getting help and logs
+
+- **Where the logs are:** 3.0 writes its log to standard output.
+  - Docker: `docker compose logs -f telegram-downloader` (add `--tail=500`
+    or `--since 1h` to narrow it down).
+  - systemd: `journalctl -u <your unit>`.
+  - PM2: `pm2 logs`.
+  - Started by hand: the terminal.
+
+  `data/logs/` contains only log files left over from 2.x. **Maintenance →
+  Logs** can still browse those files, but the live log viewer stays empty in
+  3.0. Use the commands above instead.
+- **No debug switch:** `TGDL_DEBUG` and `DEBUG` from 2.x have no effect.
+- **Version:** `tgdl-server version` prints the version, OS/CPU and Go
+  version.
+- **Reporting a bug:** open an issue at
+  <https://github.com/botnick/telegram-media-downloader/issues> with the
+  version, how you run it (Docker, NAS, bare metal), what you did, and the
+  relevant log lines. Remove API hashes, tokens, reset tokens, phone numbers
+  and share links before posting.
+
+Related pages: [Deploy](DEPLOY.md), [Configuration](CONFIGURATION.md),
+[Upgrading](UPGRADING.md), [Backup](BACKUP.md), [Architecture](ARCHITECTURE.md),
+[REST API](API.md).

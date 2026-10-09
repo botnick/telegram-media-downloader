@@ -1,3 +1,10 @@
+---
+title: "Dialog pagination"
+description: "Engineering note on how the Go server pages Telegram dialogs so no chat is skipped."
+parent: "Developer notes"
+nav_order: 7
+---
+
 # Native dialog pagination
 
 The Go dialog endpoint previously sent one large `messages.getDialogs` request.
