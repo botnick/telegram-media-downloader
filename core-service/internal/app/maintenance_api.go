@@ -157,7 +157,7 @@ func (a *App) runFilesVerify(status map[string]any, started time.Time, previousS
 	a.hub.Broadcast(ws.Event{Type: "files_verify_progress", Flat: true, Payload: map[string]any{"processed": 0, "total": total, "stage": "scanning"}})
 	if err == nil {
 		for i, row := range all {
-			path := filepath.Join(a.dataDir, "downloads", filepath.FromSlash(strings.TrimPrefix(row.path, "data/downloads/")))
+			path := filepath.Join(a.downloadsDir, filepath.FromSlash(strings.TrimPrefix(row.path, "data/downloads/")))
 			st, statErr := os.Stat(path)
 			if statErr != nil || !st.Mode().IsRegular() || st.Size() <= 0 {
 				if _, e := a.db.Writer.Exec(`DELETE FROM downloads WHERE id = ?`, row.id); e == nil {
@@ -259,7 +259,7 @@ func (a *App) runReindex(ctx context.Context, status map[string]any, started tim
 			}
 		}
 	}
-	root := filepath.Join(a.dataDir, "downloads")
+	root := a.downloadsDir
 	entries, _ := os.ReadDir(root)
 	groupDirs := make([]string, 0)
 	for _, entry := range entries {

@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +29,7 @@ var ErrDisabled = errors.New("destination is disabled")
 type Options struct {
 	Writer, Reader *sql.DB
 	DataDir        string
+	DownloadsDir   string // empty: <DataDir>/downloads
 	Secret         func(context.Context) ([]byte, error)
 	Publish        func(string, map[string]any)
 	Factory        Factory
@@ -678,3 +680,10 @@ BEGIN
  AND NOT EXISTS(SELECT 1 FROM backup_jobs j WHERE j.destination_id=d.id AND j.download_id=NEW.id);
 END;
 `
+
+func (o Options) downloads() string {
+	if o.DownloadsDir != "" {
+		return o.DownloadsDir
+	}
+	return filepath.Join(o.DataDir, "downloads")
+}

@@ -63,7 +63,7 @@ func (a *App) handleFile(w http.ResponseWriter, r *http.Request) {
 		a.proxyClusterFile(w, r, peer, rel)
 		return
 	}
-	f, err := openMedia(filepath.Join(a.dataDir, "downloads"), rel)
+	f, err := openMedia(a.downloadsDir, rel)
 	if err != nil {
 		a.autoPruneMissingFile(r, rel)
 		fileText(w, r, http.StatusNotFound, "File not found")
@@ -169,11 +169,16 @@ func fileMountNotFound(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) autoPruneMissingFile(r *http.Request, rel string) {
+	// Rows outside the media root (custom Node download paths) are never
+	// proof that a file was deleted.
+	if !filepath.IsLocal(filepath.FromSlash(rel)) {
+		return
+	}
 	var count int
 	if err := a.db.Reader.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM downloads WHERE REPLACE(file_path,char(92),'/')=?`, filepath.ToSlash(rel)).Scan(&count); err != nil || count == 0 {
 		return
 	}
-	if _, err := os.Stat(filepath.Dir(filepath.Join(a.dataDir, "downloads", filepath.FromSlash(rel)))); err != nil {
+	if _, err := os.Stat(filepath.Dir(filepath.Join(a.downloadsDir, filepath.FromSlash(rel)))); err != nil {
 		return
 	}
 	if _, err := a.deleteByWhere(r, `REPLACE(file_path,char(92),'/')=?`, filepath.ToSlash(rel)); err == nil {
@@ -206,12 +211,12 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 	name := hex.EncodeToString(key[:])[:32] + ".webp"
 	thumbPath := filepath.Join(thumbDir, name)
 	if st, statErr := os.Stat(thumbPath); statErr != nil || !st.Mode().IsRegular() || st.Size() == 0 {
-		f, openErr := openMedia(filepath.Join(a.dataDir, "downloads"), stored)
+		f, openErr := openMedia(a.downloadsDir, stored)
 		if openErr != nil {
 			writeText(w, r, http.StatusNotFound, "No thumb")
 			return
 		}
-		source := filepath.Join(a.dataDir, "downloads", filepath.FromSlash(strings.ReplaceAll(stored, "\\", "/")))
+		source := filepath.Join(a.downloadsDir, filepath.FromSlash(strings.ReplaceAll(stored, "\\", "/")))
 		_ = f.Close()
 		if mkErr := os.MkdirAll(thumbDir, 0o700); mkErr != nil {
 			writeText(w, r, http.StatusNotFound, "No thumb")

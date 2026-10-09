@@ -499,9 +499,9 @@ func (a *App) commitPurge(ctx context.Context, p *purgeRecord) error {
 			rows.Close()
 			return err
 		}
-		if f, err := openMedia(filepath.Join(a.dataDir, "downloads"), path); err == nil {
+		if f, err := openMedia(a.downloadsDir, path); err == nil {
 			f.Close()
-			key := filepath.Join(a.dataDir, "downloads", filepath.FromSlash(strings.ReplaceAll(path, "\\", "/")))
+			key := filepath.Join(a.downloadsDir, filepath.FromSlash(strings.ReplaceAll(path, "\\", "/")))
 			if real, err := filepath.EvalSymlinks(key); err == nil {
 				key = real
 			}
@@ -635,19 +635,28 @@ func (a *App) commitPurge(ctx context.Context, p *purgeRecord) error {
 	return nil
 }
 
-func (a *App) planReset(p *purgeRecord) error {
-	root, err := os.OpenRoot(a.dataDir)
-	if err != nil {
-		return err
+// resetAreaDir maps a reset area to its directory; downloads may live on
+// another disk (TGDL_DOWNLOADS_DIR).
+func (a *App) resetAreaDir(area string) string {
+	if area == "downloads" {
+		return a.downloadsDir
 	}
-	defer root.Close()
+	return filepath.Join(a.dataDir, area)
+}
+
+func (a *App) planReset(p *purgeRecord) error {
 	p.ResetEntries, p.ResetFiles = nil, 0
 	for _, area := range []string{"downloads", "thumbs", "seekbar", "photos"} {
-		entries, err := fs.ReadDir(root.FS(), area)
+		root, err := os.OpenRoot(a.resetAreaDir(area))
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
+			return err
+		}
+		entries, err := fs.ReadDir(root.FS(), ".")
+		if err != nil {
+			root.Close()
 			return err
 		}
 		for _, entry := range entries {
@@ -661,16 +670,18 @@ func (a *App) planReset(p *purgeRecord) error {
 					p.ResetFiles++
 					continue
 				}
-				if err := fs.WalkDir(root.FS(), name, func(_ string, d fs.DirEntry, err error) error {
+				if err := fs.WalkDir(root.FS(), entry.Name(), func(_ string, d fs.DirEntry, err error) error {
 					if err == nil && !d.IsDir() {
 						p.ResetFiles++
 					}
 					return err
 				}); err != nil {
+					root.Close()
 					return err
 				}
 			}
 		}
+		root.Close()
 	}
 	return nil
 }
@@ -687,11 +698,6 @@ func (a *App) cleanPurge(ctx context.Context, p *purgeRecord) (int, error) {
 		if err := progress(map[string]any{"stage": "deleting_files", "processed": 0, "total": groups}); err != nil {
 			return 0, err
 		}
-		root, err := os.OpenRoot(a.dataDir)
-		if err != nil {
-			return 0, err
-		}
-		defer root.Close()
 		processed := 0
 		for _, name := range p.ResetEntries {
 			if err := ctx.Err(); err != nil {
@@ -702,7 +708,16 @@ func (a *App) cleanPurge(ctx context.Context, p *purgeRecord) (int, error) {
 			if !filepath.IsLocal(clean) || len(parts) != 2 || !contains([]string{"downloads", "thumbs", "seekbar", "photos"}, parts[0]) {
 				return 0, errors.New("invalid reset cleanup path")
 			}
-			if err := root.RemoveAll(clean); err != nil {
+			root, err := os.OpenRoot(a.resetAreaDir(parts[0]))
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				return 0, err
+			}
+			err = root.RemoveAll(parts[1])
+			root.Close()
+			if err != nil {
 				return 0, err
 			}
 			if parts[0] == "downloads" {
@@ -733,7 +748,7 @@ func (a *App) cleanPurge(ctx context.Context, p *purgeRecord) (int, error) {
 	}
 	files := 0
 	for _, path := range p.Paths {
-		if f, err := openMedia(filepath.Join(a.dataDir, "downloads"), path); os.IsNotExist(err) {
+		if f, err := openMedia(a.downloadsDir, path); os.IsNotExist(err) {
 			files++
 		} else if err == nil {
 			f.Close()

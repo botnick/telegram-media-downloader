@@ -61,7 +61,7 @@ func (a *App) handlePeerFile(w http.ResponseWriter, r *http.Request) {
 		fileText(w, r, 400, "Bad request")
 		return
 	}
-	f, err := openMedia(filepath.Join(a.dataDir, "downloads"), rel)
+	f, err := openMedia(a.downloadsDir, rel)
 	if err != nil {
 		fileText(w, r, 404, "File not found")
 		return

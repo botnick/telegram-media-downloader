@@ -166,7 +166,7 @@ func (a *App) drainFileCleanup(ctx context.Context) error {
 	if len(paths) == 0 {
 		return tx.Commit()
 	}
-	rootPath := filepath.Join(a.dataDir, "downloads")
+	rootPath := a.downloadsDir
 	root, err := os.OpenRoot(rootPath)
 	if os.IsNotExist(err) {
 		_, err = tx.ExecContext(ctx, `DELETE FROM tgdl_file_cleanup; DELETE FROM tgdl_verified_media`)

@@ -37,6 +37,7 @@ type Config struct {
 	AccountFactory      engine.Factory
 	AccountLoginFactory telegram.LoginFactory
 	DataDir             string
+	DownloadsDir        string // empty: <DataDir>/downloads
 	Port                int
 	Static              fs.FS
 	CookieName          string
@@ -108,6 +109,7 @@ type App struct {
 	dedupLastScan       map[string]any
 	dedupScanStatus     map[string]any
 	dedupDeleteStatus   map[string]any
+	downloadsDir        string
 	leaveBatchMu        sync.Mutex
 	leaveBatchStatus    map[string]any
 	faststartMu         sync.Mutex
@@ -189,6 +191,10 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
 	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), leaveBatchStatus: dedupIdleStatus("chatLeaveBatch"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum")}
 	a.httpOptions, a.proxyPolicy, a.apiRL = cfg.HTTP, proxy, newRateLimiter(10000, time.Minute)
+	a.downloadsDir = cfg.DownloadsDir
+	if a.downloadsDir == "" {
+		a.downloadsDir = filepath.Join(cfg.DataDir, "downloads")
+	}
 	a.ctx, a.cancel = context.WithCancel(ctx)
 	a.releaseOwnership = release
 	a.cluster = cluster.Store{Writer: db.Writer, Reader: db.Reader}
@@ -203,7 +209,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		return nil, err
 	}
 	a.accountWizard = accounts.NewWizard(a.ctx, accounts.WizardConfig{DataDir: cfg.DataDir, Factory: cfg.AccountLoginFactory, Publish: a.publishAccount})
-	a.library, err = download.NewLibrary(db.Writer, db.Reader, filepath.Join(cfg.DataDir, "downloads"), 64)
+	a.library, err = download.NewLibraryIn(db.Writer, db.Reader, cfg.DataDir, a.downloadsDir, 64)
 	if err != nil {
 		a.Close()
 		return nil, err
@@ -283,7 +289,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	}
 	a.applyDownloadSpeed(stored)
 	a.backups, err = backup.NewManager(a.ctx, backup.Options{
-		Writer: db.Writer, Reader: db.Reader, DataDir: a.dataDir, Secret: a.shareSecret,
+		Writer: db.Writer, Reader: db.Reader, DataDir: a.dataDir, DownloadsDir: a.downloadsDir, Secret: a.shareSecret,
 		Publish: func(kind string, payload map[string]any) {
 			a.hub.Broadcast(ws.Event{Type: kind, Flat: true, Payload: payload, Roles: []string{"admin"}})
 		},

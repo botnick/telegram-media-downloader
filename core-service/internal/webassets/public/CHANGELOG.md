@@ -4,9 +4,37 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.0] — 2026-10-09
+
+One native Go server replaces the Node backend: a single `tgdl-server` binary (or the Docker image) runs the dashboard, Telegram accounts, downloads, backups and maintenance. Existing data folders and Telegram sessions are reused in place.
+
+### Breaking
+- **Node.js is gone.** No `npm install`, Node runtime, gramJS or proxy process is shipped or needed. Native archives for Linux, Windows and macOS (amd64/arm64, plus Linux arm and 386) and the Docker image each contain one executable with the dashboard embedded. Scripts that started `node` or `npm start` must start `tgdl-server` instead; see [deployment](docs/DEPLOY.md).
+- **Telegram runs on gotd (MTProto in Go).** Saved gramJS sessions are migrated to encrypted Go sessions on first start; accounts do not need to log in again.
+
+### Added
+- **Leave dead chats in bulk.** The Chats page's *Deleted / unavailable* tab has *Select* and *Select all*. Leave the selected chats from one confirmed account, either keeping downloaded files or deleting their files, download history and settings (typed count required). Removals run one at a time, stop if Telegram asks to wait, and only chats Telegram confirms are cleaned up. Chats that still work are never removed in bulk.
+- **Deleted, restricted and inaccessible chats are separated** into their own tab with Telegram's reason, *Check again*, and a per-chat *Leave / remove from Telegram* for the selected account. Dead rows no longer show Backfill or an idle Monitor switch.
+- **Media facts for duplicate detection.** Each download records MIME type, width × height, duration, forward origin and Telegram's stripped thumbnail, so re-uploaded copies can be matched later. Existing Telegram-ID and SHA-256 deduplication is unchanged.
+- **Native backups:** local, S3, SFTP, FTP/FTPS and TGDB encrypted archives with verified publication, crash recovery and offline restore.
+- **Native cluster peers:** pairing, durable catalog sync and ranged media transport.
+- **Native Stories, URL downloads, history backfill and jobs-only account runs** on a durable work queue that survives restarts.
+- **Live aggregate bandwidth limit** across all downloads, and Telegram connections through configured proxies.
+
+### Changed
+- **Duplicates are skipped before download** by Telegram media identity, then confirmed by SHA-256 after transfer.
+- **Chat list and profile photos load without starting the monitor**; photos download lazily and are cached.
+- **Dashboard sessions are revoked server-side** and their WebSockets closed; HTTP security headers and bounded compression are applied natively.
+- Thumbnails, faststart, seekbar sprites, AI/NSFW queues, purge and recovery cleanup all run in Go.
+
+### Removed
+- Unused settings, the Node development toolchain and the contract-only test harness.
+
 ### Fixed
 - **Release notes show the newest versions right after an update.** The in-app viewer could show a copy of the changelog the browser kept for up to an hour, so a freshly updated dashboard listed older releases only. It now revalidates the file on every open.
 
+### Service worker
+- `VERSION = 'v3000'`
 ## [2.32.1] — 2026-09-30
 
 One-click update works again on the watchtower sidecar; LOCATION_INVALID downloads recover.

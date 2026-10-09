@@ -301,12 +301,12 @@ func (m *Manager) transfer(ctx context.Context, d destination, j job, p Provider
 		err = m.opts.Reader.QueryRowContext(ctx, `SELECT file_path FROM downloads WHERE id=?`, j.Download.Int64).Scan(&rel)
 		if err == nil {
 			rel = strings.ReplaceAll(rel, "\\", "/")
-			sourceName = filepath.Join(m.opts.DataDir, "downloads", filepath.FromSlash(rel))
+			sourceName = filepath.Join(m.opts.downloads(), filepath.FromSlash(rel))
 			if e := validObject(rel); e != nil {
 				err = e
 				permanent = true
 			} else {
-				root, err = os.OpenRoot(filepath.Join(m.opts.DataDir, "downloads"))
+				root, err = os.OpenRoot(m.opts.downloads())
 				if err == nil {
 					file, err = root.Open(rel)
 				}

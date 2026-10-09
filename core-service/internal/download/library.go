@@ -56,13 +56,23 @@ type Library struct {
 }
 
 func NewLibrary(writer, reader *sql.DB, root string, workers int) (*Library, error) {
+	configured, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	return NewLibraryIn(writer, reader, filepath.Dir(configured), root, workers)
+}
+
+// NewLibraryIn keeps derived data (thumbs, seekbar) under dataDir even when
+// the media root lives on another disk (TGDL_DOWNLOADS_DIR).
+func NewLibraryIn(writer, reader *sql.DB, dataDir, root string, workers int) (*Library, error) {
 	if writer == nil || reader == nil || root == "" || workers < 1 || workers > 64 {
 		return nil, errors.New("invalid media library configuration")
 	}
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, err
 	}
-	configuredRoot, err := filepath.Abs(root)
+	dataDir, err := filepath.Abs(dataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +84,7 @@ func NewLibrary(writer, reader *sql.DB, root string, workers int) (*Library, err
 	if err != nil {
 		return nil, err
 	}
-	return &Library{writer: writer, reader: reader, root: root, dataDir: filepath.Dir(configuredRoot), flights: make(map[string]chan struct{}), slots: make(chan struct{}, workers)}, nil
+	return &Library{writer: writer, reader: reader, root: root, dataDir: dataDir, flights: make(map[string]chan struct{}), slots: make(chan struct{}, workers)}, nil
 }
 
 // enter coalesces identity/content work, including wait cancellation. It does

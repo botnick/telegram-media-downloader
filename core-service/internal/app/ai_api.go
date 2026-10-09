@@ -354,7 +354,7 @@ func (a *App) serveCropByFace(w http.ResponseWriter, r *http.Request, faceID int
 		writeJSONError(w, http.StatusNotFound, "face not found")
 		return
 	}
-	imgFile, err := os.Open(filepath.Join(a.dataDir, "downloads", filepath.FromSlash(path)))
+	imgFile, err := os.Open(filepath.Join(a.downloadsDir, filepath.FromSlash(path)))
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "face not found")
 		return

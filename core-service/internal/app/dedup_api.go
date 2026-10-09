@@ -153,7 +153,7 @@ func (a *App) handleDedupScan(w http.ResponseWriter, r *http.Request) {
 	a.hub.Broadcast(ws.Event{Type: "dedup_progress", Flat: true, Payload: map[string]any{"kind": "dedupScan", "processed": 0, "total": len(candidates)}})
 	hashed, errored := 0, 0
 	for _, c := range candidates {
-		f, e := os.Open(filepath.Join(a.dataDir, "downloads", filepath.FromSlash(c.path)))
+		f, e := os.Open(filepath.Join(a.downloadsDir, filepath.FromSlash(c.path)))
 		if e != nil {
 			errored++
 			continue

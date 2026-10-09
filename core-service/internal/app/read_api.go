@@ -45,7 +45,7 @@ func (a *App) handleAPISystemHealth(w http.ResponseWriter, _ *http.Request) {
 		"database":    map[string]any{"journalMode": strings.ToLower(journal), "sizeMB": dbSize, "walPages": 0},
 		"disk":        nil,
 		"goCore": map[string]any{
-			"allowRoots": []string{filepath.Join(a.dataDir, "downloads"), filepath.Join(a.dataDir, "thumbs"), filepath.Join(a.dataDir, "seekbar"), filepath.Join(a.dataDir, "backups")},
+			"allowRoots": []string{a.downloadsDir, filepath.Join(a.dataDir, "thumbs"), filepath.Join(a.dataDir, "seekbar"), filepath.Join(a.dataDir, "backups")},
 			"binary":     map[string]any{"path": os.Args[0], "source": "development"}, "error": nil,
 			"expectedVersion": "0.4.0", "features": map[string]any{"dbscan": map[string]any{"available": true}, "hash": map[string]any{"available": true}, "stat": map[string]any{"available": true}, "walk": map[string]any{"available": true}},
 			"pid": os.Getpid(), "platform": runtime.GOOS + "/" + runtime.GOARCH, "problem": nil, "restarts": 0, "since": time.Now().UnixMilli(), "state": "running", "version": "0.4.0",

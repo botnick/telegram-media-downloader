@@ -205,7 +205,7 @@ func (a *App) queryGalleryFiles(r *http.Request, q galleryQuery) ([]map[string]a
 			fullPath = galleryGroupFolder(displayName) + "/" + folder + "/" + fileName
 			if stored != "" && peerID.String == "self" {
 				if !rootChecked {
-					mediaRoot, _ = os.OpenRoot(filepath.Join(a.dataDir, "downloads"))
+					mediaRoot, _ = os.OpenRoot(a.downloadsDir)
 					rootChecked = true
 				}
 				if mediaRoot != nil {

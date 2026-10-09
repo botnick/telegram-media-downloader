@@ -8,7 +8,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -460,7 +459,7 @@ func (a *App) runBulkDelete(idList []int64, paths []string) (map[string]any, err
 	for _, id := range ids {
 		var path string
 		if a.db.Reader.QueryRowContext(r.Context(), `SELECT file_path FROM downloads WHERE id=?`, id).Scan(&path) == nil {
-			if f, err := openMedia(filepath.Join(a.dataDir, "downloads"), path); err == nil {
+			if f, err := openMedia(a.downloadsDir, path); err == nil {
 				f.Close()
 				existing[strings.ReplaceAll(path, "\\", "/")] = true
 			}
@@ -478,7 +477,7 @@ func (a *App) runBulkDelete(idList []int64, paths []string) (map[string]any, err
 	}
 	unlinked := 0
 	for path := range existing {
-		if f, err := openMedia(filepath.Join(a.dataDir, "downloads"), path); os.IsNotExist(err) {
+		if f, err := openMedia(a.downloadsDir, path); os.IsNotExist(err) {
 			unlinked++
 		} else if err == nil {
 			f.Close()
@@ -502,7 +501,7 @@ func (a *App) handleAPIFileDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusForbidden, "Access denied")
 		return
 	}
-	f, err := openMedia(filepath.Join(a.dataDir, "downloads"), path)
+	f, err := openMedia(a.downloadsDir, path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			writeJSONError(w, http.StatusNotFound, "File not found")
@@ -544,7 +543,7 @@ func (a *App) handleAPIFileDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload := map[string]any{"path": strings.ReplaceAll(path, "\\", "/")}
-	if remaining, err := openMedia(filepath.Join(a.dataDir, "downloads"), path); err == nil && id > 0 {
+	if remaining, err := openMedia(a.downloadsDir, path); err == nil && id > 0 {
 		remaining.Close()
 		payload = map[string]any{"id": id}
 	} else if err == nil {

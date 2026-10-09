@@ -40,3 +40,15 @@ func TestFullConfigBindAddress(t *testing.T) {
 		}
 	}
 }
+
+func TestFullEnvReadsSplitDiskDownloadsDir(t *testing.T) {
+	env := map[string]string{"TGDL_DATA_DIR": "/data", "TGDL_DOWNLOADS_DIR": "/mnt/hdd/downloads"}
+	cfg, err := FromFullEnv(func(k string) string { return env[k] })
+	if err != nil || cfg.DownloadsDir != "/mnt/hdd/downloads" {
+		t.Fatalf("cfg=%+v err=%v", cfg, err)
+	}
+	delete(env, "TGDL_DOWNLOADS_DIR")
+	if cfg, _ = FromFullEnv(func(k string) string { return env[k] }); cfg.DownloadsDir != "" {
+		t.Fatalf("default downloads dir=%q", cfg.DownloadsDir)
+	}
+}

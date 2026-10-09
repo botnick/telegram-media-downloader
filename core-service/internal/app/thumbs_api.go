@@ -180,7 +180,7 @@ func (a *App) runThumbBuild(ctx context.Context, kind string) {
 	a.thumbBuildStatus = cloneConfigValue(status).(map[string]any)
 	a.thumbMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "thumbs_progress", Flat: true, Payload: map[string]any{"kind": kind, "processed": 0, "total": len(rows), "built": 0, "skipped": 0, "errored": 0, "stage": "building"}})
-	roots, _ := hash.NewRoots([]string{filepath.Join(a.dataDir, "downloads"), filepath.Join(a.dataDir, "thumbs")})
+	roots, _ := hash.NewRoots([]string{a.downloadsDir, filepath.Join(a.dataDir, "thumbs")})
 	handlers := map[string]*thumbs.Handler{
 		"image": {Roots: roots, Kind: "image"},
 		"video": {Roots: roots, Kind: "video"},
@@ -208,7 +208,7 @@ func (a *App) runThumbBuild(ctx context.Context, kind string) {
 			continue
 		}
 		tmp := cache + ".tmp-" + strconv.FormatInt(time.Now().UnixNano(), 10)
-		body, _ := json.Marshal(map[string]any{"path": filepath.Join(a.dataDir, "downloads", filepath.FromSlash(row.path)), "output": tmp, "width": thumbWidth})
+		body, _ := json.Marshal(map[string]any{"path": filepath.Join(a.downloadsDir, filepath.FromSlash(row.path)), "output": tmp, "width": thumbWidth})
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/v1/thumb/"+kindName, bytes.NewReader(body))
 		rec := &responseCapture{header: make(http.Header), body: bytes.NewBuffer(nil), status: http.StatusOK}
 		handlers[kindName].ServeHTTP(rec, req)
@@ -378,9 +378,9 @@ func (a *App) buildOneThumb(ctx context.Context, row thumbRow) {
 	}
 	cache := thumbCachePath(filepath.Join(a.dataDir, "thumbs"), row.id)
 	_ = os.MkdirAll(filepath.Dir(cache), 0o700)
-	roots, _ := hash.NewRoots([]string{filepath.Join(a.dataDir, "downloads"), filepath.Join(a.dataDir, "thumbs")})
+	roots, _ := hash.NewRoots([]string{a.downloadsDir, filepath.Join(a.dataDir, "thumbs")})
 	tmp := cache + ".tmp-one"
-	body, _ := json.Marshal(map[string]any{"path": filepath.Join(a.dataDir, "downloads", filepath.FromSlash(row.path)), "output": tmp, "width": thumbWidth})
+	body, _ := json.Marshal(map[string]any{"path": filepath.Join(a.downloadsDir, filepath.FromSlash(row.path)), "output": tmp, "width": thumbWidth})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/v1/thumb/"+kind, bytes.NewReader(body))
 	rec := &responseCapture{header: make(http.Header), body: bytes.NewBuffer(nil), status: http.StatusOK}
 	(&thumbs.Handler{Roots: roots, Kind: kind}).ServeHTTP(rec, req)

@@ -28,7 +28,7 @@ func (a *App) handleArchiveList(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusForbidden, "Forbidden")
 		return
 	}
-	f, err := openMedia(filepath.Join(a.dataDir, "downloads"), rel)
+	f, err := openMedia(a.downloadsDir, rel)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "File not found")
 		return
@@ -102,7 +102,7 @@ func (a *App) handleBulkZip(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		row.group, row.filePath, row.fileName = group.String, filePath.String, fileName.String
-		f, openErr := openMedia(filepath.Join(a.dataDir, "downloads"), row.filePath)
+		f, openErr := openMedia(a.downloadsDir, row.filePath)
 		if openErr != nil {
 			continue
 		}
@@ -141,7 +141,7 @@ func (a *App) handleBulkZip(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		used[name]++
-		f, err := openMedia(filepath.Join(a.dataDir, "downloads"), row.filePath)
+		f, err := openMedia(a.downloadsDir, row.filePath)
 		if err != nil {
 			continue
 		}

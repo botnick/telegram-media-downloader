@@ -81,7 +81,7 @@ func (a *App) handleFaststartStats(w http.ResponseWriter, r *http.Request) {
 	rows, _ := a.videoRows(r.Context())
 	optimized, pending, unknown, missing := 0, 0, 0, 0
 	for _, row := range rows {
-		p := filepath.Join(a.dataDir, "downloads", filepath.FromSlash(row.path))
+		p := filepath.Join(a.downloadsDir, filepath.FromSlash(row.path))
 		if _, err := os.Stat(p); err != nil {
 			missing++
 			continue
@@ -135,11 +135,11 @@ func (a *App) handleFaststartScan(w http.ResponseWriter, r *http.Request) {
 	a.faststartStatus = cloneConfigValue(status).(map[string]any)
 	a.faststartMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "faststart_progress", Flat: true, Payload: map[string]any{"total": len(rows)}})
-	roots, _ := hash.NewRoots([]string{filepath.Join(a.dataDir, "downloads")})
+	roots, _ := hash.NewRoots([]string{a.downloadsDir})
 	handler := &faststart.Handler{Roots: roots}
 	already, optimized, errored, skipped := 0, 0, 0, 0
 	for _, row := range rows {
-		path := filepath.Join(a.dataDir, "downloads", filepath.FromSlash(row.path))
+		path := filepath.Join(a.downloadsDir, filepath.FromSlash(row.path))
 		if faststartAtom(path) == "moov" {
 			already++
 			continue

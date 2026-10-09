@@ -12,12 +12,15 @@ import (
 
 // FullConfig is the strict process configuration for the Go application.
 type FullConfig struct {
-	DataDir    string
-	DBPath     string
-	Port       int
-	BindHost   string
-	CookieName string
-	SessionTTL time.Duration
+	DataDir string
+	// DownloadsDir is TGDL_DOWNLOADS_DIR (split-disk installs); empty means
+	// <data>/downloads, the same default as the Node releases.
+	DownloadsDir string
+	DBPath       string
+	Port         int
+	BindHost     string
+	CookieName   string
+	SessionTTL   time.Duration
 }
 
 func FromFullEnv(getenv func(string) string) (FullConfig, error) {
@@ -45,5 +48,13 @@ func FromFullEnv(getenv func(string) string) (FullConfig, error) {
 		}
 		ttlDays = n
 	}
-	return FullConfig{DataDir: dataDir, DBPath: filepath.Join(dataDir, "db.sqlite"), Port: port, BindHost: bindHost, CookieName: "tg_dl_session", SessionTTL: time.Duration(ttlDays) * 24 * time.Hour}, nil
+	downloadsDir := strings.TrimSpace(getenv("TGDL_DOWNLOADS_DIR"))
+	if downloadsDir != "" {
+		abs, err := filepath.Abs(downloadsDir)
+		if err != nil {
+			return FullConfig{}, fmt.Errorf("TGDL_DOWNLOADS_DIR: %w", err)
+		}
+		downloadsDir = abs
+	}
+	return FullConfig{DataDir: dataDir, DownloadsDir: downloadsDir, DBPath: filepath.Join(dataDir, "db.sqlite"), Port: port, BindHost: bindHost, CookieName: "tg_dl_session", SessionTTL: time.Duration(ttlDays) * 24 * time.Hour}, nil
 }

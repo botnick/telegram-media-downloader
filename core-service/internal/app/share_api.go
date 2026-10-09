@@ -13,7 +13,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -311,7 +310,7 @@ func (a *App) handleShareServe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 401, map[string]any{"error": "Share link is not valid", "code": "bad_sig"})
 		return
 	}
-	f, err := openMedia(filepath.Join(a.dataDir, "downloads"), stored.String)
+	f, err := openMedia(a.downloadsDir, stored.String)
 	if err != nil {
 		writeText(w, r, 404, "File not found")
 		return
