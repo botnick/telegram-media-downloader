@@ -247,9 +247,8 @@ func (a *App) stopForRecovery(ctx context.Context) (bool, error) {
 }
 
 func (a *App) resumeAfterRecovery() error {
-	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
-	defer cancel()
-	return a.startMonitor(ctx)
+	// No deadline: starting can repair missed history for a long time.
+	return a.startMonitor(a.ctx)
 }
 
 func saveRecoveryConfig(ctx context.Context, tx *sql.Tx, cfg map[string]any) error {

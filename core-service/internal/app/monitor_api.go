@@ -129,13 +129,45 @@ func (a *App) writeMonitorResult(w http.ResponseWriter, r *http.Request, err err
 	writeJSON(w, 200, map[string]any{"success": true, "status": status})
 }
 func (a *App) handleMonitorStart(w http.ResponseWriter, r *http.Request) {
-	a.monitorOp.Lock()
-	defer a.monitorOp.Unlock()
-	err := a.startMonitor(r.Context())
-	if err == nil {
-		err = a.setAutoStart(r.Context(), true)
+	a.writeMonitorResult(w, r, a.startMonitorDetached(r, false))
+}
+
+// startMonitorDetached starts (or restarts) monitoring on the server's own
+// context. A start can spend many minutes repairing missed channel history;
+// a dashboard request timing out or the tab closing must not cancel it.
+// The reply waits up to monitorStartWait, then reports the current state
+// (usually "starting"); the dashboard follows monitor_state events.
+var monitorStartWait = 20 * time.Second
+
+func (a *App) startMonitorDetached(r *http.Request, restart bool) error {
+	done := make(chan error, 1)
+	launched := a.launchMaintenance(func() {
+		a.monitorOp.Lock()
+		defer a.monitorOp.Unlock()
+		var err error
+		if restart {
+			err = a.monitor.Stop(a.ctx)
+		}
+		if err == nil {
+			err = a.startMonitor(a.ctx)
+		}
+		if err == nil {
+			err = a.setAutoStart(a.ctx, true)
+		}
+		done <- err
+	})
+	if !launched {
+		return errors.New("Server is stopping")
 	}
-	a.writeMonitorResult(w, r, err)
+	timer := time.NewTimer(monitorStartWait)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-timer.C:
+	case <-r.Context().Done():
+	}
+	return nil
 }
 func (a *App) handleMonitorStop(w http.ResponseWriter, r *http.Request) {
 	// Cancel first so an operator can stop an in-progress startup promptly.
@@ -153,16 +185,7 @@ func (a *App) handleMonitorStop(w http.ResponseWriter, r *http.Request) {
 	a.writeMonitorResult(w, r, err)
 }
 func (a *App) handleMonitorRestart(w http.ResponseWriter, r *http.Request) {
-	a.monitorOp.Lock()
-	defer a.monitorOp.Unlock()
-	err := a.monitor.Stop(r.Context())
-	if err == nil {
-		err = a.startMonitor(r.Context())
-	}
-	if err == nil {
-		err = a.setAutoStart(r.Context(), true)
-	}
-	a.writeMonitorResult(w, r, err)
+	a.writeMonitorResult(w, r, a.startMonitorDetached(r, true))
 }
 func (a *App) ingestWork(ctx context.Context, work *engine.Work, message *tg.Message, transport telegram.MediaDownloader) error {
 	cfg, err := a.config.Load(ctx)

@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.9] — 2026-10-10
+
+### Fixed
+- **Starting the monitor could silently fall back to "stopped".** A start that first repairs missed channel history can take many minutes, and it was tied to the dashboard request: when the request timed out (60 s in the dashboard) or the tab closed, the whole start was cancelled. Start and Restart now run on the server and continue on their own; the dashboard gets the current state (usually "starting") and follows the live status. Resuming after Recovery no longer has a 30 s limit either.
+
+### Service worker
+- `VERSION = 'v3090'`
+
 ## [3.0.8] — 2026-10-10
 
 ### Fixed
