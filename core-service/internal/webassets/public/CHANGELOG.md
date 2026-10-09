@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.4] — 2026-10-09
+
+### Fixed
+- **The monitor stayed stopped after an error.** When Telegram reports a gap in a channel ("requires history recovery") or a connection drops, the monitor now restarts on its own while monitoring is switched on — after 5 s, then 30 s, 1 min and every 5 min if it keeps failing. The restart repairs the channel's missed messages first. Stopping the monitor by hand still keeps it stopped.
+
+### Service worker
+- `VERSION = 'v3040'`
+
 ## [3.0.3] — 2026-10-09
 
 ### Fixed

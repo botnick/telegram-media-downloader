@@ -110,6 +110,10 @@ type App struct {
 	dedupScanStatus     map[string]any
 	dedupDeleteStatus   map[string]any
 	downloadsDir        string
+	restartMu           sync.Mutex
+	restartPending      bool
+	restartAttempt      int
+	monitorRunningSince time.Time
 	updateMu            sync.Mutex
 	updateStatus        map[string]any
 	leaveBatchMu        sync.Mutex

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
@@ -197,4 +198,80 @@ func (a *App) monitorEvent(state string, err error) {
 		cause = err.Error()
 	}
 	a.hub.Broadcast(ws.Event{Type: "monitor_state", Flat: true, Payload: map[string]any{"state": state, "error": cause}})
+	switch state {
+	case "running":
+		a.restartMu.Lock()
+		a.monitorRunningSince = time.Now()
+		a.restartMu.Unlock()
+	case "error":
+		a.scheduleMonitorRestart()
+	}
+}
+
+// Delays before restarting a monitor that stopped on an error while it is
+// meant to run (autoStart). A channel gap ("requires history recovery") is
+// repaired by the next start, so the first retry comes quickly; repeated
+// failures back off to 5 minutes. A run that lasted 10 minutes resets it.
+var monitorRestartDelays = []time.Duration{5 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute}
+
+func (a *App) scheduleMonitorRestart() {
+	a.restartMu.Lock()
+	if a.restartPending {
+		a.restartMu.Unlock()
+		return
+	}
+	if !a.monitorRunningSince.IsZero() && time.Since(a.monitorRunningSince) > 10*time.Minute {
+		a.restartAttempt = 0
+	}
+	a.monitorRunningSince = time.Time{}
+	delay := monitorRestartDelays[min(a.restartAttempt, len(monitorRestartDelays)-1)]
+	a.restartAttempt++
+	a.restartPending = true
+	a.restartMu.Unlock()
+	launched := a.launchMaintenance(func() {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-timer.C:
+		}
+		a.restartMu.Lock()
+		a.restartPending = false
+		a.restartMu.Unlock()
+		a.monitorOp.Lock()
+		retry := false
+		if a.monitorShouldRestart() {
+			if err := a.startMonitor(a.ctx); err != nil && a.ctx.Err() == nil {
+				if a.output != nil {
+					fmt.Fprintf(a.output, "Monitor restart failed: %v\n", err)
+				}
+				retry = true
+			}
+		}
+		a.monitorOp.Unlock()
+		if retry {
+			a.scheduleMonitorRestart()
+		}
+	})
+	if !launched {
+		a.restartMu.Lock()
+		a.restartPending = false
+		a.restartMu.Unlock()
+	}
+}
+
+// monitorShouldRestart: the operator left monitoring on and it is still
+// stopped on an error (not stopped by hand or already running again).
+func (a *App) monitorShouldRestart() bool {
+	cfg, err := a.config.Load(a.ctx)
+	if err != nil {
+		return false
+	}
+	monitor, _ := cfg["monitor"].(map[string]any)
+	if monitor["autoStart"] != true {
+		return false
+	}
+	status, err := a.monitor.Status(a.ctx)
+	return err == nil && status["state"] == "error"
 }
