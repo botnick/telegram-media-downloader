@@ -30,6 +30,7 @@ type SavedSession struct {
 func SavedSessions(dataDir string) ([]SavedSession, error) {
 	root := filepath.Join(dataDir, "sessions")
 	byID := map[string]SavedSession{}
+	nodeAccounts := 0
 	for _, native := range []bool{false, true} {
 		dir := root
 		if native {
@@ -63,6 +64,7 @@ func SavedSessions(dataDir string) ([]SavedSession, error) {
 			}
 			if !native {
 				saved.ImportPath = filepath.Join(root, entry.Name())
+				nodeAccounts++
 			}
 			byID[id] = saved
 		}
@@ -71,8 +73,15 @@ func SavedSessions(dataDir string) ([]SavedSession, error) {
 	// added. Otherwise adding one account silently hides the legacy account and
 	// a later removal can orphan it. A native legacy file is the converted copy
 	// of this same source and therefore retains the import path.
+	//
+	// Node releases only migrated session.enc into an empty sessions/ folder
+	// and never deleted it; with any Node account file present it is a stale
+	// duplicate that Node itself ignored, unless it was already imported here.
 	legacy := filepath.Join(dataDir, "session.enc")
-	if info, err := os.Lstat(legacy); err == nil {
+	_, legacyImported := byID["legacy"]
+	if info, err := os.Lstat(legacy); err == nil && nodeAccounts > 0 && !legacyImported {
+		// Ignored, as in the Node release.
+	} else if err == nil {
 		if !info.Mode().IsRegular() {
 			return nil, errors.New("legacy Telegram session is not a regular file")
 		}
