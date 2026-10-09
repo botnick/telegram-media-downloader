@@ -259,6 +259,20 @@ func (f *flow) respond(cmd command) {
 func (f *flow) failure(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.failureLocked(err)
+}
+
+// fail records a terminal error and the error state atomically, so a racing
+// Submit cannot clear the message between the two writes.
+func (f *flow) fail(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failureLocked(err)
+	f.status.State = "error"
+	f.status.Hint = nil
+}
+
+func (f *flow) failureLocked(err error) {
 	message := err.Error()
 	f.status.Error = &message
 	f.status.Code = nil
@@ -307,14 +321,12 @@ func (w *Wizard) run(f *flow) {
 	select {
 	case cmd = <-f.commands:
 	case <-f.ctx.Done():
-		f.failure(f.ctx.Err())
-		f.setState("error")
+		f.fail(f.ctx.Err())
 		return
 	}
 	client, err := w.cfg.Factory(f.cfg)
 	if err != nil {
-		f.failure(err)
-		f.setState("error")
+		f.fail(err)
 		f.respond(cmd)
 		return
 	}
@@ -415,8 +427,7 @@ func (w *Wizard) run(f *flow) {
 		f.commitMu.Unlock()
 	}
 	if err != nil {
-		f.failure(err)
-		f.setState("error")
+		f.fail(err)
 	}
 	f.mu.Lock()
 	busy := f.busy
