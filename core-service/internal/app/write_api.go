@@ -84,15 +84,15 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 		}
 		if value, present := raw["concurrent"]; present {
 			n := number(value, -1)
-			if n < 1 || n > 50 {
-				writeJSONError(w, http.StatusBadRequest, "download.concurrent must be 1-50")
+			if n < 1 || n > 50 || n != math.Trunc(n) {
+				writeJSONError(w, http.StatusBadRequest, "download.concurrent must be an integer from 1 to 50")
 				return
 			}
 		}
 		if value, present := raw["retries"]; present {
 			n := number(value, -1)
-			if n < 0 || n > 50 {
-				writeJSONError(w, http.StatusBadRequest, "download.retries must be 0-50")
+			if n < 1 || n > 20 || n != math.Trunc(n) {
+				writeJSONError(w, http.StatusBadRequest, "download.retries must be an integer from 1 to 20")
 				return
 			}
 		}

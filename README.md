@@ -261,7 +261,6 @@ All config lives in SQLite (`kv['config']`), editable from the dashboard. Legacy
   "groups":     [/* {id, name, enabled, filters, autoForward, monitorAccount} */],
   "monitor":    { "autoStart": true },
   "download":   { "concurrent": 5, "retries": 5, "maxSpeed": 0 },
-  "rateLimits": { "requestsPerMinute": 15 },
   "diskManagement": { "maxTotalSize": "50GB" },
   "proxy":      { "type": "socks5", "host": "...", "port": 1080 },
   "advanced": {
@@ -274,6 +273,12 @@ All config lives in SQLite (`kv['config']`), editable from the dashboard. Legacy
 ```
 
 </details>
+
+Downloads allow 1–50 concurrent files and 1–20 total attempts per file (including
+the first attempt). `download.maxSpeed` sets the shared bytes/second limit; 0 or
+null removes the limit and changes take effect immediately. Legacy `rateLimits`
+and `pollingInterval` values remain preserved in stored configuration but are
+not controls for the native engine, which receives Telegram updates directly.
 
 <details>
 <summary>Environment variables</summary>

@@ -1126,22 +1126,23 @@
                                     <span id="concurrent-value" class="text-tg-blue font-medium">3</span>
                                 </div>
                                 <input type="range" id="setting-concurrent" class="w-full accent-tg-blue" min="1"
-                                    max="20" value="3"
+                                    max="50" value="3"
                                     oninput="document.getElementById('concurrent-value').textContent = this.value">
                                 <div class="flex justify-between text-xs text-tg-textSecondary mt-1">
                                     <span data-i18n="settings.download.concurrent_safe">1 (Safe)</span>
-                                    <span>10</span>
-                                    <span data-i18n="settings.download.concurrent_max">20 (Max)</span>
+                                    <span>25</span>
+                                    <span data-i18n="settings.download.concurrent_max">50 (Max)</span>
                                 </div>
                             </div>
                             <div>
                                 <div class="flex items-center justify-between mb-1">
-                                    <label class="text-tg-text text-sm" data-i18n="settings.download.retries">Retry Attempts</label>
+                                    <label class="text-tg-text text-sm" data-i18n="settings.download.retries">Maximum Download Attempts</label>
                                     <span id="retries-value" class="text-tg-blue font-medium">5</span>
                                 </div>
-                                <input type="range" id="setting-retries" class="w-full accent-tg-blue" min="1" max="10"
+                                <input type="range" id="setting-retries" class="w-full accent-tg-blue" min="1" max="20"
                                     value="5"
                                     oninput="document.getElementById('retries-value').textContent = this.value">
+                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.download.attempts_help">Includes the first attempt. Set 1 to disable retries.</p>
                             </div>
                             <!-- Download folder field retired in v2.9: it
                                  was read-only and changing it required CLI
@@ -1175,40 +1176,6 @@
                                      to update this hidden field on every change. -->
                                 <input id="setting-max-speed" type="hidden" value="0">
                                 <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.download.speed_help">Limit total download speed across all files. 0 = unlimited; changes apply immediately.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Rate Limits -->
-                    <div id="settings-card-rate" data-settings-section="card-rate" class="bg-tg-panel rounded-xl p-4 mb-4 scroll-mt-24">
-                        <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-speed-line text-tg-orange"></i> <span data-i18n="settings.rate.title">Rate Limits</span>
-                            <span
-                                class="text-xs bg-tg-orange/20 text-tg-orange px-2 py-0.5 rounded-full ml-auto" data-i18n="settings.rate.badge">Anti-Ban</span>
-                        </h3>
-                        <div class="space-y-5">
-                            <div>
-                                <div class="flex items-center justify-between mb-1">
-                                    <label class="text-tg-text text-sm" data-i18n="settings.rate.rpm">Requests/Minute</label>
-                                    <span id="rpm-value" class="text-tg-orange font-medium">15</span>
-                                </div>
-                                <input type="range" id="setting-rpm" class="w-full accent-tg-orange" min="5" max="60"
-                                    value="15" oninput="document.getElementById('rpm-value').textContent = this.value">
-                                <div class="flex justify-between text-xs text-tg-textSecondary mt-1">
-                                    <span data-i18n="settings.rate.rpm_safe">5 (Safe)</span>
-                                    <span>30</span>
-                                    <span data-i18n="settings.rate.rpm_fast">60 (Fast)</span>
-                                </div>
-                            </div>
-                            <div>
-                                <div class="flex items-center justify-between mb-1">
-                                    <label class="text-tg-text text-sm" data-i18n="settings.rate.polling">Polling Interval</label>
-                                    <span id="polling-value" class="text-tg-orange font-medium">10s</span>
-                                </div>
-                                <input type="range" id="setting-polling" class="w-full accent-tg-orange" min="5"
-                                    max="60" value="10"
-                                    oninput="document.getElementById('polling-value').textContent = this.value + 's'">
-                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.rate.polling_help">How often to check for new messages</p>
                             </div>
                         </div>
                     </div>

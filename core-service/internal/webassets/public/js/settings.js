@@ -50,7 +50,6 @@ export async function loadSettings() {
         };
 
         const dl = config.download || {};
-        const rl = config.rateLimits || {};
         const dm = config.diskManagement || {};
         const tg = config.telegram || {};
 
@@ -61,12 +60,6 @@ export async function loadSettings() {
         document.getElementById('retries-value').textContent = dl.retries || 5;
 
         bind('setting-path', dl.path || './data/downloads');
-
-        bind('setting-rpm', rl.requestsPerMinute);
-        document.getElementById('rpm-value').textContent = rl.requestsPerMinute || 15;
-
-        bind('setting-polling', config.pollingInterval);
-        document.getElementById('polling-value').textContent = (config.pollingInterval || 10) + 's';
 
         // Max Download Speed — dual-input (numeric value + unit picker)
         // mirroring whatever bytes are stored on disk. 0 / blank = unlimited.
@@ -1530,8 +1523,6 @@ function _gatherSettingsPayload() {
             retries: parseInt(get('setting-retries')),
             maxSpeed: parseInt(get('setting-max-speed')) || 0,
         },
-        rateLimits: { requestsPerMinute: parseInt(get('setting-rpm')) },
-        pollingInterval: parseInt(get('setting-polling')),
         diskManagement: {
             maxTotalSize: combineDiskCap(
                 get('setting-max-disk-value'),
@@ -1650,10 +1641,6 @@ export async function saveSettings() {
             retries: parseInt(get('setting-retries')),
             maxSpeed: parseInt(get('setting-max-speed')) || 0,
         },
-        rateLimits: {
-            requestsPerMinute: parseInt(get('setting-rpm')),
-        },
-        pollingInterval: parseInt(get('setting-polling')),
         diskManagement: {
             maxTotalSize: combineDiskCap(
                 get('setting-max-disk-value'),
@@ -1695,21 +1682,13 @@ export async function saveSettings() {
 export function applyPreset(type) {
     if (type === 'safe') {
         document.getElementById('setting-concurrent').value = 1;
-        document.getElementById('setting-rpm').value = 5;
-        document.getElementById('setting-polling').value = 30;
     } else if (type === 'balanced') {
         document.getElementById('setting-concurrent').value = 3;
-        document.getElementById('setting-rpm').value = 15;
-        document.getElementById('setting-polling').value = 10;
     } else if (type === 'fast') {
         document.getElementById('setting-concurrent').value = 5;
-        document.getElementById('setting-rpm').value = 30;
-        document.getElementById('setting-polling').value = 5;
     }
 
     document.getElementById('setting-concurrent').dispatchEvent(new Event('input'));
-    document.getElementById('setting-rpm').dispatchEvent(new Event('input'));
-    document.getElementById('setting-polling').dispatchEvent(new Event('input'));
 }
 
 // ====== Proxy ===============================================================

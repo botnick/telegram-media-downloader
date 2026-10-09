@@ -108,6 +108,12 @@ remains unverified. No other room's accounts or data were inspected.
   live changes, cancellation, validation and restart. This is not a live Telegram
   network measurement.
 
+- The settings page no longer offers inert legacy requests/minute and polling
+  controls or rewrites them from presets. Stored legacy values remain preserved.
+  Concurrency and attempt counts are validated as whole numbers within the
+  engine's supported ranges at save time, and the browser sliders match the API
+  (1–50 concurrent files; 1–20 total attempts including the first).
+
 - Native backup management and local/S3/SFTP/FTP mirror/snapshot jobs include automatic
   transactional enqueue, edit revisions, real file comparison, retries, pause,
   cron, consistent archives and a durable retention outbox. Native wire fixtures
