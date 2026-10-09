@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.2] — 2026-10-09
+
+Upgrades from long-running 2.x installs.
+
+### Fixed
+- **Downloads failed with `no such column: d.telegram_media_kind` on databases first created by early 2.x releases.** On start the server now adds every column, table and index of the current schema that an older database lacks (columns are only added, never changed or removed). Use **Retry all** on the Queue page for items that failed on 3.0.0/3.0.1.
+- **The status bar showed `dev` instead of the build commit.** `/api/version` now reports the Docker build's commit and time, or the commit a binary was built from.
+
+### Service worker
+- `VERSION = 'v3020'`
+
 ## [3.0.1] — 2026-10-09
 
 Telegram FloodWait protection for downloads and every other Telegram request.

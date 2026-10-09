@@ -95,14 +95,20 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='downloads'`).Scan(&tables); err != nil {
 		return 0, fmt.Errorf("inspect schema: %w", err)
 	}
-	if tables == 0 {
-		schema, err := schemaFS.ReadFile("schema.sql")
-		if err != nil {
-			return 0, fmt.Errorf("read embedded schema: %w", err)
+	schema, err := schemaFS.ReadFile("schema.sql")
+	if err != nil {
+		return 0, fmt.Errorf("read embedded schema: %w", err)
+	}
+	if tables != 0 {
+		// Databases created by older Node releases lack columns and tables
+		// that later releases added lazily (or never). Add what is missing
+		// before the base schema creates indexes that reference them.
+		if err := reconcileSchema(ctx, db, string(schema)); err != nil {
+			return 0, fmt.Errorf("upgrade older database schema: %w", err)
 		}
-		if _, err := db.ExecContext(ctx, makeIdempotent(string(schema))); err != nil {
-			return 0, fmt.Errorf("apply base schema: %w", err)
-		}
+	}
+	if _, err := db.ExecContext(ctx, makeIdempotent(string(schema))); err != nil {
+		return 0, fmt.Errorf("apply base schema: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_schema_meta (version INTEGER NOT NULL); INSERT INTO tgdl_schema_meta(version) SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM tgdl_schema_meta);`); err != nil {
 		return 0, fmt.Errorf("record schema version: %w", err)
@@ -204,4 +210,91 @@ func makeIdempotent(schema string) string {
 	schema = strings.ReplaceAll(schema, "CREATE INDEX ", "CREATE INDEX IF NOT EXISTS ")
 	schema = strings.ReplaceAll(schema, "CREATE TRIGGER ", "CREATE TRIGGER IF NOT EXISTS ")
 	return schema
+}
+
+// reconcileSchema adds every column of the reference schema that an existing
+// table lacks. Columns are only ever added, never changed or dropped; a
+// primary-key column cannot be added and is left alone.
+func reconcileSchema(ctx context.Context, db *sql.DB, schema string) error {
+	ref, err := sql.Open("sqlite", "file:tgdl-schema-reference?mode=memory&cache=private")
+	if err != nil {
+		return err
+	}
+	defer ref.Close()
+	ref.SetMaxOpenConns(1)
+	if _, err := ref.ExecContext(ctx, schema); err != nil {
+		return fmt.Errorf("load reference schema: %w", err)
+	}
+	rows, err := ref.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL%'`)
+	if err != nil {
+		return err
+	}
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		tables = append(tables, name)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	type column struct {
+		name, kind string
+		notNull    bool
+		dflt       sql.NullString
+		pk         int
+	}
+	read := func(conn *sql.DB, table string) ([]column, error) {
+		rows, err := conn.QueryContext(ctx, `SELECT name,type,"notnull",dflt_value,pk FROM pragma_table_info(?)`, table)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []column
+		for rows.Next() {
+			var c column
+			if err := rows.Scan(&c.name, &c.kind, &c.notNull, &c.dflt, &c.pk); err != nil {
+				return nil, err
+			}
+			out = append(out, c)
+		}
+		return out, rows.Err()
+	}
+	for _, table := range tables {
+		have, err := read(db, table)
+		if err != nil {
+			return err
+		}
+		if len(have) == 0 {
+			continue // missing table: the idempotent base schema creates it
+		}
+		existing := map[string]bool{}
+		for _, c := range have {
+			existing[strings.ToLower(c.name)] = true
+		}
+		want, err := read(ref, table)
+		if err != nil {
+			return err
+		}
+		for _, c := range want {
+			if existing[strings.ToLower(c.name)] || c.pk > 0 {
+				continue
+			}
+			stmt := `ALTER TABLE "` + table + `" ADD COLUMN "` + c.name + `" ` + c.kind
+			if c.dflt.Valid {
+				if c.notNull {
+					stmt += " NOT NULL"
+				}
+				stmt += " DEFAULT " + c.dflt.String
+			}
+			if _, err := db.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("add %s.%s: %w", table, c.name, err)
+			}
+		}
+	}
+	return nil
 }

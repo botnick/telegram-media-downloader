@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +22,7 @@ func registerPublicAPIRoutes(mux *http.ServeMux, a *App) {
 }
 
 func (a *App) handleAPIVersion(w http.ResponseWriter, r *http.Request) {
-	value := map[string]any{"version": version.AppVersion, "commit": "dev", "builtAt": nil}
+	value := map[string]any{"version": version.AppVersion, "commit": buildCommit(), "builtAt": buildTime()}
 	if r.Header.Get("If-None-Match") == "" {
 		writeJSON(w, http.StatusOK, value)
 		return
@@ -76,4 +77,34 @@ func writePlainText(w http.ResponseWriter, status int, contentType, body string)
 	w.Header().Set("ETag", weakETag(data))
 	w.WriteHeader(status)
 	_, _ = w.Write(data)
+}
+
+// buildCommit is the Docker build's GIT_SHA, else the VCS revision Go
+// embeds when building from a checkout, else "dev".
+func buildCommit() string {
+	if sha := strings.TrimSpace(os.Getenv("GIT_SHA")); sha != "" && sha != "dev" {
+		return sha[:min(len(sha), 7)]
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" && s.Value != "" {
+				return s.Value[:min(len(s.Value), 7)]
+			}
+		}
+	}
+	return "dev"
+}
+
+func buildTime() any {
+	if at := strings.TrimSpace(os.Getenv("BUILT_AT")); at != "" {
+		return at
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.time" && s.Value != "" {
+				return s.Value
+			}
+		}
+	}
+	return nil
 }
