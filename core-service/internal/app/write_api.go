@@ -94,6 +94,9 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 	}
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
+	if !a.currentAdmin(w, r) {
+		return
+	}
 	rawConfig, err := a.config.Load(r.Context())
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "config read failed")
@@ -117,7 +120,14 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 		delete(advanced, "goCore")
 	}
 	stripPresenceFlags(config)
-	if err := a.config.Save(r.Context(), config); err != nil {
+	role := ""
+	web, _ := config["web"].(map[string]any)
+	if !webBoolValue(web, "enabled", true) {
+		role = "all"
+	} else if !webBoolValue(web, "guestEnabled", true) {
+		role = "guest"
+	}
+	if err := a.saveAuthConfig(r.Context(), config, role); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "config write failed")
 		return
 	}

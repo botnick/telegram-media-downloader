@@ -94,7 +94,8 @@ func (s *SessionStore) CookieName() string { return s.cookieName }
 func (s *SessionStore) TTL() time.Duration { return s.ttl }
 
 func (s *SessionStore) Revoke(ctx context.Context, token string) error {
-	if strings.TrimSpace(token) == "" {
+	token = strings.TrimSpace(token)
+	if token == "" {
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM web_sessions WHERE token = ?`, token)

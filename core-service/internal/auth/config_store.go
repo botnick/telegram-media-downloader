@@ -57,7 +57,7 @@ func (s ConfigStore) Save(ctx context.Context, config map[string]any) error {
 
 // SaveRevoking commits credential changes and session revocation together.
 func (s ConfigStore) SaveRevoking(ctx context.Context, config map[string]any, role string) error {
-	if role != "" && role != "guest" && role != "all" {
+	if role != "" && role != "admin" && role != "guest" && role != "all" {
 		return errors.New("invalid revoke scope")
 	}
 	raw, err := json.Marshal(config)
@@ -93,6 +93,9 @@ func (s ConfigStore) Login(ctx context.Context, password string) (role string, c
 		return "", false, nil
 	}
 	configured = IsConfigured(config)
+	if !webBool(web, "enabled", true) {
+		return "", configured, nil
+	}
 	if MatchesAdmin(config, password) {
 		return "admin", configured, nil
 	}

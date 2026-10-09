@@ -68,6 +68,7 @@ type App struct {
 	db                  *store.DB
 	library             *download.Library
 	sessions            *auth.SessionStore
+	webSockets          webSocketRegistry
 	hub                 *ws.Hub
 	read                *dbread.Handler
 	config              auth.ConfigStore
@@ -304,65 +305,6 @@ func ensureMap(root map[string]any, key string) map[string]any {
 	return value
 }
 
-func (a *App) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(a.sessions.CookieName())
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	sess, err := a.sessions.Validate(r.Context(), cookie.Value)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	// Subscribe before the 101 response becomes observable. The browser can
-	// issue a mutation as soon as its handshake completes, even while Upgrade
-	// is still returning on this goroutine.
-	client := a.hub.Add(sess.Role)
-	defer a.hub.Remove(client)
-	conn, err := wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return
-	}
-	defer func() {
-		_ = conn.Close()
-	}()
-	conn.SetReadLimit(1 << 20)
-	_ = conn.SetReadDeadline(time.Now().Add(90 * time.Second))
-	conn.SetPongHandler(func(string) error {
-		return conn.SetReadDeadline(time.Now().Add(90 * time.Second))
-	})
-	heartbeat := time.NewTicker(30 * time.Second)
-	defer heartbeat.Stop()
-	readDone := make(chan struct{})
-	go func() {
-		defer close(readDone)
-		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
-				return
-			}
-		}
-	}()
-	for {
-		select {
-		case <-readDone:
-			return
-		case <-heartbeat.C:
-			if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second)); err != nil {
-				return
-			}
-		case event, ok := <-client.Events():
-			if !ok {
-				return
-			}
-			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := conn.WriteJSON(event); err != nil {
-				return
-			}
-		}
-	}
-}
-
 func (a *App) handlePin(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
@@ -559,6 +501,7 @@ func (a *App) Close() error {
 		if a.cancel != nil {
 			a.cancel()
 		}
+		a.closeWebSockets()
 		if a.backups != nil {
 			a.backups.Close()
 		}

@@ -175,6 +175,11 @@ func (a *App) handleRevokeAll(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "Password required")
 		return
 	}
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
+	if !a.currentAdmin(w, r) {
+		return
+	}
 	if err := a.verifyAdminPassword(r.Context(), password); err != nil {
 		writeJSONError(w, http.StatusForbidden, "Invalid password")
 		return
@@ -183,6 +188,7 @@ func (a *App) handleRevokeAll(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "Unable to revoke sessions")
 		return
 	}
+	a.revokeWebSockets("", "all")
 	http.SetCookie(w, &http.Cookie{Name: a.sessions.CookieName(), Value: "", Path: "/", Expires: time.Unix(0, 0).UTC(), HttpOnly: true, Secure: a.secureCookies, SameSite: http.SameSiteStrictMode})
 	a.hub.Broadcast(ws.Event{Type: "sessions_revoked", Flat: true})
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})

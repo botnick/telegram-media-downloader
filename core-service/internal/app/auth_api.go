@@ -126,11 +126,14 @@ func (a *App) handleSetup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
+	a.configMu.Lock()
+	defer a.configMu.Unlock()
 	if sess, err := a.sessionFromRequest(r); err == nil {
 		if err := a.sessions.Revoke(r.Context(), sess.Token); err != nil {
 			writeJSONError(w, 500, "Internal error")
 			return
 		}
+		a.revokeWebSockets(sess.Token, "")
 	}
 	http.SetCookie(w, &http.Cookie{Name: a.sessions.CookieName(), Value: "", Path: "/", Expires: time.Unix(0, 0), HttpOnly: true, Secure: a.secureCookies, SameSite: http.SameSiteStrictMode})
 	writeJSON(w, 200, map[string]any{"success": true})
@@ -179,6 +182,9 @@ func (a *App) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
+	if !a.currentAdmin(w, r) {
+		return
+	}
 	config, err := a.config.Load(r.Context())
 	if err != nil {
 		writeJSONError(w, 500, "Internal error")
@@ -197,7 +203,15 @@ func (a *App) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "New password must differ from the guest password", "code": "SAME_AS_GUEST"})
 		return
 	}
-	if err := a.config.SetAdminPassword(r.Context(), next); err != nil {
+	hash, err := auth.HashPassword(next)
+	if err != nil {
+		writeJSONError(w, 500, "Internal error")
+		return
+	}
+	web["passwordHash"] = hash.JSON()
+	web["enabled"] = true
+	delete(web, "password")
+	if err := a.saveAuthConfig(r.Context(), config, "admin"); err != nil {
 		writeJSONError(w, 500, "Internal error")
 		return
 	}
@@ -214,6 +228,9 @@ func (a *App) handleGuestPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	a.configMu.Lock()
 	defer a.configMu.Unlock()
+	if !a.currentAdmin(w, r) {
+		return
+	}
 	config, err := a.config.Load(r.Context())
 	if err != nil {
 		writeJSONError(w, 500, "Internal error")
@@ -258,7 +275,7 @@ func (a *App) handleGuestPassword(w http.ResponseWriter, r *http.Request) {
 	if revoke {
 		role = "guest"
 	}
-	if err := a.config.SaveRevoking(r.Context(), config, role); err != nil {
+	if err := a.saveAuthConfig(r.Context(), config, role); err != nil {
 		writeJSONError(w, 500, "Internal error")
 		return
 	}
@@ -355,7 +372,7 @@ func (a *App) handleResetConfirm(w http.ResponseWriter, r *http.Request) {
 	web["passwordHash"] = hash.JSON()
 	web["enabled"] = true
 	delete(web, "password")
-	if err := a.config.SaveRevoking(r.Context(), config, "all"); err != nil {
+	if err := a.saveAuthConfig(r.Context(), config, "all"); err != nil {
 		writeJSONError(w, 500, "Internal error")
 		return
 	}

@@ -37,9 +37,15 @@ functionality. Do not deploy this branch over a working library yet.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
 - The latest full black-box run against the Go executable passes
-  **242 of 324 tests**, with **24 of 36 files passing** (57.18 seconds).
-  The remaining **82 failed cases in 12 files** are recorded failures, not
-  waived expectations. The FTP checkpoint passed 239/324. HTTP security now
+  **236 of 324 tests**, with **22 of 36 files passing** (56.51 seconds).
+  The remaining **88 failed cases in 14 files** are recorded failures, not
+  waived expectations. The HTTP transport checkpoint passed 242/324; session
+  revocation adds five failures in auth-password/system for deliberately changed
+  legacy behavior, including three cascading limiter-counter expectations.
+  One snapshot-backup event capture raced the final queue-drained frame; its
+  isolated rerun passes (backup 16/17), but the full failure remains counted.
+  See [session lifetime coverage and differences](GO-WEBSOCKET-SESSIONS.md).
+  The FTP checkpoint passed 239/324. HTTP security now
   passes 4/5: its remaining case expects an Express framework header on the
   HTTPS redirect; Go omits that header. Native tests cover all HTTPS branches.
   The development launcher now translates its production-cookie scenario to
@@ -57,10 +63,11 @@ functionality. Do not deploy this branch over a working library yet.
   host-key table changes the fixture's packing again. Actual sizes remain
   visible, and one green run does not prove VACUUM never grows a database. These are
   fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
-- Passing domains include accounts, authentication, shares, queue controls,
+- Passing domains include accounts, basic authentication/setup, shares, queue controls,
   chats, downloads/groups, files/static assets, configuration, AI library reads
   and edits, dedup, deletion, thumbnails, faststart, database/file maintenance
-  and system/session maintenance. Telegram-action validation and preflight
+  and system reads. Credential revocation and system revoke-all deliberately differ
+  from the frozen expectations described above. Telegram-action validation and preflight
   contracts now pass 7/7. Inventory and two Go packaging/smoke fixtures
   are also included in the totals. Normal WebSocket messages retain
   `{type,payload}`; released event families that use top-level fields remain flat.
@@ -285,9 +292,10 @@ migration; the current source tree is not yet free of Node dependencies.
   reservation boundaries. Validate encrypted backup and restore with real
   providers; S3/SFTP/FTP wire fixtures and loopback interoperability checks do
   not establish live provider or full migration E2E coverage.
-- Resolve the 12 remaining contract files: cluster/peer/cluster-WebSocket,
+- Resolve the 14 remaining contract files: cluster/peer/cluster-WebSocket,
   AI jobs, NSFW, seekbar, backup provider metadata, recovery, purge, security,
-  updates and periodic WebSocket events. Three cleanup corrections and the
+  updates and periodic WebSocket events, plus auth-password/system compatibility
+  for prompt session revocation. Three cleanup corrections and the
   added SFTP/FTP form fields and omitted Express response header are documented
   differences, still counted as failures.
   The old VACUUM non-growth assumption also remains incorrect in general even
@@ -297,9 +305,11 @@ migration; the current source tree is not yet free of Node dependencies.
   and run the full HTTP/WebSocket/browser/data-migration E2E and performance
   checks. Live Telegram E2E still requires an authorized test account.
 
-Existing WebSockets can remain open after their HTTP session is revoked,
-matching the frozen contract. Closing those connections promptly remains
-security debt to address deliberately with updated compatibility coverage.
+Established WebSockets now close on application session revocation, expiry and
+shutdown. Password changes revoke previous admin sessions, and disabled guest
+access revokes guest sessions even when changed through the generic config API.
+Native wire/race/process coverage verifies the deliberate legacy differences;
+see [session lifetime and remaining limits](GO-WEBSOCKET-SESSIONS.md).
 
 ## Implementation references
 

@@ -142,9 +142,11 @@ framework header. Native tests exercise the subsequent HEAD/mutation/HSTS
 branches which that stopped legacy test cannot reach. The difference remains
 counted as a failure in [the migration totals](GO-MIGRATION-STATUS.md).
 
-Established WebSockets can still outlive session revocation, as recorded in the
-existing compatibility contract. Prompt revocation remains explicit security
-debt; this work must not be described as closing every security issue.
+A subsequent increment now closes established WebSockets on revocation, expiry
+and shutdown, and invalidates old admin sessions on password changes. This
+deliberately changes the legacy contracts. See [session lifetime, tests and
+limits](GO-WEBSOCKET-SESSIONS.md); this is not a claim that every security issue
+in the application has been resolved.
 
 ## Measured local cost
 
@@ -173,7 +175,7 @@ concurrent contention. Capacity/expiry correctness is checked separately.
 The final unstripped Linux executable is 40,297,749 bytes, 1,198,605 bytes more
 than the FTP checkpoint. This includes Brotli and the HTTP policy changes;
 it is file size, not resident memory. The final immutable executable's frozen
-API/WS run passes 242/324 tests in 57.18 seconds, with 82 failures retained.
+API/WS run at this HTTP-policy checkpoint passes 242/324 tests in 57.18 seconds, with 82 failures retained.
 
 ## References
 

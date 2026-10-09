@@ -37,6 +37,8 @@ Useful commands:
 - `GET /` and asset paths serve the embedded SPA.
 - `GET /` or `GET /ws` upgrades an authenticated session; events
   are bounded and role-filtered so a slow browser cannot block workers.
+  Revocation, expiry and shutdown close the owned connection; password changes
+  invalidate old admin sessions. See [session lifetime and compatibility](../docs/GO-WEBSOCKET-SESSIONS.md).
 - `/v1/db/*` exposes the read projections used by the gallery, maintenance,
   AI, NSFW, integrity, dedup and cluster surfaces. They run directly against
   a query-only pool and require a valid session.
