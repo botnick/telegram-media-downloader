@@ -57,9 +57,11 @@ services:
         compress: "true"
 
   autoheal:
-    image: willfarrell/autoheal:1.2.0
+    image: willfarrell/autoheal:latest
     container_name: telegram-downloader-autoheal
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     # Needs only the docker socket, no network.
     network_mode: none
     environment:
@@ -76,13 +78,17 @@ services:
         max-size: "1m"
         max-file: "3"
 
-  # Idle one-click updater behind Settings → Maintenance → "Install update":
-  # HTTP-API-only, no polling, no published ports, and only containers with
-  # the watchtower label. The dashboard never sees the docker socket.
+  # Updater behind Settings → Maintenance → "Install update". It touches only
+  # containers with the watchtower label (all four here, itself included) and
+  # the dashboard never sees the docker socket. Automatic updates: set
+  # WATCHTOWER_HTTP_API_PERIODIC_POLLS=true in .env (schedule below, 6-field
+  # cron in the container TZ; default daily 04:00).
   watchtower:
-    image: nickfedor/watchtower:1.22
+    image: nickfedor/watchtower:latest
     container_name: telegram-downloader-updater
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Only the generated token folder, never the DB/sessions.
@@ -94,6 +100,7 @@ services:
       - WATCHTOWER_HTTP_API_ENDPOINTS=update
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-/run/tgdl/api-token}
       - WATCHTOWER_HTTP_API_PERIODIC_POLLS=${WATCHTOWER_HTTP_API_PERIODIC_POLLS:-false}
+      - WATCHTOWER_SCHEDULE=${WATCHTOWER_SCHEDULE:-0 0 4 * * *}
       - WATCHTOWER_LABEL_ENABLE=true
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_INCLUDE_RESTARTING=true

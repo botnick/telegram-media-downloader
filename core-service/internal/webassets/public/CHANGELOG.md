@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.5] — 2026-10-09
+
+### Added
+- **Automatic updates for the whole stack.** In the bundled compose files, autoheal and watchtower now track `:latest` and carry the watchtower label, so watchtower keeps all four containers current, itself included. Set `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true` in `.env` to update on a schedule (`WATCHTOWER_SCHEDULE`, default daily 04:00); **Install update** keeps working either way.
+
+### Fixed
+- **"New version available" never appeared.** The update check asks GitHub releases again (newest stable `vX.Y.Z`, cached 10 minutes) instead of always reporting the check as unreachable.
+
+### Service worker
+- `VERSION = 'v3050'`
+
 ## [3.0.4] — 2026-10-09
 
 ### Fixed

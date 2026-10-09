@@ -37,8 +37,10 @@ What you get:
   linux/arm64) on port `3000`. All state lives in `./data`, mounted at
   `/app/data`. Change the host port with `TGDL_PORT` in `.env`.
 - `autoheal` restarts the container if `/health` stops answering.
-- `watchtower` stays idle until you press **Install update** in the dashboard.
-  It has no published port and only touches containers carrying its label.
+- `watchtower` updates the containers carrying its label (all four, itself
+  included) when you press **Install update**, or automatically on a schedule
+  when `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true` is set in `.env`. It has no
+  published port.
 
 The entrypoint starts as root only to fix ownership of the data folder and to
 join the group of a passed-through `/dev/dri`, then runs the server as the
@@ -197,10 +199,16 @@ server {
   checks the database, saves a verified snapshot to
   `data/backups/db-pre-update-*.sqlite`, then asks watchtower to recreate the
   container.
+- **Docker, automatically:** put `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true` in
+  `.env` (and optionally `WATCHTOWER_SCHEDULE`, a 6-field cron; default
+  `0 0 4 * * *`, daily at 04:00), then `docker compose up -d`. The app,
+  autoheal and watchtower itself are kept current; the download queue survives
+  the restart and the monitor resumes on its own.
 - **Docker, by hand:** `docker compose pull && docker compose up -d`
 - **Release binary:** replace `tgdl-server` with the new one and restart.
 - **Git checkout:** `git pull`, then restart; the launcher fetches the
   matching binary.
 
+The dashboard shows when a newer release is out (it checks GitHub releases).
 Migrations are idempotent and run before `/health` reports ready.
 Coming from 2.x? Read [Upgrading from 2.x](UPGRADING.md).

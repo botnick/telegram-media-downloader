@@ -192,6 +192,7 @@ More in [Architecture](docs/ARCHITECTURE.md).
 ## Updating
 
 - **In the dashboard (Docker):** Settings → Maintenance → **Install update**.
+- **Automatically (Docker):** `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true` in `.env` updates all containers on a schedule (default daily 04:00).
 - **Docker, by hand:** `docker compose pull && docker compose up -d`
 - **Native:** replace the binary, or `git pull` and restart `./runner.sh`.
 
