@@ -110,6 +110,8 @@ type App struct {
 	dedupScanStatus     map[string]any
 	dedupDeleteStatus   map[string]any
 	downloadsDir        string
+	updateMu            sync.Mutex
+	updateStatus        map[string]any
 	leaveBatchMu        sync.Mutex
 	leaveBatchStatus    map[string]any
 	faststartMu         sync.Mutex
@@ -189,7 +191,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		ttl = 7 * 24 * time.Hour
 	}
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
-	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), leaveBatchStatus: dedupIdleStatus("chatLeaveBatch"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum")}
+	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), leaveBatchStatus: dedupIdleStatus("chatLeaveBatch"), updateStatus: dedupIdleStatus("autoUpdate"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum")}
 	a.httpOptions, a.proxyPolicy, a.apiRL = cfg.HTTP, proxy, newRateLimiter(10000, time.Minute)
 	a.downloadsDir = cfg.DownloadsDir
 	if a.downloadsDir == "" {
@@ -209,6 +211,10 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		return nil, err
 	}
 	a.accountWizard = accounts.NewWizard(a.ctx, accounts.WizardConfig{DataDir: cfg.DataDir, Factory: cfg.AccountLoginFactory, Publish: a.publishAccount})
+	a.ensureWatchtowerToken()
+	if err := a.finalisePendingUpdates(ctx); err != nil && cfg.Output != nil {
+		fmt.Fprintf(cfg.Output, "Update history check failed: %v\n", err)
+	}
 	a.library, err = download.NewLibraryIn(db.Writer, db.Reader, cfg.DataDir, a.downloadsDir, 64)
 	if err != nil {
 		a.Close()
@@ -253,6 +259,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerAccountRoutes(mux, a)
 	registerDialogRoutes(mux, a)
 	registerChatAccessRoutes(mux, a)
+	registerUpdateRoutes(mux, a)
 	registerGroupRefreshRoutes(mux, a)
 	registerGalleryRoutes(mux, a)
 	registerAIRoutes(mux, a)
