@@ -277,6 +277,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		a.Close()
 		return nil, err
 	}
+	a.applyDownloadSpeed(stored)
 	a.backups, err = backup.NewManager(a.ctx, backup.Options{
 		Writer: db.Writer, Reader: db.Reader, DataDir: a.dataDir, Secret: a.shareSecret,
 		Publish: func(kind string, payload map[string]any) {

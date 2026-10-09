@@ -34,7 +34,14 @@ func (a *App) startTelegramEngine(ctx context.Context, observe bool) error {
 	if err := a.accounts.Recover(ctx); err != nil {
 		return err
 	}
+	// Serialize loading and applying the speed with settings saves, so a slow
+	// account startup cannot overwrite a newer limit saved by the operator.
+	a.configMu.Lock()
 	cfg, err := a.config.Load(ctx)
+	if err == nil {
+		a.applyDownloadSpeed(cfg)
+	}
+	a.configMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -79,6 +86,17 @@ func (a *App) startTelegramEngine(ctx context.Context, observe bool) error {
 		return a.monitor.StartJobs(ctx, a.ctx, specs, int(number(download["concurrent"], 10)), int(number(download["retries"], 5)))
 	}
 	return a.monitor.Start(ctx, a.ctx, specs, int(number(download["concurrent"], 10)), int(number(download["retries"], 5)))
+}
+
+func (a *App) applyDownloadSpeed(cfg map[string]any) {
+	download, _ := cfg["download"].(map[string]any)
+	// Old configurations may contain null/string values. Keep their unlimited
+	// meaning, and bound conversion before handing an integer to the engine.
+	n := number(download["maxSpeed"], 0)
+	if n < 0 || n > 1<<53-1 {
+		n = 0
+	}
+	a.monitor.SetMaxSpeed(int64(n))
 }
 func (a *App) setAutoStart(ctx context.Context, value bool) error {
 	a.configMu.Lock()

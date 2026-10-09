@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -74,6 +75,13 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if raw, ok := patch["download"].(map[string]any); ok {
+		if value, present := raw["maxSpeed"]; present && value != nil {
+			n := number(value, -1)
+			if n < 0 || n > 1<<53-1 || n != math.Trunc(n) {
+				writeJSONError(w, http.StatusBadRequest, "download.maxSpeed must be a non-negative integer in bytes/second, or null")
+				return
+			}
+		}
 		if value, present := raw["concurrent"]; present {
 			n := number(value, -1)
 			if n < 1 || n > 50 {
@@ -132,6 +140,7 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "config write failed")
 		return
 	}
+	a.applyDownloadSpeed(config)
 	if _, changed := patch["rescue"]; changed && a.rescueWake != nil {
 		select {
 		case a.rescueWake <- struct{}{}:

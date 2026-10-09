@@ -64,6 +64,7 @@ type Controller struct {
 	started        time.Time
 	run            *running
 	attemptLimit   func(int64) time.Duration
+	bandwidth      bandwidthLimiter
 }
 
 func (c *Controller) SetUpdateObserver(observer UpdateObserver) {
@@ -711,7 +712,8 @@ func (c *Controller) worker(run *running) {
 		if err == nil {
 			message, err = work.Message()
 		}
-		attemptCtx, finishAttempt := context.WithTimeout(ctx, c.attemptLimit(work.FileSize))
+		budget := newAttemptBudget(ctx, c.attemptLimit(work.FileSize))
+		attemptCtx := budget.ctx
 		if err == nil && (work.ForceRefresh || work.Attempts > 1 || time.Since(time.UnixMilli(work.CreatedAt)) > time.Minute) {
 			var fresh *telegram.RefreshedMessage
 			if work.Origin == "stories" {
@@ -751,9 +753,12 @@ func (c *Controller) worker(run *running) {
 			}
 		}
 		if err == nil {
-			err = c.sink(attemptCtx, work, message, trackedTransport{MediaDownloader: run.accounts[work.AccountID], stats: progress})
+			err = c.sink(attemptCtx, work, message, trackedTransport{MediaDownloader: run.accounts[work.AccountID], stats: progress, bandwidth: &c.bandwidth, budget: budget})
 		}
-		finishAttempt()
+		if err != nil && attemptCtx.Err() != nil {
+			err = context.Cause(attemptCtx)
+		}
+		budget.stop()
 		wasCancelled := ctx.Err() != nil
 		cancel()
 		run.mu.Lock()

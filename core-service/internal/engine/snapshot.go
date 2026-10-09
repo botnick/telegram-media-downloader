@@ -18,20 +18,46 @@ type transferStats struct {
 }
 type trackedTransport struct {
 	telegram.MediaDownloader
-	stats *transferStats
+	stats     *transferStats
+	bandwidth *bandwidthLimiter
+	budget    *attemptBudget
 }
 type trackedWriter struct {
 	io.Writer
-	stats *transferStats
+	stats     *transferStats
+	ctx       context.Context
+	bandwidth *bandwidthLimiter
+	budget    *attemptBudget
 }
 
 func (w trackedWriter) Write(p []byte) (int, error) {
-	n, err := w.Writer.Write(p)
-	w.stats.received.Add(int64(n))
-	return n, err
+	total := 0
+	for len(p) > 0 {
+		n := len(p)
+		if w.bandwidth != nil {
+			w.budget.pause()
+			var err error
+			n, err = w.bandwidth.take(w.ctx, n)
+			w.budget.resume()
+			if err != nil {
+				return total, err
+			}
+		}
+		written, err := w.Writer.Write(p[:n])
+		w.stats.received.Add(int64(written))
+		total += written
+		if err == nil && written != n {
+			err = io.ErrShortWrite
+		}
+		if err != nil {
+			return total, err
+		}
+		p = p[n:]
+	}
+	return total, nil
 }
 func (t trackedTransport) DownloadMedia(ctx context.Context, a telegram.Attachment, w io.Writer) error {
-	return t.MediaDownloader.DownloadMedia(ctx, a, trackedWriter{Writer: w, stats: t.stats})
+	return t.MediaDownloader.DownloadMedia(ctx, a, trackedWriter{Writer: w, stats: t.stats, ctx: ctx, bandwidth: t.bandwidth, budget: t.budget})
 }
 
 // Snapshot exposes only dashboard fields. Serialized Telegram messages,
@@ -138,5 +164,9 @@ func (c *Controller) Snapshot(ctx context.Context) (map[string]any, error) {
 			}
 		}
 	}
-	return map[string]any{"active": active, "queued": queued, "recent": recent, "globalPaused": globalPaused, "pausedCount": pausedCount, "workers": status["workers"], "pending": status["queue"], "engineRunning": status["state"] == "running", "maxSpeed": nil}, nil
+	var maxSpeed any
+	if speed := c.bandwidth.limit(); speed > 0 {
+		maxSpeed = speed
+	}
+	return map[string]any{"active": active, "queued": queued, "recent": recent, "globalPaused": globalPaused, "pausedCount": pausedCount, "workers": status["workers"], "pending": status["queue"], "engineRunning": status["state"] == "running", "maxSpeed": maxSpeed}, nil
 }

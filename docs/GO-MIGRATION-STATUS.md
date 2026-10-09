@@ -95,6 +95,19 @@ remains unverified. No other room's accounts or data were inspected.
 
 ## Verified in the current application
 
+- `download.maxSpeed` now limits aggregate media payload throughput across all
+  download workers/accounts. Values are whole bytes/second; zero/null means
+  unlimited. Saving applies to active transfers immediately and persists across
+  restart; the queue reports the effective cap. A shared cancellable bucket
+  permits at most 100 ms of burst credit (one byte minimum, 32 KiB maximum).
+  Deliberate pacing waits do not consume the attempt timeout, while actual
+  stalled work remains bounded. Streaming backpressure bounds transfer speed;
+  Telegram's existing chunk verification/read-ahead and protocol overhead are
+  not an exact wire-level byte cap. This corrects the old per-worker help text.
+  Deterministic worker tests and HTTP-to-queue fixture tests cover shared limits,
+  live changes, cancellation, validation and restart. This is not a live Telegram
+  network measurement.
+
 - Native backup management and local/S3/SFTP/FTP mirror/snapshot jobs include automatic
   transactional enqueue, edit revisions, real file comparison, retries, pause,
   cron, consistent archives and a durable retention outbox. Native wire fixtures

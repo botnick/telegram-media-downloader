@@ -204,7 +204,7 @@
     "settings.download.folder_help": "Change via CLI: edit config.json.",
     "settings.download.max_speed": "Max Download Speed",
     "settings.download.unlimited": "Unlimited",
-    "settings.download.speed_help": "Limit bandwidth usage per worker.",
+    "settings.download.speed_help": "Limit total download speed across all files. 0 = unlimited; changes apply immediately.",
     "settings.rate.title": "Rate Limits",
     "settings.rate.badge": "Anti-Ban",
     "settings.rate.rpm": "Requests/Minute",

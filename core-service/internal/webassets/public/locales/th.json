@@ -204,7 +204,7 @@
     "settings.download.folder_help": "เปลี่ยนผ่าน CLI โดยแก้ไขไฟล์ config.json",
     "settings.download.max_speed": "ความเร็วดาวน์โหลดสูงสุด",
     "settings.download.unlimited": "ไม่จำกัด",
-    "settings.download.speed_help": "จำกัดการใช้ bandwidth ต่อ worker",
+    "settings.download.speed_help": "จำกัดความเร็วดาวน์โหลดรวมทุกไฟล์ 0 = ไม่จำกัด เปลี่ยนค่าแล้วมีผลทันที",
     "settings.rate.title": "Rate limit",
     "settings.rate.badge": "ป้องกันการแบน",
     "settings.rate.rpm": "คำขอต่อนาที",
