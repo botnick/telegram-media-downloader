@@ -19,7 +19,7 @@ import { createAvatar, escapeHtml, showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { openSheet } from './sheet.js';
 import { navigate } from './router.js';
-import { accessBadgeHtml, accessFor, isBlockedAccess } from './chat-access.js';
+import { accessBadgeHtml, accessFor, isBlockedAccess, openLeaveChatSheet } from './chat-access.js';
 
 /** Media types a chat gets when it's added from a row or the Add sheet. */
 export const NEW_CHAT_FILTERS = {
@@ -48,6 +48,9 @@ export function findDialog(id) {
  * `config_updated` reload lands. Resolves to the saved config entry.
  */
 export async function saveChatConfig(id, body) {
+    if (body.enabled === true && (isBlockedAccess(accessFor(id)) || findDialog(id)?.dmDisabled)) {
+        throw new Error(i18nT('access.backfill_off', "This chat can't be reached"));
+    }
     const r = await api.put(`/api/groups/${encodeURIComponent(id)}`, body);
     const group = r?.group || null;
     if (!group) return null;
@@ -77,7 +80,10 @@ export async function saveChatConfig(id, body) {
 }
 
 /** Monitor on/off. A chat that isn't configured yet is added (photos + videos). */
-export function setChatMonitoring(chat, on) {
+export async function setChatMonitoring(chat, on) {
+    if (on && (isBlockedAccess(accessFor(chat.id, chat)) || chat.dmDisabled || chat.suspended)) {
+        throw new Error(i18nT('access.backfill_off', "This chat can't be reached"));
+    }
     if (findConfigGroup(chat.id) || chat.inConfig) {
         return saveChatConfig(chat.id, { enabled: on });
     }
@@ -102,9 +108,9 @@ function rowState(chat) {
     const cfg = findConfigGroup(chat.id);
     const inConfig = !!cfg || !!chat.inConfig;
     const suspended = cfg ? cfg.suspended === true : chat.suspended === true;
-    const enabled = cfg ? cfg.enabled !== false && !suspended : !!chat.enabled && !suspended;
-    // Can we still use it? (config entry's answer, else the row's own)
-    const access = cfg?.access || chat.access || accessFor(chat.id);
+    const enabled = cfg ? cfg.enabled !== false : !!chat.enabled;
+    // Live dialog evidence takes precedence over saved access metadata.
+    const access = accessFor(chat.id, chat);
     return { inConfig, suspended, enabled, blocked: chat.dmDisabled === true, access };
 }
 
@@ -153,15 +159,15 @@ export function renderChatResultRow(chat, opts = {}) {
               )
               .join('')}</span>`
         : '';
-    const disabled = suspended || blocked;
+    const disabled = (suspended || blocked || unreachable) && !enabled;
     // Backfill of a chat no account can read is refused (the chat page
     // says why); its Monitor switch stays usable so it can be stopped.
-    const noBackfill = disabled || unreachable;
+    const noBackfill = suspended || blocked || unreachable;
     return `
         <div class="cr-row${unreachable ? ' is-unreachable' : ''}" data-chat-id="${escapeHtml(id)}" role="listitem">
             <button type="button" class="cr-main" data-cr-open
                 aria-label="${escapeHtml(i18nTf('add.row.open_aria', { name }, `Settings of ${name}`))}">
-                ${createAvatar({ id, name, type: chat.type, size: 'md' })}
+                ${createAvatar({ id, name, type: chat.type, photoUrl: chat.photoUrl, size: 'md' })}
                 <span class="cr-text">
                     <span class="cr-name">${escapeHtml(name)}</span>
                     <span class="cr-sub">${escapeHtml(sub.join(' · '))}</span>
@@ -177,6 +183,7 @@ export function renderChatResultRow(chat, opts = {}) {
                 aria-label="${escapeHtml(i18nTf('add.row.monitor_aria', { name }, `Monitor ${name}`))}">
                 <span class="tg-toggle ${enabled ? 'active' : ''}" data-a11y-toggle="1" aria-hidden="true"></span>
             </button>
+            ${unreachable ? `<button type="button" class="cr-leave" data-cr-leave data-admin-only><i class="ri-logout-box-r-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.leave.action', 'Leave / remove from Telegram'))}</span></button>` : ''}
             <div class="cr-note hidden" data-cr-note role="status"></div>
         </div>`;
 }
@@ -230,9 +237,15 @@ export function wireChatResultRows(container, opts = {}) {
             return;
         }
 
+        if (e.target.closest('[data-cr-leave]')) {
+            openLeaveChatSheet(getChat(row), { onRemoved: opts.onRemoved });
+            return;
+        }
+
         if (e.target.closest('[data-cr-backfill]')) {
             const btn = e.target.closest('[data-cr-backfill]');
             const chat = getChat(row);
+            if (btn.disabled || isBlockedAccess(accessFor(id, chat)) || chat.dmDisabled || chat.suspended) return;
             // Not configured yet: add it (paused, photos + videos) so the
             // backfill downloads what the row promised.
             if (!findConfigGroup(id) && !chat.inConfig) {
@@ -270,6 +283,7 @@ export function wireChatResultRows(container, opts = {}) {
                 await setChatMonitoring(chat, next);
                 chat.inConfig = true;
                 chat.enabled = next;
+                sw.disabled = !next && (isBlockedAccess(accessFor(id, chat)) || chat.dmDisabled === true || chat.suspended === true);
                 const note = row.querySelector('[data-cr-note]');
                 if (note && wasNew && next) {
                     note.innerHTML = `<i class="ri-check-line" aria-hidden="true"></i>
@@ -486,11 +500,13 @@ export function openAddSheet() {
     wireChatResultRows(results, {
         getChat: (id) => extra.get(String(id)) || findDialog(id),
         beforeNavigate: () => handle.close(),
+        onRemoved: () => { dialogs = state.allDialogs || []; update(); },
     });
     // Rows inside cards (message / invite) use the same handlers.
     wireChatResultRows(cardsEl, {
         getChat: (id) => extra.get(String(id)) || findDialog(id),
         beforeNavigate: () => handle.close(),
+        onRemoved: () => { dialogs = state.allDialogs || []; update(); },
     });
 
     const setStatus = (text, kind = '') => {
@@ -500,7 +516,10 @@ export function openAddSheet() {
     const setList = (chats, title, total = chats.length) => {
         heading.textContent = title || '';
         heading.classList.toggle('hidden', !title || !chats.length);
-        results.innerHTML = chats.map((c) => renderChatResultRow(c)).join('');
+        const available = chats.filter((c) => !isBlockedAccess(accessFor(c.id, c)));
+        const unavailable = chats.filter((c) => isBlockedAccess(accessFor(c.id, c)));
+        results.innerHTML = available.map((c) => renderChatResultRow(c)).join('') +
+            (unavailable.length ? `<h4 class="as-heading">${escapeHtml(i18nT('groups.tab.attention', 'Deleted / unavailable'))}</h4>` + unavailable.map((c) => renderChatResultRow(c)).join('') : '');
         const rest = total - chats.length;
         moreNote.textContent =
             rest > 0
@@ -522,7 +541,7 @@ export function openAddSheet() {
         clearAll();
         hint.classList.remove('hidden');
         if (!dialogs.length) return;
-        setList(dialogs.slice(0, SUGGESTED), i18nT('add.your_chats', 'Your chats'));
+        setList(dialogs.filter((d) => !isBlockedAccess(accessFor(d.id, d))).slice(0, SUGGESTED), i18nT('add.your_chats', 'Your chats'));
     };
 
     const searchNames = (text) => {

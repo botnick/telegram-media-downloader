@@ -23,11 +23,18 @@ type Account interface {
 }
 type historyRecoverable interface{ SupportsHistoryRecovery() bool }
 
+type jobsAccount interface {
+	RunJobs(context.Context, func()) error
+	StartObserving(context.Context) error
+}
+
 type Dialog struct {
 	ID, Name, Username, Type string
 	Archived                 bool
 	Members                  *int
 	AccountIDs               []string
+	Access                   telegram.DialogAccess
+	AccountAccess            map[string]telegram.DialogAccess
 }
 
 type dialogSource interface {
@@ -74,20 +81,22 @@ func (c *Controller) SetUpdateObserver(observer UpdateObserver) {
 }
 
 type running struct {
-	observing    atomic.Bool
-	jobUsers     atomic.Int64
-	ctx          context.Context
-	cancel       context.CancelCauseFunc
-	done         chan struct{}
-	wake         chan struct{}
-	accounts     map[string]Account
-	ids          []string
-	workers      int
-	maxAttempts  int
-	mu           sync.Mutex
-	active       map[int64]context.CancelFunc
-	activeOrigin map[int64]string
-	progress     map[int64]*transferStats
+	promotionCancel context.CancelFunc // guarded by controller.opMu
+	observing       atomic.Bool
+	jobUsers        atomic.Int64
+	dialogPhotos    map[string][]RecoveryDialog // guarded by mu
+	ctx             context.Context
+	cancel          context.CancelCauseFunc
+	done            chan struct{}
+	wake            chan struct{}
+	accounts        map[string]Account
+	ids             []string
+	workers         int
+	maxAttempts     int
+	mu              sync.Mutex
+	active          map[int64]context.CancelFunc
+	activeOrigin    map[int64]string
+	progress        map[int64]*transferStats
 }
 
 func New(writer, reader *sql.DB, dataDir string, factory Factory, filter Filter, sink Sink, notify func(string, error)) *Controller {
@@ -161,12 +170,19 @@ func (s *DialogSession) Close() {
 	})
 }
 
+func (s *DialogSession) Err() error {
+	if s.run.ctx != nil && s.run.ctx.Err() != nil {
+		return s.run.ctx.Err()
+	}
+	return s.ctx.Err()
+}
+
 func (s *DialogSession) List(limit int) ([]Dialog, error) {
 	ctx := s.ctx
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if limit <= 0 || limit > 1000 {
+	if limit != -1 && (limit <= 0 || limit > 1000) {
 		limit = 500
 	}
 	accounts, accountIDs := s.run.accounts, s.run.ids
@@ -176,6 +192,8 @@ func (s *DialogSession) List(limit int) ([]Dialog, error) {
 	merged := map[string]Dialog{}
 	order := make([]string, 0)
 	accountSets := map[string]map[string]bool{}
+	accessSets := map[string]map[string]telegram.DialogAccess{}
+	var photoCandidates []RecoveryDialog
 	for _, id := range accountIDs {
 		account := accounts[id]
 		source, ok := account.(dialogSource)
@@ -188,6 +206,13 @@ func (s *DialogSession) List(limit int) ([]Dialog, error) {
 				return nil, fmt.Errorf("list account %s dialogs (archived=%t): %w", id, archived, err)
 			}
 			for _, item := range items {
+				photoCandidates = append(photoCandidates, RecoveryDialog{Dialog: item, AccountID: id})
+				if accessSets[item.ID] == nil {
+					accessSets[item.ID] = map[string]telegram.DialogAccess{}
+				}
+				if previous, exists := accessSets[item.ID][id]; !exists || (previous.State == "" || previous.State == "unknown") && item.Access.State != "" {
+					accessSets[item.ID][id] = item.Access
+				}
 				current, found := merged[item.ID]
 				if !found {
 					merged[item.ID] = Dialog{ID: item.ID, Name: item.Name, Username: item.Username, Type: item.Type, Archived: item.Archived, Members: item.Members}
@@ -212,9 +237,28 @@ func (s *DialogSession) List(limit int) ([]Dialog, error) {
 			item.AccountIDs = append(item.AccountIDs, accountID)
 		}
 		sort.Strings(item.AccountIDs)
+		item.AccountAccess = accessSets[id]
+		for _, accountID := range item.AccountIDs {
+			access := item.AccountAccess[accountID]
+			if item.Access.State == "" || dialogAccessPriority(access.State) > dialogAccessPriority(item.Access.State) {
+				item.Access = access
+			}
+		}
 		out = append(out, item)
 	}
+	s.rememberDialogPhotos(photoCandidates)
 	return out, nil
+}
+
+func dialogAccessPriority(state string) int {
+	switch state {
+	case "ok":
+		return 3
+	case "", "unknown":
+		return 2
+	default:
+		return 1
+	}
 }
 
 func (c *Controller) queueRun() (*running, error) {
@@ -390,6 +434,48 @@ func (c *Controller) start(request, parent context.Context, accounts []AccountCo
 					return nil
 				}
 				if !old.observing.Swap(true) {
+					c.setState("starting", nil)
+					promotion, stop := context.WithTimeout(request, 30*time.Minute)
+					old.promotionCancel = stop
+					// Recovery may take time. Allow Stop to cancel it and keep the
+					// existing connection alive for in-flight manual transfers.
+					c.opMu.Unlock()
+					locked = false
+					stopRun := context.AfterFunc(old.ctx, stop)
+					var promoteErr error
+					for _, id := range old.ids {
+						if account, ok := old.accounts[id].(jobsAccount); ok {
+							if promoteErr = account.StartObserving(promotion); promoteErr != nil {
+								promoteErr = fmt.Errorf("account %s observation: %w", id, promoteErr)
+								break
+							}
+						}
+					}
+					stopRun()
+					stop()
+					c.opMu.Lock()
+					locked = true
+					old.promotionCancel = nil
+					if promoteErr != nil {
+						// StopObserving can cancel the promotion wait while keeping
+						// explicit manual transfers on this authenticated connection.
+						if old.ctx.Err() == nil && !old.observing.Load() && errors.Is(promoteErr, context.Canceled) {
+							c.setState("running", nil)
+							return promoteErr
+						}
+						old.cancel(promoteErr)
+						c.opMu.Unlock()
+						locked = false
+						<-old.done
+						return promoteErr
+					}
+					if old.ctx.Err() != nil {
+						return context.Cause(old.ctx)
+					}
+					if !old.observing.Load() {
+						c.setState("running", nil)
+						return context.Canceled
+					}
 					c.mu.Lock()
 					c.started = time.Now()
 					c.mu.Unlock()
@@ -486,7 +572,13 @@ func (c *Controller) start(request, parent context.Context, accounts []AccountCo
 		go func() {
 			defer wg.Done()
 			var once sync.Once
-			err := run.accounts[id].Run(ctx, func() { once.Do(func() { ready <- struct{}{} }) })
+			startAccount := run.accounts[id].Run
+			if !observing {
+				if account, ok := run.accounts[id].(jobsAccount); ok {
+					startAccount = account.RunJobs
+				}
+			}
+			err := startAccount(ctx, func() { once.Do(func() { ready <- struct{}{} }) })
 			if ctx.Err() == nil {
 				if err == nil {
 					err = errors.New("Telegram connection ended")
@@ -524,7 +616,7 @@ func (c *Controller) start(request, parent context.Context, accounts []AccountCo
 	c.opMu.Unlock()
 	locked = false
 	startupBudget := 30 * time.Second
-	if recoveryPending {
+	if recoveryPending && observing {
 		// History repair can legitimately fetch many bounded pages. A normal
 		// login startup deadline would cancel it repeatedly before it can
 		// advance the durable cursor.

@@ -8721,3 +8721,26 @@ html.theme-light .access-badge[data-access="migrated"] {
     color: var(--tg-blue);
     white-space: nowrap;
 }
+
+/* Telegram removal stays explicit and readable on narrow screens. */
+.cr-leave {
+    grid-column: 1 / -1;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    margin-left: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    color: var(--tg-orange);
+    font-size: 13px;
+    text-align: left;
+}
+.cr-leave:hover { background: var(--tg-hover); }
+.cr-leave:focus-visible { outline: 2px solid var(--tg-blue); outline-offset: -2px; }
+.chat-leave-sheet { display: flex; flex-direction: column; gap: 12px; }
+.chat-leave-sheet p { overflow-wrap: anywhere; }
+.chat-leave-name { font-weight: 600; }
+.chat-leave-status[data-kind="error"] { color: var(--tg-red); }
+.chat-leave-status:empty { display: none; }

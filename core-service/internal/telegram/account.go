@@ -119,6 +119,7 @@ type Account struct {
 	handle      func(context.Context, tg.UpdatesClass) error
 	onGap       func(int64)
 	selfID      int64
+	observation *accountObservation
 }
 
 func NewAccount(cfg GotdConfig, state *UpdateState, handle func(context.Context, tg.UpdatesClass) error, onGap func(int64)) (*Account, error) {
@@ -140,10 +141,25 @@ func NewAccount(cfg GotdConfig, state *UpdateState, handle func(context.Context,
 		return nil, err
 	}
 	sum := sha256.Sum256(data.AuthKey)
-	return &Account{GotdClient: client, updates: manager, fingerprint: hex.EncodeToString(sum[:]), state: state, handle: state.GuardHandler(handle), onGap: onGap}, nil
+	return &Account{GotdClient: client, updates: manager, fingerprint: hex.EncodeToString(sum[:]), state: state, handle: state.GuardHandler(handle), onGap: onGap, observation: newAccountObservation()}, nil
 }
 func (a *Account) Fingerprint() string { return a.fingerprint }
 func (a *Account) Run(ctx context.Context, ready func()) error {
+	return a.run(ctx, ready, false)
+}
+
+// RunJobs leaves update cursors and recovery markers untouched until the owner
+// starts the monitor. Before updates.Run, gotd forwards raw updates to our
+// handler: the engine ignores new media but still observes source deletions.
+func (a *Account) RunJobs(ctx context.Context, ready func()) error {
+	return a.run(ctx, ready, true)
+}
+
+func (a *Account) StartObserving(ctx context.Context) error {
+	return a.observation.start(ctx)
+}
+
+func (a *Account) run(ctx context.Context, ready func(), jobsOnly bool) error {
 	defer a.updates.Reset()
 	return a.GotdClient.Run(ctx, func(ctx context.Context) error {
 		status, err := a.client.Auth().Status(ctx)
@@ -154,10 +170,12 @@ func (a *Account) Run(ctx context.Context, ready func()) error {
 			return errors.New("Telegram session expired; sign in again in Accounts")
 		}
 		a.selfID = status.User.ID
-		if err := a.recoverPending(ctx, status.User.ID); err != nil {
-			return err
-		}
-		api := durableUpdateAPI{API: a.API(), state: a.state, handle: a.handle, onGap: a.onGap, userID: status.User.ID}
-		return a.updates.Run(ctx, api, status.User.ID, updates.AuthOptions{IsBot: status.User.Bot, OnStart: func(context.Context) { ready() }})
+		return a.observation.run(ctx, ready, jobsOnly, func(ctx context.Context, observingReady func()) error {
+			if err := a.recoverPending(ctx, status.User.ID); err != nil {
+				return err
+			}
+			api := durableUpdateAPI{API: a.API(), state: a.state, handle: a.handle, onGap: a.onGap, userID: status.User.ID}
+			return a.updates.Run(ctx, api, status.User.ID, updates.AuthOptions{IsBot: status.User.Bot, OnStart: func(context.Context) { observingReady() }})
+		})
 	})
 }

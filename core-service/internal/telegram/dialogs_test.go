@@ -12,6 +12,76 @@ import (
 
 type dialogsFixture struct{}
 
+func TestDialogAccessFromTelegramEntities(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		peer               tg.PeerClass
+		chat               tg.ChatClass
+		user               tg.UserClass
+		state, code, title string
+	}{
+		{"forbidden-group", &tg.PeerChat{ChatID: 1}, &tg.ChatForbidden{ID: 1, Title: "Old group"}, nil, "inaccessible", "CHAT_FORBIDDEN", "Old group"},
+		{"forbidden-channel", &tg.PeerChannel{ChannelID: 1}, &tg.ChannelForbidden{ID: 1, Title: "Old channel", AccessHash: 7}, nil, "inaccessible", "CHANNEL_FORBIDDEN", "Old channel"},
+		{"terms-channel", &tg.PeerChannel{ChannelID: 1}, &tg.Channel{ID: 1, Title: "Restricted", Restricted: true, RestrictionReason: []tg.RestrictionReason{{Platform: "all", Reason: "terms", Text: "This channel violated Telegram's Terms of Service."}}}, nil, "restricted", "terms", "Restricted"},
+		{"platform-only", &tg.PeerChannel{ChannelID: 1}, &tg.Channel{ID: 1, Title: "Platform", Restricted: true, RestrictionReason: []tg.RestrictionReason{{Platform: "ios", Reason: "porno", Text: "iOS only"}}}, nil, "ok", "", "Platform"},
+		{"migrated-not-deleted", &tg.PeerChat{ChatID: 1}, &tg.Chat{ID: 1, Title: "Moved", Deactivated: true, MigratedTo: &tg.InputChannel{ChannelID: 42}}, nil, "migrated", "CHAT_MIGRATED", "Moved"},
+		{"left-group", &tg.PeerChat{ChatID: 1}, &tg.Chat{ID: 1, Title: "Left", Left: true}, nil, "left", "CHAT_LEFT", "Left"},
+		{"deleted-dm", &tg.PeerUser{UserID: 1}, nil, &tg.User{ID: 1, Deleted: true}, "deleted", "USER_DELETED", "Deleted account"},
+		{"missing-user-not-deleted", &tg.PeerUser{UserID: 1}, nil, &tg.UserEmpty{ID: 1}, "unknown", "", "1"},
+		{"minimal-not-healthy", &tg.PeerChannel{ChannelID: 1}, &tg.Channel{ID: 1, Min: true, Title: "Partial"}, nil, "unknown", "", "Partial"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var chats []tg.ChatClass
+			var users []tg.UserClass
+			if tc.chat != nil {
+				chats = append(chats, tc.chat)
+			}
+			if tc.user != nil {
+				users = append(users, tc.user)
+			}
+			items := mapDialogPage([]tg.DialogClass{&tg.Dialog{Peer: tc.peer}}, chats, users)
+			if len(items) != 1 {
+				t.Fatalf("dialogs=%v", items)
+			}
+			d := items[0]
+			if d.Access.State != tc.state || d.Access.Code != tc.code || d.Name != tc.title {
+				t.Fatalf("dialog=%+v", d)
+			}
+			if tc.state == "deleted" && d.peer == nil {
+				t.Fatal("deleted DM cannot be removed without its peer")
+			}
+			if tc.state == "restricted" && d.Access.Detail == "" {
+				t.Fatal("Telegram restriction reason was lost")
+			}
+			if tc.state == "migrated" && d.Access.MigratedTo != "-1000000000042" {
+				t.Fatalf("migration=%+v", d.Access)
+			}
+		})
+	}
+}
+
+func TestDialogAccessKeepsGroupAndChannelNamespacesSeparate(t *testing.T) {
+	items := mapDialogPage([]tg.DialogClass{&tg.Dialog{Peer: &tg.PeerChat{ChatID: 42}}, &tg.Dialog{Peer: &tg.PeerChannel{ChannelID: 42}}},
+		[]tg.ChatClass{&tg.ChatForbidden{ID: 42, Title: "Unavailable group"}, &tg.Channel{ID: 42, Title: "Available channel"}}, nil)
+	if len(items) != 2 || items[0].Name != "Unavailable group" || items[0].Access.State != "inaccessible" || items[1].Access.State != "ok" {
+		t.Fatalf("namespaces mixed: %+v", items)
+	}
+}
+
+func TestDeletedUserIsUsableAsDialogCursorWithoutHash(t *testing.T) {
+	peer, err := dialogOffsetPeer(&tg.PeerUser{UserID: 42}, nil, []tg.UserClass{&tg.User{ID: 42, Deleted: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, ok := peer.(*tg.InputPeerUser)
+	if !ok || user.UserID != 42 {
+		t.Fatalf("wrong cursor=%+v", peer)
+	}
+	if _, err = dialogOffsetPeer(&tg.PeerUser{UserID: 42}, nil, []tg.UserClass{&tg.User{ID: 42, Min: true}}); err == nil {
+		t.Fatal("minimal unknown user accepted as cursor")
+	}
+}
+
 func (dialogsFixture) MessagesGetDialogs(context.Context, *tg.MessagesGetDialogsRequest) (tg.MessagesDialogsClass, error) {
 	dialog := &tg.Dialog{Peer: &tg.PeerChannel{ChannelID: 42}}
 	dialog.SetFolderID(1)

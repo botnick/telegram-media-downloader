@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -22,6 +23,9 @@ func registerDialogRoutes(mux *http.ServeMux, a *App) {
 func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
 	dialogs, err := a.browseDialogs(r.Context())
 	if err != nil {
+		if a.output != nil {
+			fmt.Fprintf(a.output, "Telegram dialogs unavailable: %v\n", err)
+		}
 		saved, savedErr := telegram.SavedSessions(a.dataDir)
 		if errors.Is(err, errNoAccounts) || (savedErr == nil && len(saved) == 0) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "no_account", "message": "No Telegram account configured"})
@@ -53,7 +57,8 @@ func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
 	}
 	result := make([]map[string]any, 0, len(dialogs))
 	for _, dialog := range dialogs {
-		if (dialog.Type == "user" || dialog.Type == "bot") && !allowDM {
+		dmDisabled := (dialog.Type == "user" || dialog.Type == "bot") && !allowDM
+		if dmDisabled && !blockingChatState(dialog.Access.State) {
 			continue
 		}
 		group := groupByID[dialog.ID]
@@ -77,6 +82,9 @@ func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
 		if !knownAccess {
 			access = legacyDialogAccess(group)
 		}
+		if dialog.Access.State != "" {
+			access = liveDialogAccess(dialog)
+		}
 		if sess, ok := auth.SessionFromContext(r.Context()); ok && sess.Role == "guest" {
 			if _, ok := access["accounts"].([]map[string]any); ok {
 				access["accounts"] = []map[string]any{}
@@ -87,7 +95,7 @@ func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
 			"archived": dialog.Archived, "members": members, "enabled": group != nil && group["enabled"] == true,
 			"inConfig": group != nil, "suspended": group != nil && group["suspended"] == true,
 			"filters": filters, "autoForward": autoForward, "photoUrl": "/api/groups/" + dialog.ID + "/photo", "accountIds": dialog.AccountIDs,
-			"access": access,
+			"access": access, "dmDisabled": dmDisabled,
 		})
 	}
 	accountList := make([]map[string]any, 0)
@@ -123,6 +131,8 @@ func (a *App) browseDialogs(ctx context.Context) ([]engine.Dialog, error) {
 	// idle-job drain cannot slip between them. Release the operation lock before
 	// network reads so account removal/shutdown can cancel a slow listing.
 	a.monitorOp.Lock()
+	version := a.dialogVersion
+	observedAt := time.Now().UnixMilli()
 	var session *engine.DialogSession
 	var err error
 	user, _ := auth.SessionFromContext(ctx)
@@ -139,7 +149,24 @@ func (a *App) browseDialogs(ctx context.Context) ([]engine.Dialog, error) {
 	// Keep the connection available for subsequent browsing. Monitor stop,
 	// account changes and shutdown retain ownership of its lifetime.
 	defer session.Close()
-	return session.List(500)
+	// Access aggregation needs every account's full list; a UI cap could hide
+	// a readable account and incorrectly mark the chat unavailable.
+	dialogs, err := session.List(-1)
+	if err != nil {
+		return nil, err
+	}
+	a.monitorOp.Lock()
+	defer a.monitorOp.Unlock()
+	if err := session.Err(); err != nil {
+		return nil, err
+	}
+	if version != a.dialogVersion {
+		return nil, errors.New("chat list changed; refresh to load current chats")
+	}
+	if err := a.saveDialogAccess(ctx, dialogs, observedAt); err != nil {
+		return nil, err
+	}
+	return dialogs, nil
 }
 
 func (a *App) loadDialogAccess(r *http.Request) map[string]map[string]any {
@@ -164,9 +191,10 @@ func (a *App) readDialogAccess(ctx context.Context) (map[string]map[string]any, 
 		}
 		accounts := []map[string]any{}
 		var accountMap map[string]struct {
-			State string `json:"state"`
-			Code  string `json:"code"`
-			At    int64  `json:"at"`
+			State  string `json:"state"`
+			Code   string `json:"code"`
+			Detail string `json:"detail"`
+			At     int64  `json:"at"`
 		}
 		if accountsJSON.Valid && json.Unmarshal([]byte(accountsJSON.String), &accountMap) == nil {
 			for accountID, account := range accountMap {
@@ -177,7 +205,7 @@ func (a *App) readDialogAccess(ctx context.Context) (map[string]map[string]any, 
 				if account.Code != "" {
 					code = account.Code
 				}
-				accounts = append(accounts, map[string]any{"id": accountID, "state": account.State, "code": code, "at": account.At})
+				accounts = append(accounts, map[string]any{"id": accountID, "state": account.State, "code": code, "detail": account.Detail, "at": account.At})
 			}
 		}
 		sort.Slice(accounts, func(i, j int) bool { return accounts[i]["id"].(string) < accounts[j]["id"].(string) })

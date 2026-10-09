@@ -36,6 +36,7 @@ type chatRecheckState struct {
 var chatIDPattern = regexp.MustCompile(`^-?\d+$`)
 
 func registerChatAccessRoutes(mux *http.ServeMux, a *App) {
+	mux.Handle("POST /api/chats/{id}/leave", a.requireAdmin(http.HandlerFunc(a.handleChatLeave)))
 	mux.Handle("GET /api/chats/access", a.requireAdmin(http.HandlerFunc(a.handleChatAccessList)))
 	mux.Handle("POST /api/chats/access/recheck", a.requireAdmin(http.HandlerFunc(a.handleChatAccessRecheck)))
 	mux.Handle("GET /api/chats/access/recheck/status", a.requireAdmin(http.HandlerFunc(a.handleChatAccessRecheckStatus)))

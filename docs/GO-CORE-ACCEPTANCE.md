@@ -78,3 +78,67 @@ Regression coverage is in `internal/app/dialogs_api_test.go` and
 monitor stop, concurrent connection reuse, no automatic live downloads, guest
 denial, incomplete archive errors, idle drain protection and hard-stop cancellation.
 The complete app/engine race suites, affected-package vet and native build pass.
+
+## Unavailable chats, account removal and profile photos — 2.32.2
+
+Fresh Telegram entities now classify each chat per account. Available chats are
+separated from restricted, migrated, deleted-account and inaccessible entries.
+An inaccessible group/channel is not assumed deleted; missing/minimal metadata
+stays unknown. An account that can still read a chat takes precedence over an
+account that cannot. The complete active/archive listing is used, including
+entries beyond the former 500-chat boundary. Recheck refreshes Telegram metadata.
+
+The unavailable list provides a per-chat leave/remove sheet with an explicit
+account selection and final confirmation. The authenticated endpoint validates
+both before selecting that exact account. It leaves channels/groups or removes
+DM history for the selected account only; it never revokes another person's
+history or deletes a channel globally. Downloaded files remain intact. Local
+subscription cleanup runs only after confirmed remote success and only for a
+single-account instance; partial cleanup and remote failures stay visible.
+
+Profile photos load lazily from the account-bound dialog metadata, with four
+concurrent transfers, coalesced requests, bounded validated JPEGs and atomic
+publication. Reading a chat list no longer requires pending history recovery:
+the connection authenticates in jobs-only mode, preserving recovery markers and
+update cursors until monitor promotion. Promotion reuses the connection; stopping
+promotion preserves existing manual work. Hard stop still cancels the account.
+
+Actual photo requests also uncovered an existing download transport error:
+`Client.DC` exported authorization to the account's own datacenter, which Telegram
+rejected with `DC_ID_INVALID`. Home-datacenter downloads now use `Client.Pool`;
+foreign datacenters retain explicit authorization transfer. Byte verification is
+retained, and transport errors are propagated without switching transports.
+
+Live read-only verification on the protected preview returned 187 chats from
+one account in 1.54 seconds: 153 available, 27 restricted, four migrated and three
+deleted accounts. Three real profile JPEG requests returned HTTP 200 (11,196,
+6,384 and 11,040 bytes). Pending recovery markers were preserved; monitor state
+remained stopped with zero active/queued downloads. Remote leave/delete was not
+executed against the owner's real chats. Destructive behavior is covered by
+transport fixtures, HTTP authorization/account/confirmation tests and isolated
+browser fixtures; live browser checking opens and cancels confirmation only.
+
+Chrome on the existing HTTPS preview loaded version 2.32.2, displayed 153 rows
+with no blocked entries in Available, and 34 blocked rows in Deleted/unavailable.
+Seventeen real profile images decoded. The removal sheet required choosing the
+single account before enabling confirmation; cancellation before and after
+selection sent zero removal requests. Monitoring remained stopped and idle.
+
+Affected app/engine/Telegram race suites, targeted promotion-stop and verified
+transport regressions, vet and the native build pass. The asset and service-worker
+versions advance together to 2.32.2 so previously cached modules cannot retain the
+old chat list after reload. This work does not establish the still-outstanding
+live media deduplication acceptance described above.
+
+Primary references:
+
+- [Telegram user flags](https://core.telegram.org/constructor/user),
+  [unavailable basic groups](https://core.telegram.org/constructor/chatForbidden),
+  [unavailable channels](https://core.telegram.org/constructor/channelForbidden),
+  [group migration](https://core.telegram.org/constructor/chat) and
+  [platform-specific restrictions](https://core.telegram.org/constructor/restrictionReason).
+- [Leaving a channel](https://core.telegram.org/method/channels.leaveChannel),
+  [leaving a basic group](https://core.telegram.org/method/messages.deleteChatUser)
+  and [history removal and its revoke flag](https://core.telegram.org/method/messages.deleteHistory).
+- [gotd current-datacenter pool](https://pkg.go.dev/github.com/gotd/td/telegram#Client.Pool)
+  and [Telegram authorization transfer](https://core.telegram.org/method/auth.exportAuthorization).

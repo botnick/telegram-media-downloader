@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	gotd "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/tg"
 )
@@ -197,7 +198,29 @@ func (c *GotdClient) DownloadMedia(ctx context.Context, a Attachment, w io.Write
 	if c == nil || c.client == nil || a.Location == nil || a.DC <= 0 {
 		return errors.New("invalid Telegram download request")
 	}
-	pool, err := c.client.DC(ctx, a.DC, 1)
+	return downloadMedia(ctx, c.client, a, w)
+}
+
+type downloadClient interface {
+	Config() tg.Config
+	Pool(int64) (gotd.CloseInvoker, error)
+	DC(context.Context, int, int64) (gotd.CloseInvoker, error)
+}
+
+func downloadMedia(ctx context.Context, client downloadClient, a Attachment, w io.Writer) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var pool gotd.CloseInvoker
+	var err error
+	if a.DC == client.Config().ThisDC {
+		// DC() transfers authorization to another datacenter. Exporting it
+		// back to the current one is rejected with DC_ID_INVALID; Pool()
+		// reuses the authenticated primary session for this case.
+		pool, err = client.Pool(1)
+	} else {
+		pool, err = client.DC(ctx, a.DC, 1)
+	}
 	if err != nil {
 		return err
 	}

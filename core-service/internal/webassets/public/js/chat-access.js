@@ -11,15 +11,17 @@
 
 import { api } from './api.js';
 import { state } from './store.js';
+import { openSheet } from './sheet.js';
 import { escapeHtml, showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 
-const BLOCKING = new Set(['left', 'banned', 'private', 'deleted', 'restricted', 'migrated']);
+const BLOCKING = new Set(['left', 'banned', 'private', 'inaccessible', 'deleted', 'restricted', 'migrated']);
 
 const ICON = {
     left: 'ri-logout-box-r-line',
     banned: 'ri-forbid-2-line',
     private: 'ri-lock-2-line',
+    inaccessible: 'ri-lock-2-line',
     deleted: 'ri-delete-bin-6-line',
     restricted: 'ri-error-warning-line',
     migrated: 'ri-arrow-right-up-line',
@@ -29,6 +31,8 @@ const LABEL = {
     left: ['access.state.left', 'Not a member'],
     banned: ['access.state.banned', 'Banned'],
     private: ['access.state.private', 'Private'],
+    inaccessible: ['access.state.inaccessible', 'Inaccessible'],
+    unknown: ['access.state.unknown', 'Not yet confirmed'],
     deleted: ['access.state.deleted', 'Deleted'],
     restricted: ['access.state.restricted', 'Restricted'],
     migrated: ['access.state.migrated', 'Moved'],
@@ -44,10 +48,8 @@ const REASON = {
         'access.reason.private',
         "This chat is private and your accounts can't open it any more — you left, were removed, or it became private.",
     ],
-    deleted: [
-        'access.reason.deleted',
-        "Telegram says this chat doesn't exist any more — it was deleted, or its link is no longer valid.",
-    ],
+    inaccessible: ['access.reason.inaccessible', "Telegram does not allow access to this chat. This does not confirm that it was deleted."],
+    deleted: ['access.reason.deleted', 'Telegram marks this chat or account as deleted.'],
     restricted: ['access.reason.restricted', "Telegram restricts this chat, so it can't be read."],
     migrated: [
         'access.reason.migrated',
@@ -68,6 +70,7 @@ const ADVICE = {
         'access.advice.rejoin',
         'Rejoin it in Telegram with one of your accounts, then press Check again — or stop monitoring it.',
     ],
+    inaccessible: ['access.advice.inaccessible', 'Check again to refresh its Telegram status, or leave / remove it from the selected account.'],
     deleted: [
         'access.advice.deleted',
         'Nothing new will arrive. Stop monitoring it or remove it from the list — downloaded files stay.',
@@ -89,14 +92,14 @@ export function isBlockedAccess(access) {
     return !!access && BLOCKING.has(access.state);
 }
 
-/** Access of a chat: its config entry's (from /api/groups), else the dialog's. */
+/** Live Telegram dialog metadata overrides potentially stale saved config. */
 export function accessFor(id, fallback = null) {
     const key = String(id);
-    const g = (state.groups || []).find((x) => String(x.id) === key && !x.peerId);
-    if (g?.access) return g.access;
     const d = (state.allDialogs || []).find((x) => String(x.id) === key);
     if (d?.access) return d.access;
-    return fallback?.access || { state: 'ok' };
+    if (fallback?.access) return fallback.access;
+    const g = (state.groups || []).find((x) => String(x.id) === key && !x.peerId);
+    return g?.access || { state: 'unknown' };
 }
 
 export function accessLabel(access) {
@@ -160,7 +163,7 @@ function accountName(id) {
 }
 
 /** "Telegram said CHANNEL_PRIVATE · since 2 hours ago · checked … · next check …" */
-export function accessMetaLine(access, { showNext = true } = {}) {
+export function accessMetaLine(access) {
     if (!isBlockedAccess(access)) return '';
     const parts = [];
     if (access.code) {
@@ -184,18 +187,6 @@ export function accessMetaLine(access, { showNext = true } = {}) {
                 { when: relTime(access.checkedAt) },
                 `checked ${relTime(access.checkedAt)}`,
             ),
-        );
-    }
-    // Re-checks run for monitored chats only (see the caller).
-    if (showNext && access.nextCheckAt) {
-        parts.push(
-            access.nextCheckAt <= Date.now() + 60_000
-                ? i18nT('access.meta.next_soon', 'next check soon')
-                : i18nTf(
-                      'access.meta.next',
-                      { when: relTime(access.nextCheckAt) },
-                      `next check ${relTime(access.nextCheckAt)}`,
-                  ),
         );
     }
     return parts.join(' · ');
@@ -230,11 +221,14 @@ export function applyAccess(id, access) {
 
 /**
  * "Check again" for one chat: asks the server to try every account now.
- * Resolves to the server's answer (`{ state, access, inconclusive }`).
+ * Missing rows and unknown metadata are inconclusive, never proof of deletion.
  */
 export async function recheckChat(id, { name = '', toast = true } = {}) {
-    const r = await api.post('/api/chats/access/recheck', { id: String(id) });
-    if (r?.access) applyAccess(id, r.access);
+    await refreshDialogs();
+    const dialog = (state.allDialogs || []).find((d) => String(d.id) === String(id));
+    const access = dialog?.access;
+    const r = { state: access?.state || 'unknown', access, inconclusive: !access || access.state === 'unknown' };
+    if (access) applyAccess(id, access);
     if (toast) {
         const who = name || String(id);
         if (r?.state === 'ok') {
@@ -264,13 +258,132 @@ export async function recheckChat(id, { name = '', toast = true } = {}) {
     return r;
 }
 
-/**
- * "Check all again": the server re-checks every configured chat that
- * can't be reached, one every 2 s, in the background (progress over WS:
- * `chat_access_recheck_progress` / `_done`). Resolves to `{ started, total }`.
- */
+/** Refresh Telegram metadata and notify every open chat view. No remote mutation. */
+export async function refreshDialogs() {
+    const r = await api.get('/api/dialogs?fresh=1', { timeoutMs: 120_000 });
+    if (!Array.isArray(r?.dialogs)) throw new Error(i18nT('groups.load_failed', 'Failed to load dialogs'));
+    state.allDialogs = r.dialogs;
+    state.dialogsAccounts = Array.isArray(r.accounts) ? r.accounts : [];
+    window.dispatchEvent(new CustomEvent('dialogs-refreshed'));
+    return r;
+}
+
 export async function recheckAllUnreachable() {
-    return api.post('/api/chats/access/recheck', { all: true });
+    const ids = unavailableChats().map((c) => String(c.id));
+    await refreshDialogs();
+    return { total: ids.length, reachable: ids.filter((id) => accessFor(id).state === 'ok').length };
+}
+
+/** All known chats, with fresh dialog metadata and local monitoring settings. */
+export function mergedChats() {
+    const byId = new Map();
+    for (const g of state.groups || []) {
+        if (!g.peerId) byId.set(String(g.id), { ...g, id: String(g.id), inConfig: true });
+    }
+    for (const d of state.allDialogs || []) {
+        const id = String(d.id);
+        const g = byId.get(id);
+        byId.set(id, {
+            ...g, ...d, id,
+            inConfig: !!g || !!d.inConfig,
+            enabled: g ? g.enabled !== false : !!d.enabled,
+            access: d.access || g?.access || { state: 'unknown' },
+        });
+    }
+    return [...byId.values()];
+}
+
+export function unavailableChats() {
+    return mergedChats().filter((c) => isBlockedAccess(c.access));
+}
+
+/** Explicit, single-account Telegram removal. Opening or dismissing never submits. */
+export function openLeaveChatSheet(chat, { onRemoved } = {}) {
+    const id = String(chat.id);
+    const current = (state.allDialogs || []).find((d) => String(d.id) === id) || chat;
+    const access = accessFor(id, current);
+    const ids = [...new Set((current.accountIds || access.accounts?.map((a) => a.id) || []).map(String))];
+    const isDM = current.type === 'user' || current.type === 'bot' || Number(id) > 0;
+    const name = chat.name || current.name || id;
+    const type = isDM ? i18nT('groups.type.user', 'Direct message')
+        : current.type === 'channel' ? i18nT('groups.type.channel', 'Channel') : i18nT('groups.type.group', 'Group');
+    const box = document.createElement('div');
+    box.className = 'chat-leave-sheet';
+    box.innerHTML = `
+        <p class="chat-leave-name">${escapeHtml(name)}</p>
+        <p class="cd-help">${escapeHtml(type)} · ${escapeHtml(id)}</p>
+        <p>${escapeHtml(isDM
+            ? i18nT('access.leave.dm_effect', 'Removes this conversation and its history only from the selected Telegram account. It does not delete the other person’s history.')
+            : i18nT('access.leave.group_effect', 'Leaves this group or channel using the selected Telegram account. You may need an invitation to join again.'))}</p>
+        <p>${escapeHtml(i18nT('access.leave.files_kept', 'Downloaded files stay in your library. Other Telegram accounts are unchanged.'))}</p>
+        <label class="cd-label" for="chat-leave-account">${escapeHtml(i18nT('access.leave.account', 'Telegram account'))}</label>
+        <select id="chat-leave-account" class="tg-input" data-leave-account>
+            <option value="">${escapeHtml(i18nT('access.leave.choose_account', 'Choose an account…'))}</option>
+            ${ids.map((accountId) => {
+                const evidence = access.accounts?.find((a) => String(a.id) === accountId);
+                const label = evidence?.state === 'ok' ? i18nT('access.meta.account_ok', 'can read it') : accessLabel(evidence);
+                return `<option value="${escapeHtml(accountId)}">${escapeHtml(accountName(accountId))}${label ? ` — ${escapeHtml(label)}` : ''}</option>`;
+            }).join('')}
+        </select>
+        <p class="cd-help">${escapeHtml(i18nT('access.leave.choose_help', 'Only the account you choose will be changed.'))}</p>
+        <p class="chat-leave-status" data-leave-status role="status" aria-live="polite">${ids.length ? '' : escapeHtml(i18nT('access.leave.no_account', 'No account is confirmed for this chat. Check again before removing it.'))}</p>
+        <div class="cd-access-actions">
+            <button type="button" class="tg-btn-secondary" data-leave-cancel>${escapeHtml(i18nT('common.cancel', 'Cancel'))}</button>
+            <button type="button" class="tg-btn" data-leave-confirm disabled>${escapeHtml(i18nT('access.leave.confirm', 'Confirm leave / remove'))}</button>
+        </div>`;
+    const handle = openSheet({ title: i18nT('access.leave.title', 'Leave / remove from Telegram?'), content: box });
+    const select = box.querySelector('[data-leave-account]');
+    const confirm = box.querySelector('[data-leave-confirm]');
+    const status = box.querySelector('[data-leave-status]');
+    const cancel = box.querySelector('[data-leave-cancel]');
+    let busy = false;
+    let removed = false;
+    select.addEventListener('change', () => { confirm.disabled = busy || removed || !ids.includes(select.value); });
+    cancel.addEventListener('click', () => handle.close());
+    // No form or global Enter shortcut: only activating the final button submits.
+    confirm.addEventListener('click', async () => {
+        const accountId = select.value;
+        if (busy || removed || !ids.includes(accountId)) return;
+        busy = true;
+        confirm.disabled = true;
+        select.disabled = true;
+        status.dataset.kind = '';
+        status.textContent = i18nT('access.leave.working', 'Request sent to Telegram. Closing this dialog does not cancel it. Waiting for the result…');
+        cancel.textContent = i18nT('access.leave.close_running', 'Close — request continues');
+        try {
+            const r = await api.post(`/api/chats/${encodeURIComponent(id)}/leave`, { accountId, confirm: id }, { timeoutMs: 120_000 });
+            if (r?.success !== true) throw new Error(r?.error || i18nT('access.leave.failed', 'Telegram did not confirm removal.'));
+            removed = true;
+            const warning = r.warning ? i18nTf('access.leave.partial_success', { message: String(r.warning) }, `Telegram removed the chat, but local cleanup needs attention: ${r.warning}`) : '';
+            if (r.localConfigRemoved) state.groups = (state.groups || []).filter((g) => g.peerId || String(g.id) !== id);
+            try {
+                await refreshDialogs();
+                onRemoved?.(r);
+                if (warning) {
+                    status.textContent = warning;
+                    status.dataset.kind = 'warning';
+                    showToast(warning, 'warning', 7000);
+                } else {
+                    handle.close();
+                    showToast(i18nT('access.leave.success', 'Removed from the selected Telegram account. Downloaded files kept.'), 'success');
+                }
+            } catch {
+                status.textContent = [warning, i18nT('access.leave.refresh_failed', 'Telegram confirmed removal, but the list could not refresh. Close this dialog and press Check again.')].filter(Boolean).join(' ');
+                status.dataset.kind = 'warning';
+                showToast(status.textContent, 'warning');
+            }
+        } catch (e) {
+            status.textContent = e?.data?.message || e?.data?.error || e?.message || i18nT('access.leave.failed', 'Telegram did not confirm removal.');
+            status.dataset.kind = 'error';
+            showToast(status.textContent, 'error', 7000);
+        } finally {
+            busy = false;
+            cancel.textContent = removed ? i18nT('common.close', 'Close') : i18nT('common.cancel', 'Cancel');
+            select.disabled = removed;
+            confirm.disabled = removed || !ids.includes(select.value);
+        }
+    });
+    return handle;
 }
 
 /** A migrated basic group: add the new supergroup with the same settings. */
@@ -295,5 +408,5 @@ export async function removeChatsFromList(ids) {
 
 /** Configured chats (this instance) that can't be reached. */
 export function unreachableGroups() {
-    return (state.groups || []).filter((g) => !g.peerId && isBlockedAccess(g.access));
+    return (state.groups || []).filter((g) => !g.peerId && isBlockedAccess(accessFor(g.id, g)));
 }

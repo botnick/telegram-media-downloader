@@ -53,6 +53,7 @@ type App struct {
 	accounts         *accounts.Repository
 	accountWizard    *accounts.Wizard
 	monitorOp        sync.Mutex
+	dialogVersion    uint64 // monitorOp guards confirmed remote removals vs older listings
 	historyMu        sync.Mutex
 	historyJobs      map[string]*historyJob
 	historyCancel    map[string]context.CancelFunc
@@ -138,6 +139,7 @@ type App struct {
 	groupRefreshPhotos  groupRefreshState
 	groupRefreshWG      sync.WaitGroup
 	groupRefreshClosed  bool
+	dialogPhotos        dialogPhotoCache
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -511,6 +513,7 @@ func (a *App) Close() error {
 		if a.cancel != nil {
 			a.cancel()
 		}
+		a.closeDialogPhotos()
 		a.closeWebSockets()
 		a.ambientWG.Wait()
 		a.clusterMu.Lock()

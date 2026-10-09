@@ -288,8 +288,17 @@ func (c *Controller) StopObserving(ctx context.Context) error {
 	c.opMu.Lock()
 	run, err := c.queueRun()
 	if err != nil {
-		c.opMu.Unlock()
-		return c.Stop(ctx)
+		// A jobs-only connection remains usable during monitor promotion.
+		// Preserve its manual transfers just as after observation is ready.
+		c.mu.Lock()
+		if c.run != nil && c.state == "starting" && c.run.promotionCancel != nil && c.run.ctx.Err() == nil {
+			run, err = c.run, nil
+		}
+		c.mu.Unlock()
+		if err != nil {
+			c.opMu.Unlock()
+			return c.Stop(ctx)
+		}
 	}
 	pending, err := c.PendingManual(ctx)
 	if err != nil {
@@ -301,6 +310,9 @@ func (c *Controller) StopObserving(ctx context.Context) error {
 		return c.Stop(ctx)
 	}
 	run.observing.Store(false)
+	if run.promotionCancel != nil {
+		run.promotionCancel()
+	}
 	run.mu.Lock()
 	for id, cancel := range run.active {
 		if run.activeOrigin[id] == "live" {

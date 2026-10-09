@@ -22,6 +22,7 @@ import {
     refreshNow as refreshMonitorStatus,
 } from './monitor-status.js';
 import { renderChatResultRow, wireChatResultRows, humanWait } from './add-sheet.js';
+import { accessFor, isBlockedAccess } from './chat-access.js';
 
 const RESEND_AFTER_S = 60;
 const STEPS = ['phone', 'code', 'password', 'chats'];
@@ -240,6 +241,7 @@ export function openAccountWizard() {
             wireChatResultRows(box.querySelector('[data-aw-chats]'), {
                 getChat: (id) => w.chats.find((c) => String(c.id) === String(id)),
                 beforeNavigate: () => handle.close(),
+                onRemoved: () => loadChats(),
             });
         const first = box.querySelector('input:not([disabled]):not([type=hidden])');
         if (first && w.step !== 'chats') setTimeout(() => first.focus(), 30);
@@ -507,7 +509,7 @@ export function openAccountWizard() {
         const mine = w.accountId
             ? dialogs.filter((d) => (d.accountIds || []).includes(w.accountId))
             : [];
-        w.chats = mine.length ? mine : dialogs;
+        w.chats = w.accountId ? mine : dialogs;
         const paint = () => {
             const q = (filter?.value || '').trim().toLowerCase();
             const rows = w.chats.filter(
@@ -517,10 +519,10 @@ export function openAccountWizard() {
                         .toLowerCase()
                         .includes(q),
             );
-            list.innerHTML = rows
-                .slice(0, 60)
-                .map((d) => renderChatResultRow(d))
-                .join('');
+            const available = rows.filter((d) => !isBlockedAccess(accessFor(d.id, d)));
+            const unavailable = rows.filter((d) => isBlockedAccess(accessFor(d.id, d)));
+            list.innerHTML = available.slice(0, 60).map((d) => renderChatResultRow(d)).join('') +
+                (unavailable.length ? `<h4 class="as-heading">${escapeHtml(i18nT('groups.tab.attention', 'Deleted / unavailable'))}</h4>` + unavailable.slice(0, 60).map((d) => renderChatResultRow(d)).join('') : '');
             status.textContent = rows.length
                 ? ''
                 : i18nT('acct.chats.empty', 'No chats found on this account yet.');

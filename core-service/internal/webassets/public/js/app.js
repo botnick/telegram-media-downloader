@@ -27,6 +27,8 @@ import * as Nav from './nav.js';
 import { getGroup as getToolGroup } from './tools-catalog.js';
 import {
     accessBadgeHtml,
+    accessFor,
+    unavailableChats,
     isBlockedAccess,
     recheckAllUnreachable,
     removeChatsFromList,
@@ -1371,7 +1373,7 @@ function _buildGroupRow(g) {
     // server to re-resolve every chat because of it.
     const cfgAccess = isForeign
         ? null
-        : (state.groups || []).find((cg) => String(cg.id) === id)?.access;
+        : accessFor(id);
     if (stillUnresolved && !isBlockedAccess(cfgAccess)) {
         renderGroupsList._needsResolve = true;
         (renderGroupsList._unresolvedIds ||= new Set()).add(id);
@@ -1401,8 +1403,8 @@ function _buildGroupRow(g) {
             : null;
     // A chat no account can read: the same access badge as the Chats list
     // and the chat page (older installs' `suspended` entries map to it).
-    const sidebarPill = isBlockedAccess(cfgGroup?.access)
-        ? { html: accessBadgeHtml(cfgGroup.access, { compact: true }) }
+    const sidebarPill = !isForeign && isBlockedAccess(cfgAccess)
+        ? { html: accessBadgeHtml(cfgAccess, { compact: true }) }
         : cfgGroup?.suspended === true
           ? { label: i18nT('groups.status.suspended', 'Suspended'), kind: 'suspended' }
           : null;
@@ -1492,6 +1494,10 @@ function _wireGroupsListDelegation(list) {
             // A PUT for this button is already in flight — ignore the
             // repeat tap instead of racing a second toggle.
             if (monTarget.dataset.busy === '1') return;
+            if (monTarget.dataset.current !== '1' && isBlockedAccess(accessFor(id))) {
+                showToast(i18nT('access.backfill_off', "This chat can't be reached"), 'warning');
+                return;
+            }
             monTarget.dataset.busy = '1';
             const current = monTarget.dataset.current === '1';
             const next = !current;
@@ -1614,7 +1620,7 @@ function renderGroupsList() {
     const _monitorScore = (g) => {
         const cfg = (state.groups || []).find((cg) => String(cg.id) === String(g.id));
         if (!cfg) return 2; // download-only → after paused
-        if (cfg.suspended || isBlockedAccess(cfg.access)) return 3;
+        if (cfg.suspended || isBlockedAccess(accessFor(cfg.id, cfg))) return 3;
         return cfg.enabled !== false ? 0 : 1;
     };
     for (const key of Object.keys(buckets)) {
@@ -3528,15 +3534,17 @@ function renderDialogsList(dialogs) {
     }
 
     const tab = state.groupsTab || 'all';
+    _paintAttentionCount();
     _paintAttentionPanel(tab);
+    const available = dialogs.filter((d) => !isBlockedAccess(accessFor(d.id, d)));
     const filtered =
         tab === 'monitored'
-            ? dialogs.filter((d) => d.inConfig || d.enabled)
+            ? available.filter((d) => d.inConfig || d.enabled)
             : tab === 'unmonitored'
-              ? dialogs.filter((d) => !d.inConfig && !d.enabled)
+              ? available.filter((d) => !d.inConfig && !d.enabled)
               : tab === 'attention'
                 ? _attentionChats(document.getElementById('groups-search')?.value || '')
-                : dialogs;
+                : available;
 
     if (filtered.length === 0) {
         list.removeAttribute('role');
@@ -3581,7 +3589,7 @@ function renderDialogsList(dialogs) {
     // Row taps open the chat's details page; the switch and Backfill…
     // act in place (one delegated listener, wired once).
     rows.wireChatResultRows(list, {
-        getChat: (id) => (state.allDialogs || []).find((d) => String(d.id) === String(id)),
+        getChat: (id) => _attentionChats().find((d) => String(d.id) === String(id)) || (state.allDialogs || []).find((d) => String(d.id) === String(id)),
     });
 }
 
@@ -3712,37 +3720,28 @@ function _setupSidebarGroupsCollapse() {
     });
 }
 
-// ---- Chats → Needs attention (chats no account can read) ------------------
-//
-// Built from the configured chats (/api/groups carries `access`), not the
-// dialogs list: a chat you left or were removed from isn't in the dialogs
-// any more, which is exactly why it needs attention.
-
+// ---- Chats → Deleted / unavailable ---------------------------------------
+// Include unavailable dialogs even when they were never configured here.
 function _attentionChats(query = '') {
-    const q = String(query || '')
-        .trim()
-        .toLowerCase();
-    const dialogs = state.allDialogs || [];
-    return unreachableGroups()
-        .map((g) => {
-            const d = dialogs.find((x) => String(x.id) === String(g.id));
-            return {
-                ...(d || {}),
-                id: String(g.id),
-                name: getGroupName(g.id, { fallback: d?.name || g.name }),
-                type: d?.type || g.type || null,
-                inConfig: true,
-                enabled: g.enabled !== false,
-                access: g.access,
-            };
-        })
+    const q = String(query || '').trim().toLowerCase();
+    return unavailableChats()
+        .map((c) => ({ ...c, name: getGroupName(c.id, { fallback: c.name }) }))
         .filter((c) => !q || c.name.toLowerCase().includes(q) || c.id.includes(q));
 }
+
+window.addEventListener('dialogs-refreshed', () => {
+    _paintAttentionCount();
+    renderGroupsList();
+    if (state.currentPage === 'groups') _paintDialogs();
+    if (state.currentPage === 'chat') {
+        loadChatDetailsModule().then((m) => m.refreshChatAccess?.()).catch(() => {});
+    }
+});
 
 function _paintAttentionCount() {
     const el = document.getElementById('groups-attn-count');
     if (!el) return;
-    const n = unreachableGroups().length;
+    const n = unavailableChats().length;
     el.textContent = n ? String(n) : '';
     el.classList.toggle('hidden', !n);
     el.setAttribute(
@@ -3754,7 +3753,7 @@ function _paintAttentionCount() {
 function _paintAttentionPanel(tab) {
     const panel = document.getElementById('groups-attn-panel');
     if (!panel) return;
-    const n = unreachableGroups().length;
+    const n = unavailableChats().length;
     if (!n) {
         panel.classList.add('hidden');
         panel.innerHTML = '';
@@ -3783,31 +3782,31 @@ function _paintAttentionPanel(tab) {
         return;
     }
     const busy = state._attnBusy || '';
+    const configured = unreachableGroups().length;
     panel.className = 'attn-panel';
     panel.innerHTML = `
         <div class="attn-panel-title"><i class="ri-error-warning-line" aria-hidden="true"></i><span>${escapeHtml(i18nTf('access.attention.title', { n }, `${n} chats can't be reached`))}</span></div>
-        <p class="attn-panel-body">${escapeHtml(i18nT('access.attention.body', "They're paused so they don't use up Telegram's limits, and each one is checked again on its own (after 1 hour, 6 hours, then daily). Rejoin a chat in Telegram and press Check again — or stop monitoring or remove them. Downloaded files are kept."))}</p>
+        <p class="attn-panel-body">${escapeHtml(i18nT('access.attention.body', "Deleted, restricted and inaccessible chats are separated here. Check again refreshes Telegram status. Leave / remove affects only the account you confirm. Downloaded files are kept."))}</p>
         <div class="attn-panel-actions" data-admin-only>
             <button type="button" class="tg-btn" data-attn="recheck" ${busy ? 'disabled' : ''}><i class="ri-refresh-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.action.recheck_all', 'Check all again'))}</span></button>
-            <button type="button" class="tg-btn-secondary" data-attn="stop" ${busy ? 'disabled' : ''}><i class="ri-pause-circle-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.action.stop_all', 'Stop monitoring all'))}</span></button>
-            <button type="button" class="tg-btn-secondary" data-attn="remove" ${busy ? 'disabled' : ''}><i class="ri-close-circle-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.action.remove_all', 'Remove all from list'))}</span></button>
+            <button type="button" class="tg-btn-secondary" data-attn="stop" ${busy || !configured ? 'disabled' : ''}><i class="ri-pause-circle-line" aria-hidden="true"></i><span>${escapeHtml(i18nTf('access.action.stop_configured', { n: configured }, `Stop monitoring ${configured} configured chats`))}</span></button>
+            <button type="button" class="tg-btn-secondary" data-attn="remove" ${busy || !configured ? 'disabled' : ''}><i class="ri-close-circle-line" aria-hidden="true"></i><span>${escapeHtml(i18nTf('access.action.remove_configured', { n: configured }, `Remove ${configured} from local list`))}</span></button>
         </div>
         <p class="attn-panel-status" data-attn-status role="status" aria-live="polite">${escapeHtml(state._attnStatus || '')}</p>`;
 }
 
 async function _onAttentionAction(kind) {
     const ids = unreachableGroups().map((g) => String(g.id));
-    if (!ids.length) return;
+    if (!ids.length && kind !== 'recheck') return;
     const n = ids.length;
     try {
         if (kind === 'recheck') {
             state._attnBusy = 'recheck';
+            state._attnStatus = i18nT('access.attention.checking', 'Refreshing Telegram chat status…');
+            _paintAttentionPanel('attention');
             const r = await recheckAllUnreachable();
-            state._attnStatus = i18nTf(
-                'access.attention.checking',
-                { n: r?.total ?? n },
-                `Checking ${r?.total ?? n} chats, one every 2 seconds…`,
-            );
+            state._attnBusy = '';
+            state._attnStatus = i18nTf('access.attention.done', { ok: r.reachable, n: r.total }, `${r.reachable} of ${r.total} can be reached again.`);
         } else if (kind === 'stop') {
             const ok = await confirmSheet({
                 title: i18nT('access.action.stop_all', 'Stop monitoring all'),

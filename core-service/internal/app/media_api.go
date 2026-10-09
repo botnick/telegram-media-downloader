@@ -358,6 +358,15 @@ func (a *App) handleGroupPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f, err := openMedia(filepath.Join(a.dataDir, "photos"), id+".jpg")
+	if os.IsNotExist(err) {
+		if session, ok := auth.SessionFromContext(r.Context()); ok && session.Role == "admin" {
+			if found, fetchErr := a.ensureDialogPhoto(r.Context(), id); fetchErr == nil && found {
+				f, err = openMedia(filepath.Join(a.dataDir, "photos"), id+".jpg")
+			} else if fetchErr != nil && a.output != nil {
+				fmt.Fprintf(a.output, "Telegram profile photo unavailable: %v\n", fetchErr)
+			}
+		}
+	}
 	if err != nil {
 		writeGroupPhotoNotFound(w)
 		return

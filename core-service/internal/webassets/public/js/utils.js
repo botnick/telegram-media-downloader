@@ -142,7 +142,7 @@ export function createAvatar(idOrOpts, name, type) {
     const sizePx = { sm: 32, md: 40, lg: 48, xl: 64 }[size] || 48;
     const initialPx = sizePx >= 56 ? 28 : sizePx >= 44 ? 20 : 16;
     const gradient = getAvatarClass(id);
-    const initial = (name || '?').charAt(0).toUpperCase();
+    const initial = escapeHtml(String(name || '?').charAt(0).toUpperCase());
 
     let typeIcon = 'question-line';
     if (type === 'channel' || String(id).startsWith('-100')) typeIcon = 'megaphone-fill';
@@ -167,12 +167,14 @@ export function createAvatar(idOrOpts, name, type) {
               ? 'avatar-ring'
               : '';
 
-    const hasPhoto = /^-?\d+$/.test(String(id));
+    const photoUrl = typeof opts.photoUrl === 'string' && /^\/(?!\/)/.test(opts.photoUrl)
+        ? opts.photoUrl : /^-?\d+$/.test(String(id)) ? `/api/groups/${encodeURIComponent(id)}/photo` : '';
+    const hasPhoto = !!photoUrl;
     return `
         <div class="relative flex-shrink-0 ${ringClass}" style="width:${sizePx}px;height:${sizePx}px">${
             hasPhoto
                 ? `
-            <img src="/api/groups/${encodeURIComponent(id)}/photo"
+            <img src="${escapeHtml(photoUrl)}"
                  class="w-full h-full rounded-full object-cover bg-tg-bg"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"
                  loading="lazy"

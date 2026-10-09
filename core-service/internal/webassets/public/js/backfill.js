@@ -310,6 +310,11 @@ export function openBackfillSheet(groupId, opts = {}) {
     }
 
     async function start() {
+        if (isBlockedAccess(accessFor(gid))) {
+            renderRefusal(accessFor(gid));
+            return;
+        }
+        if ((state.allDialogs || []).find((d) => String(d.id) === String(gid))?.dmDisabled) return;
         const lim = effective();
         if (lim === null) {
             renderForm(i18nT('backfill.start.warn_limit', 'Enter a valid limit.'));
@@ -985,6 +990,10 @@ async function startBackfill() {
     }
     if (lim === null) {
         showToast(i18nT('backfill.start.warn_limit', 'Enter a valid limit'), 'warning');
+        return;
+    }
+    if (isBlockedAccess(accessFor(selectedGroupId)) || (state.allDialogs || []).find((d) => String(d.id) === String(selectedGroupId))?.dmDisabled) {
+        showToast(i18nT('access.backfill_off', "This chat can't be reached"), 'warning');
         return;
     }
     const groupName = getGroupName(selectedGroupId, { fallback: selectedGroupId });

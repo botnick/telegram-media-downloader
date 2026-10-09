@@ -21,6 +21,27 @@ type Dialog struct {
 	Type       string
 	Archived   bool
 	Members    *int
+	Access     DialogAccess
+}
+
+// DialogAccess contains evidence supplied by Telegram, not a guess based on a
+// missing title, an absent dialog, or a failed network request.
+type DialogAccess struct {
+	State      string `json:"state"`
+	Code       string `json:"code,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+	MigratedTo string `json:"migratedTo,omitempty"`
+}
+
+func restrictionAccess(reasons []tg.RestrictionReason) DialogAccess {
+	for _, reason := range reasons {
+		// A platform-only restriction does not prove that the native downloader
+		// cannot read the chat. Global Telegram restrictions apply here.
+		if reason.Platform == "all" {
+			return DialogAccess{State: "restricted", Code: reason.Reason, Detail: reason.Text}
+		}
+	}
+	return DialogAccess{State: "ok"}
 }
 
 // Recovery must distinguish an absent peer from one beyond the UI's limit.
@@ -39,7 +60,7 @@ type dialogsAPI interface {
 }
 
 func (a *Account) Dialogs(ctx context.Context, limit int, archived bool) ([]Dialog, error) {
-	if limit <= 0 || limit > 1000 {
+	if limit != -1 && (limit <= 0 || limit > 1000) {
 		limit = 500
 	}
 	folder := 0
@@ -181,7 +202,7 @@ func dialogOffsetPeer(peer tg.PeerClass, chats []tg.ChatClass, users []tg.UserCl
 				if user.Self {
 					return &tg.InputPeerSelf{}, nil
 				}
-				if !user.Min && user.AccessHash != 0 {
+				if !user.Min && (user.AccessHash != 0 || user.Deleted) {
 					return &tg.InputPeerUser{UserID: user.ID, AccessHash: user.AccessHash}, nil
 				}
 			}
@@ -192,12 +213,17 @@ func dialogOffsetPeer(peer tg.PeerClass, chats []tg.ChatClass, users []tg.UserCl
 
 func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg.UserClass) []Dialog {
 	chatByID := map[int64]tg.ChatClass{}
+	channelByID := map[int64]tg.ChatClass{}
 	for _, chat := range chats {
 		switch chat := chat.(type) {
 		case *tg.Chat:
 			chatByID[chat.ID] = chat
 		case *tg.Channel:
+			channelByID[chat.ID] = chat
+		case *tg.ChatForbidden:
 			chatByID[chat.ID] = chat
+		case *tg.ChannelForbidden:
+			channelByID[chat.ID] = chat
 		}
 	}
 	userByID := map[int64]*tg.User{}
@@ -213,14 +239,31 @@ func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg
 			continue
 		}
 		folderID, hasFolder := dialog.GetFolderID()
-		item := Dialog{Archived: hasFolder && folderID != 0}
+		item := Dialog{Archived: hasFolder && folderID != 0, Access: DialogAccess{State: "unknown"}}
 		switch peer := dialog.Peer.(type) {
 		case *tg.PeerChannel:
 			// Keep the same marked peer ID used by Telegram clients and the
 			// downloader's persisted group IDs (see attachment.go).
 			item.ID = fmt.Sprintf("%d", -1000000000000-peer.ChannelID)
 			item.Type = "channel"
-			if channel, ok := chatByID[peer.ChannelID].(*tg.Channel); ok {
+			if channel, ok := channelByID[peer.ChannelID].(*tg.Channel); ok {
+				item.Access = DialogAccess{State: "ok"}
+				if channel.Megagroup {
+					item.Type = "supergroup"
+				}
+				switch {
+				case channel.Min:
+					item.Access.State = "unknown"
+				case channel.BannedRights.ViewMessages:
+					item.Access = DialogAccess{State: "banned", Code: "VIEW_MESSAGES_FORBIDDEN"}
+				case channel.Restricted:
+					item.Access = restrictionAccess(channel.RestrictionReason)
+				case channel.Left:
+					item.Access = DialogAccess{State: "left", Code: "CHANNEL_LEFT"}
+				}
+				if item.Access.State == "ok" && channel.Left {
+					item.Access = DialogAccess{State: "left", Code: "CHANNEL_LEFT"}
+				}
 				item.photo, item.photoKnown = chatPhoto(channel.Photo)
 				item.Name = channel.Title
 				item.Username = channel.Username
@@ -229,10 +272,25 @@ func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg
 					item.Members = &members
 				}
 			}
+			if channel, ok := channelByID[peer.ChannelID].(*tg.ChannelForbidden); ok {
+				item.Name = channel.Title
+				if channel.Megagroup {
+					item.Type = "supergroup"
+				}
+				item.Access = DialogAccess{State: "inaccessible", Code: "CHANNEL_FORBIDDEN"}
+			}
 		case *tg.PeerChat:
 			item.ID = fmt.Sprintf("-%d", peer.ChatID)
 			item.Type = "group"
 			if chat, ok := chatByID[peer.ChatID].(*tg.Chat); ok {
+				item.Access = DialogAccess{State: "ok"}
+				if migrated, ok := chat.MigratedTo.(*tg.InputChannel); ok && migrated.ChannelID > 0 {
+					item.Access = DialogAccess{State: "migrated", Code: "CHAT_MIGRATED", MigratedTo: fmt.Sprintf("%d", -1000000000000-migrated.ChannelID)}
+				} else if chat.Deactivated {
+					item.Access = DialogAccess{State: "migrated", Code: "CHAT_MIGRATED"}
+				} else if chat.Left {
+					item.Access = DialogAccess{State: "left", Code: "CHAT_LEFT"}
+				}
 				item.photo, item.photoKnown = chatPhoto(chat.Photo)
 				item.Name = chat.Title
 				if chat.ParticipantsCount > 0 {
@@ -240,10 +298,23 @@ func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg
 					item.Members = &members
 				}
 			}
+			if chat, ok := chatByID[peer.ChatID].(*tg.ChatForbidden); ok {
+				item.Name = chat.Title
+				item.Access = DialogAccess{State: "inaccessible", Code: "CHAT_FORBIDDEN"}
+			}
 		case *tg.PeerUser:
 			item.ID = fmt.Sprint(peer.UserID)
 			item.Type = "user"
 			if user := userByID[peer.UserID]; user != nil {
+				item.Access = DialogAccess{State: "ok"}
+				switch {
+				case user.Deleted:
+					item.Access = DialogAccess{State: "deleted", Code: "USER_DELETED"}
+				case user.Min:
+					item.Access.State = "unknown"
+				case user.Restricted:
+					item.Access = restrictionAccess(user.RestrictionReason)
+				}
 				item.photoKnown = !user.Min
 				switch p := user.Photo.(type) {
 				case *tg.UserProfilePhoto:
@@ -252,6 +323,9 @@ func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg
 					item.photoKnown = true
 				}
 				item.Name = strings.TrimSpace(user.FirstName + " " + user.LastName)
+				if item.Name == "" && user.Deleted {
+					item.Name = "Deleted account"
+				}
 				item.Username = user.Username
 				if user.Bot {
 					item.Type = "bot"
@@ -264,6 +338,11 @@ func mapDialogPage(rawDialogs []tg.DialogClass, chats []tg.ChatClass, users []tg
 			item.Name = item.ID
 		}
 		item.peer, _ = dialogOffsetPeer(dialog.Peer, chats, users)
+		if item.peer == nil && item.Access.State == "deleted" {
+			if peer, ok := dialog.Peer.(*tg.PeerUser); ok {
+				item.peer = &tg.InputPeerUser{UserID: peer.UserID, AccessHash: userByID[peer.UserID].AccessHash}
+			}
+		}
 		out = append(out, item)
 	}
 	return out

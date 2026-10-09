@@ -34,6 +34,7 @@ import {
     accessReason,
     followMigration,
     isBlockedAccess,
+    openLeaveChatSheet,
     recheckChat,
     removeChatsFromList,
     stopMonitoringChats,
@@ -148,13 +149,13 @@ function filtersNow() {
 
 function monitoringNow() {
     const g = cur.group;
-    return !!g && g.suspended !== true && g.enabled !== false;
+    return !!g && g.enabled !== false;
 }
 
 // ---- Access state (js/chat-access.js) -------------------------------------
 
 function accessNow() {
-    return cur.group?.access || accessFor(cur.id, findDialog(cur.id));
+    return accessFor(cur.id, findDialog(cur.id) || cur.group);
 }
 
 function blockedNow() {
@@ -211,6 +212,7 @@ function accessBannerHtml() {
             `<button type="button" class="cd-access-quiet" data-cd-access="remove">${escapeHtml(i18nT('access.action.remove', 'Remove from list'))}</button>`,
         );
     }
+    actions.push(`<button type="button" class="tg-btn-secondary" data-cd-access="leave" data-admin-only><i class="ri-logout-box-r-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.leave.action', 'Leave / remove from Telegram'))}</span></button>`);
     return `
         <div id="group-suspended-banner" class="cd-banner cd-access" data-access="${escapeHtml(a.state)}" role="status">
             <div class="cd-access-head">
@@ -227,7 +229,7 @@ function accessBannerHtml() {
                     : g && g.enabled !== false
                       ? i18nT(
                             'access.paused_note',
-                            "Monitoring, backfill and forwarding are paused for this chat so they don't use up Telegram's limits; it's checked again on its own. Downloaded files are kept.",
+                            "Monitoring, backfill and forwarding are paused for this chat. Check again refreshes its Telegram status. Downloaded files are kept.",
                         )
                       : i18nT(
                             'access.paused_note_off',
@@ -254,8 +256,8 @@ function paintAccess() {
     const sw = document.getElementById('group-enable-toggle');
     if (sw) {
         const legacyOff = cur.group?.suspended === true;
-        sw.disabled = legacyOff;
-        if (legacyOff) sw.setAttribute('aria-disabled', 'true');
+        sw.disabled = (legacyOff || blocked || findDialog(cur.id)?.dmDisabled) && !monitoringNow();
+        if (sw.disabled) sw.setAttribute('aria-disabled', 'true');
         else sw.removeAttribute('aria-disabled');
     }
     setSwitch('group-enable-toggle', monitoringNow(), monitorSub());
@@ -290,7 +292,9 @@ async function onAccessAction(kind, btn) {
         }
     };
     try {
-        if (kind === 'recheck') {
+        if (kind === 'leave') {
+            openLeaveChatSheet({ ...(findDialog(target.id) || target.group), id: target.id, name: target.name }, { onRemoved: () => goBack() });
+        } else if (kind === 'recheck') {
             setBusy(true);
             const r = await recheckChat(target.id, { name: target.name });
             if (cur !== target) return;
@@ -415,7 +419,7 @@ function render() {
                 label: i18nT('chat.monitor.label', 'Monitoring'),
                 sub: monitorSub(),
                 on: monitoringNow(),
-                disabled: suspended,
+                disabled: (suspended || blocked || findDialog(cur.id)?.dmDisabled) && !monitoringNow(),
                 extraClass: 'cd-switch-row--hero',
             })}
             <div class="cd-actions">
@@ -832,6 +836,7 @@ async function flush() {
         ok = true;
         if (cur === target) {
             target.group = group || target.group;
+            paintAccess();
             setSaveStatus('saved');
             if (adding) {
                 document.querySelector('#page-chat [data-cd-new]')?.remove();
@@ -929,6 +934,7 @@ function openGallery() {
 
 async function openBackfill() {
     const id = cur.id;
+    if (blockedNow() || findDialog(id)?.dmDisabled || cur.group?.suspended) return;
     // Not configured yet: add it first with this page's filters, so the
     // backfill uses them (POST /api/history would register the chat with
     // the server's own defaults).
@@ -1082,7 +1088,7 @@ function onClick(e) {
     if (sw && !sw.disabled) {
         const on = sw.getAttribute('aria-checked') !== 'true';
         if (sw.id === 'group-enable-toggle') {
-            if (cur.group?.suspended) return;
+            if (on && (cur.group?.suspended || blockedNow() || findDialog(cur.id)?.dmDisabled)) return;
             setSwitch(sw.id, on);
             queueSave({ enabled: on });
             // Sub-line follows the state it will be saved as.

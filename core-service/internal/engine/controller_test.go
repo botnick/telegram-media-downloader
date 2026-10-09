@@ -156,6 +156,22 @@ func TestDialogsMergeAccountsAndPreferActiveEntries(t *testing.T) {
 		t.Fatalf("second dialog=%+v", items[1])
 	}
 }
+
+func TestDialogsMergeAccessWithoutHidingReadableAccounts(t *testing.T) {
+	one := &dialogTestAccount{active: []telegram.Dialog{{ID: "42", Name: "Old", Access: telegram.DialogAccess{State: "inaccessible", Code: "CHANNEL_FORBIDDEN"}}, {ID: "43", Name: "Deleted", Access: telegram.DialogAccess{State: "deleted", Code: "USER_DELETED"}}}}
+	two := &dialogTestAccount{active: []telegram.Dialog{{ID: "42", Name: "Readable", Access: telegram.DialogAccess{State: "ok"}}, {ID: "43", Name: "Partial", Access: telegram.DialogAccess{State: "unknown"}}}}
+	c := &Controller{state: "running", run: &running{accounts: map[string]Account{"one": one, "two": two}, ids: []string{"one", "two"}}}
+	items, err := c.Dialogs(context.Background(), 500)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("items=%+v err=%v", items, err)
+	}
+	if items[0].Access.State != "ok" || items[0].AccountAccess["one"].State != "inaccessible" || items[0].AccountAccess["two"].State != "ok" {
+		t.Fatalf("merged=%+v", items[0])
+	}
+	if items[1].Access.State != "unknown" {
+		t.Fatalf("partial account evidence marked every account deleted: %+v", items[1])
+	}
+}
 func TestStopCancelsAccountStartupPromptly(t *testing.T) {
 	s := testStore(t)
 	entered := make(chan struct{})
