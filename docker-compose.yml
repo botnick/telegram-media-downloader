@@ -1,41 +1,101 @@
-# Pure-Go production service. The image contains one tgdl-server process and
-# the embedded browser bundle; no Node sidecar or runtime fallback is used.
+# Telegram Media Downloader 3.x — native Go server (no Node runtime).
+# Same image name, port, data folder and container user as 2.x, so an
+# existing install upgrades with `docker compose pull && docker compose up -d`
+# or the dashboard's "Install update" button.
+#
+# First run: `docker compose up -d`, open http://localhost:3000 from this
+# machine to set the dashboard password, then add a Telegram account.
 services:
   telegram-downloader:
-    image: telegram-media-downloader:go-local
-    build:
-      context: .
-    pull_policy: never
+    # Prebuilt multi-arch image; `pull_policy: always` makes
+    # `docker compose up -d` pick up each new release. To build from source
+    # instead, replace these two lines with `build: .`.
+    image: ghcr.io/botnick/telegram-media-downloader:latest
+    pull_policy: always
     container_name: telegram-downloader
-    user: "${TGDL_UID:-1000}:${TGDL_GID:-1000}"
     restart: unless-stopped
     stop_grace_period: 60s
     ports:
+      # Container always listens on 3000; change the host side in .env.
       - "${TGDL_PORT:-3000}:3000"
     volumes:
-      - type: bind
-        source: ./data
-        target: /app/data
-        bind:
-          create_host_path: false
+      - ./data:/app/data
+      # Split-disk setup: mount the media disk and set TGDL_DOWNLOADS_DIR.
+      # - /mnt/hdd/downloads:/mnt/hdd/downloads
     environment:
       - TZ=${TZ:-UTC}
-      - PORT=3000
-      - TGDL_DATA_DIR=/app/data
-      # A defined empty TRUST_PROXY disables forwarded-header trust.
-      - TRUST_PROXY=${TRUST_PROXY-loopback}
+      - TGDL_DOWNLOADS_DIR=${TGDL_DOWNLOADS_DIR:-}
+      # Trust one reverse-proxy hop (Caddy / Traefik / nginx). Set to an
+      # empty value when the dashboard is exposed directly.
+      - TRUST_PROXY=${TRUST_PROXY:-1}
       - TGDL_SECURE_COOKIES=${TGDL_SECURE_COOKIES:-0}
-      - TGDL_CSP=${TGDL_CSP:-}
-      - COMPRESSION_LEVEL=${COMPRESSION_LEVEL:-6}
+      # One-click "Install update" via the watchtower service below. The app
+      # generates the token in ./data/watchtower/; .env can override it.
+      - WATCHTOWER_URL=${WATCHTOWER_URL:-http://watchtower:8080}
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      # The autoheal service restarts the container if it stops answering.
+      - "autoheal=true"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${TGDL_MEM_LIMIT:-8g}
+        reservations:
+          memory: 256m
     logging:
-      driver: json-file
+      driver: "json-file"
       options:
-        max-size: 10m
+        max-size: "10m"
         max-file: "5"
         compress: "true"
+
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    container_name: telegram-downloader-autoheal
+    restart: unless-stopped
+    # Needs only the docker socket, no network.
+    network_mode: none
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=30
+      - AUTOHEAL_START_PERIOD=60
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=60
+      - TZ=${TZ:-UTC}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "3"
+
+  # Idle one-click updater behind Settings → Maintenance → "Install update":
+  # HTTP-API-only, no polling, no published ports, and only containers with
+  # the watchtower label. The dashboard never sees the docker socket.
+  watchtower:
+    image: nickfedor/watchtower:1.22
+    container_name: telegram-downloader-updater
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Only the generated token folder, never the DB/sessions.
+      - ./data/watchtower:/run/tgdl:ro
+    depends_on:
+      telegram-downloader:
+        condition: service_healthy
+    environment:
+      - WATCHTOWER_HTTP_API_ENDPOINTS=update
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-/run/tgdl/api-token}
+      - WATCHTOWER_HTTP_API_PERIODIC_POLLS=${WATCHTOWER_HTTP_API_PERIODIC_POLLS:-false}
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+      - WATCHTOWER_NO_STARTUP_MESSAGE=true
+      - TZ=${TZ:-UTC}

@@ -4,9 +4,46 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.0] — 2026-10-09
+
+One native Go server replaces the Node backend: a single `tgdl-server` binary (or the Docker image) runs the dashboard, Telegram accounts, downloads, backups and maintenance. Existing data folders and Telegram sessions are reused in place.
+
+### Upgrading from 2.x
+- **Nothing to change.** `docker compose pull && docker compose up -d`, the dashboard's *Install update* button, or `git pull` + restart keep the same image name, port, `./data` folder, container user (`node`, uid 1000), `.env`, dashboard password, signed-in browsers, share links and Telegram logins. Saved gramJS logins are converted once to `data/sessions/native/`; the originals stay in place.
+- **2.x compose files keep working.** Their `node scripts/healthcheck.js` healthcheck and Synology's `node src/web/server.js` command are mapped to the Go server, and the entrypoint again fixes data ownership and joins the `/dev/dri` group before dropping privileges.
+- **Split-disk installs:** `TGDL_DOWNLOADS_DIR` is honoured for serving, backups, purge and reset.
+- **Without Docker:** `./runner.sh`, `run_safe.bat`, `npm start` and `pm2 start ecosystem.config.cjs` download and verify the matching `tgdl-server` release on first start; no Node or Go toolchain is needed.
+- **Not yet in 3.0:** Google Drive and Dropbox backup destinations; hardware-accelerated thumbnails (`FFMPEG_HWACCEL` is ignored, thumbnails use the CPU). Roll back by restoring `data/backups/db-pre-update-*.sqlite` with 2.32.1.
+
+### Changed — runtime
+- **Node.js is gone.** No `npm install`, Node runtime, gramJS or proxy process is shipped. Native archives for Linux, Windows and macOS (amd64/arm64, plus Linux arm and 386) and the Docker image (now also arm64) each contain one executable with the dashboard embedded.
+- **Telegram runs on gotd (MTProto in Go).**
+
+### Added
+- **Leave dead chats in bulk.** The Chats page's *Deleted / unavailable* tab has *Select* and *Select all*. Leave the selected chats from one confirmed account, either keeping downloaded files or deleting their files, download history and settings (typed count required). Removals run one at a time, stop if Telegram asks to wait, and only chats Telegram confirms are cleaned up. Chats that still work are never removed in bulk.
+- **Deleted, restricted and inaccessible chats are separated** into their own tab with Telegram's reason, *Check again*, and a per-chat *Leave / remove from Telegram* for the selected account. Dead rows no longer show Backfill or an idle Monitor switch.
+- **Media facts for duplicate detection.** Each download records MIME type, width × height, duration, forward origin and Telegram's stripped thumbnail, so re-uploaded copies can be matched later. Existing Telegram-ID and SHA-256 deduplication is unchanged.
+- **Native backups:** local, S3, SFTP, FTP/FTPS and TGDB encrypted archives with verified publication, crash recovery and offline restore.
+- **Native cluster peers:** pairing, durable catalog sync and ranged media transport.
+- **Native Stories, URL downloads, history backfill and jobs-only account runs** on a durable work queue that survives restarts.
+- **Live aggregate bandwidth limit** across all downloads, and Telegram connections through configured proxies.
+
+### Changed
+- **Duplicates are skipped before download** by Telegram media identity, then confirmed by SHA-256 after transfer.
+- **Chat list and profile photos load without starting the monitor**; photos download lazily and are cached.
+- **Dashboard sessions are revoked server-side** and their WebSockets closed; HTTP security headers and bounded compression are applied natively.
+- Thumbnails, faststart, seekbar sprites, AI/NSFW queues, purge and recovery cleanup all run in Go.
+
+### Removed
+- Unused settings, the Node development toolchain and the contract-only test harness.
+
 ### Fixed
+- **One-click update** works on the Go server: watchtower ping, DB integrity check, verified pre-update snapshot, trigger and update history, including the update that came from 2.x.
+- **An old single-account `session.enc` left beside migrated accounts** is ignored as 2.x did, instead of stopping the monitor with a duplicated-key error.
 - **Release notes show the newest versions right after an update.** The in-app viewer could show a copy of the changelog the browser kept for up to an hour, so a freshly updated dashboard listed older releases only. It now revalidates the file on every open.
 
+### Service worker
+- `VERSION = 'v3000'`
 ## [2.32.1] — 2026-09-30
 
 One-click update works again on the watchtower sidecar; LOCATION_INVALID downloads recover.

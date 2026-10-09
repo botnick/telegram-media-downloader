@@ -1,0 +1,10 @@
+{
+  "name": "telegram-media-downloader",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Compatibility entry for 2.x installs that start with npm or PM2. The app is the native tgdl-server; no dependencies are installed.",
+  "scripts": {
+    "start": "node launcher.cjs",
+    "prod": "node launcher.cjs"
+  }
+}

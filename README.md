@@ -8,9 +8,8 @@
 
 <h1 align="center">Telegram Media Downloader</h1>
 
-> This branch is undergoing a Go backend migration and is not ready for
-> production replacement. [Verified coverage and remaining work](docs/GO-MIGRATION-STATUS.md).
-> The feature catalog describes the existing release; Quick Start covers this Go branch.
+> **3.0 is a native Go server.** Existing 2.x installs upgrade in place — same
+> image, port, data folder and logins. See [upgrading from 2.x](docs/DEPLOY.md#from-2x-to-30).
 
 <p align="center">
   <b>A self-hosted Telegram media downloader with a web dashboard.</b><br>
@@ -93,15 +92,15 @@
 
 ## Quick Start
 
-### Docker (local build)
+### Docker
 
 Needs Docker with Compose and a Telegram `apiId` / `apiHash` from [my.telegram.org](https://my.telegram.org).
 
 ```bash
-git clone https://github.com/botnick/telegram-media-downloader.git
-cd telegram-media-downloader
+mkdir telegram-media-downloader && cd telegram-media-downloader
 mkdir -p data
-TGDL_UID=$(id -u) TGDL_GID=$(id -g) docker compose up --build -d
+curl -fsSLO https://raw.githubusercontent.com/botnick/telegram-media-downloader/main/docker-compose.yml
+docker compose up -d
 ```
 
 Set the first dashboard password from a private file containing one line
@@ -118,27 +117,18 @@ Remove the password file after setup. Open `http://localhost:3000`:
 3. **Settings > Accounts > Add** — phone, OTP, optional 2FA
 4. **Start monitor** — or paste a `t.me/` link to download a single message
 
-### Native Go (bare metal)
-
-Install Go 1.26.8 and ffmpeg, then from this checkout:
+### Native (no Docker)
 
 ```bash
-make build
-./runner.sh
+git clone https://github.com/botnick/telegram-media-downloader.git
+cd telegram-media-downloader
+./runner.sh          # Windows: run_safe.bat
 ```
 
-The launcher defaults to this checkout's `data/` directory. To keep an existing
-library elsewhere, set `TGDL_DATA_DIR` explicitly before starting. PowerShell:
-
-```powershell
-go -C core-service build -trimpath -o tgdl-server.exe ./cmd/tgdl-server
-.\watchdog.ps1
-```
-
-These launchers execute the Go server directly. Use Docker, systemd or a Windows
-service for automatic restart. The image is built locally from this branch;
-Compose does not pull an older published runtime. Browser JavaScript stays in
-the embedded dashboard and requires no Node installation. See [deployment](docs/DEPLOY.md).
+The launcher downloads the verified `tgdl-server` release that matches the
+checkout (no Go or Node needed) and keeps data in `./data`; `npm start` and
+`pm2 start ecosystem.config.cjs` also work. To build from source instead:
+`make build`. See [deployment](docs/DEPLOY.md).
 
 ---
 
@@ -307,7 +297,9 @@ Full env-var reference in [docs/DEPLOY.md](docs/DEPLOY.md#environment-variables)
 - **In the app:** Settings → Maintenance → **Install update** (Docker; no setup, token is auto-generated).
 - **Manually:** `docker compose pull && docker compose up -d`
 
-New versions need no config changes; migrations run automatically. Existing users: re-download `docker-compose.yml` once so the button works without a profile. Details in [docs/DEPLOY.md](docs/DEPLOY.md#updating).
+- **Without Docker:** `git pull`, then restart `./runner.sh` (or `npm start` / PM2).
+
+New versions need no config changes; migrations run automatically. Upgrading from 2.x needs nothing extra — see [docs/DEPLOY.md](docs/DEPLOY.md#from-2x-to-30).
 
 ---
 
