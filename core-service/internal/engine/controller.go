@@ -73,7 +73,12 @@ type Controller struct {
 	run            *running
 	attemptLimit   func(int64) time.Duration
 	bandwidth      bandwidthLimiter
+	received       atomic.Int64 // media bytes received by all workers
 }
+
+// BytesReceived grows while any download is transferring; history
+// backpressure uses it to tell slow large files from a stuck queue.
+func (c *Controller) BytesReceived() int64 { return c.received.Load() }
 
 func (c *Controller) SetUpdateObserver(observer UpdateObserver) {
 	c.mu.Lock()
@@ -877,7 +882,7 @@ func (c *Controller) worker(run *running) {
 			}
 		}
 		if err == nil {
-			err = c.sink(attemptCtx, work, message, trackedTransport{MediaDownloader: run.accounts[work.AccountID], stats: progress, bandwidth: &c.bandwidth, budget: budget})
+			err = c.sink(attemptCtx, work, message, trackedTransport{MediaDownloader: run.accounts[work.AccountID], stats: progress, total: &c.received, bandwidth: &c.bandwidth, budget: budget})
 		}
 		if err != nil && attemptCtx.Err() != nil {
 			err = context.Cause(attemptCtx)

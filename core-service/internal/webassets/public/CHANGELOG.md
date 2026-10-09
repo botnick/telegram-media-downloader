@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.8] — 2026-10-10
+
+### Fixed
+- **Backfills stopped with "history queue made no progress before the stall deadline" while downloads were running.** With several backfills feeding one queue and large videos, the queue could stay full for longer than the stall window. Bytes still arriving now count as progress, so only a queue that really stopped moving is aborted.
+
+### Service worker
+- `VERSION = 'v3080'`
+
 ## [3.0.7] — 2026-10-10
 
 ### Fixed

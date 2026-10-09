@@ -86,6 +86,7 @@ func (a *App) runHistory(ctx context.Context, id string) error {
 	longEvery := max(0, int(number(history["longBreakEveryN"], 1000)))
 	lastProgress := time.Now()
 	lastPending := -1
+	lastReceived := a.monitor.BytesReceived()
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -101,10 +102,14 @@ func (a *App) runHistory(ctx context.Context, id string) error {
 		if err != nil {
 			return err
 		}
-		if pending < lastPending || pending < cap {
+		// Progress is a shrinking queue or bytes still arriving: several
+		// backfills feeding one queue with large files can keep it full for
+		// longer than the stall window while downloads are healthy.
+		received := a.monitor.BytesReceived()
+		if pending < lastPending || pending < cap || received != lastReceived {
 			lastProgress = time.Now()
 		}
-		lastPending = pending
+		lastPending, lastReceived = pending, received
 		if pending >= cap {
 			if time.Since(lastProgress) > stall {
 				return errors.New("history queue made no progress before the stall deadline")

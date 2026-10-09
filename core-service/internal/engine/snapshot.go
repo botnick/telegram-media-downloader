@@ -19,12 +19,14 @@ type transferStats struct {
 type trackedTransport struct {
 	telegram.MediaDownloader
 	stats     *transferStats
+	total     *atomic.Int64
 	bandwidth *bandwidthLimiter
 	budget    *attemptBudget
 }
 type trackedWriter struct {
 	io.Writer
 	stats     *transferStats
+	total     *atomic.Int64
 	ctx       context.Context
 	bandwidth *bandwidthLimiter
 	budget    *attemptBudget
@@ -45,6 +47,9 @@ func (w trackedWriter) Write(p []byte) (int, error) {
 		}
 		written, err := w.Writer.Write(p[:n])
 		w.stats.received.Add(int64(written))
+		if w.total != nil {
+			w.total.Add(int64(written))
+		}
 		total += written
 		if err == nil && written != n {
 			err = io.ErrShortWrite
@@ -57,7 +62,7 @@ func (w trackedWriter) Write(p []byte) (int, error) {
 	return total, nil
 }
 func (t trackedTransport) DownloadMedia(ctx context.Context, a telegram.Attachment, w io.Writer) error {
-	return t.MediaDownloader.DownloadMedia(ctx, a, trackedWriter{Writer: w, stats: t.stats, ctx: ctx, bandwidth: t.bandwidth, budget: t.budget})
+	return t.MediaDownloader.DownloadMedia(ctx, a, trackedWriter{Writer: w, stats: t.stats, total: t.total, ctx: ctx, bandwidth: t.bandwidth, budget: t.budget})
 }
 
 // Snapshot exposes only dashboard fields. Serialized Telegram messages,
