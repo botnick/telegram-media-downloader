@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Pure-Go production image. The browser bundle is embedded in tgdl-server;
 # no Node runtime, npm install, proxy process or runtime fallback is shipped.
-FROM --platform=$BUILDPLATFORM golang:1.26.8-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.0-bookworm AS build
 ARG TARGETOS=linux
 ARG TARGETARCH
 ARG TARGETVARIANT
