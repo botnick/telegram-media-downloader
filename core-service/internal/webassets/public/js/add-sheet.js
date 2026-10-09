@@ -160,8 +160,9 @@ export function renderChatResultRow(chat, opts = {}) {
               .join('')}</span>`
         : '';
     const disabled = (suspended || blocked || unreachable) && !enabled;
-    // Backfill of a chat no account can read is refused (the chat page
-    // says why); its Monitor switch stays usable so it can be stopped.
+    // A chat no account can read has nothing to backfill or monitor: no
+    // Backfill button, and a Monitor switch only while it is still on, so
+    // it can be stopped.
     const noBackfill = suspended || blocked || unreachable;
     return `
         <div class="cr-row${unreachable ? ' is-unreachable' : ''}${opts.selecting ? ' is-selecting' : ''}${opts.selected ? ' is-selected' : ''}" data-chat-id="${escapeHtml(id)}" role="listitem">
@@ -176,15 +177,15 @@ export function renderChatResultRow(chat, opts = {}) {
                     ${flag}${chips}
                 </span>
             </button>
-            <button type="button" class="cr-backfill" data-cr-backfill ${noBackfill ? 'disabled' : ''}
+            ${unreachable ? '' : `<button type="button" class="cr-backfill" data-cr-backfill ${noBackfill ? 'disabled' : ''}
                 aria-label="${escapeHtml(i18nTf('add.row.backfill_aria', { name }, `Backfill older messages of ${name}`))}">
                 <i class="ri-history-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('add.row.backfill', 'Backfill…'))}</span>
-            </button>
-            <button type="button" role="switch" class="cr-switch" data-cr-monitor
+            </button>`}
+            ${unreachable && !enabled ? '' : `<button type="button" role="switch" class="cr-switch" data-cr-monitor
                 aria-checked="${enabled ? 'true' : 'false'}" ${disabled ? 'disabled' : ''}
                 aria-label="${escapeHtml(i18nTf('add.row.monitor_aria', { name }, `Monitor ${name}`))}">
                 <span class="tg-toggle ${enabled ? 'active' : ''}" data-a11y-toggle="1" aria-hidden="true"></span>
-            </button>
+            </button>`}
             ${unreachable ? `<button type="button" class="cr-leave" data-cr-leave data-admin-only><i class="ri-logout-box-r-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.leave.action', 'Leave / remove from Telegram'))}</span></button>` : ''}
             <div class="cr-note hidden" data-cr-note role="status"></div>
         </div>`;
