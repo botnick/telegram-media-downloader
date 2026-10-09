@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.6] — 2026-10-09
+
+### Fixed
+- **Install update could fail on large libraries.** The pre-update database snapshot had 60 s; a 2.3 GB database took 57 s on a NAS. The default is now 15 minutes (`UPDATE_SNAPSHOT_TIMEOUT_MS` still overrides it).
+
+### Service worker
+- `VERSION = 'v3060'`
+
 ## [3.0.5] — 2026-10-09
 
 ### Added

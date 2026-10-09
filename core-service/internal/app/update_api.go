@@ -362,9 +362,10 @@ func (a *App) snapshotForUpdate(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	dst := filepath.Join(dir, "db-pre-update-"+time.Now().UTC().Format("20060102-150405")+".sqlite")
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(envInt("UPDATE_SNAPSHOT_TIMEOUT_MS", 60000))*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(envInt("UPDATE_SNAPSHOT_TIMEOUT_MS", 15*60*1000))*time.Millisecond)
 	defer cancel()
-	// VACUUM INTO writes a consistent copy of the live WAL database.
+	// VACUUM INTO writes a consistent copy of the live WAL database. A 2 GB
+	// library takes about a minute on a NAS, so allow 15 minutes by default.
 	if _, err := a.db.Writer.ExecContext(ctx, `VACUUM INTO ?`, dst); err != nil {
 		_ = os.Remove(dst)
 		return nil, err
