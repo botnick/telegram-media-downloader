@@ -19,17 +19,17 @@ Please include the affected component, version / commit, a minimal repro, and th
 
 ## Scope
 
-In scope: dashboard auth, path traversal, file disclosure / deletion, XSS / CSRF, command injection, secret leakage in API responses or logs, cryptographic weaknesses, supply-chain weaknesses (lockfile, post-install scripts, Docker base image).
+In scope: dashboard auth, path traversal, file disclosure / deletion, XSS / CSRF, command injection, secret leakage in API responses or logs, cryptographic weaknesses, supply-chain weaknesses (Go module checksums, build workflows, Docker base image).
 
 Out of scope: anything that requires a compromised Telegram account, self-XSS, or DoS via deliberately tiny resource limits.
 
 ## Hardening tips for operators
 
-- **Set a dashboard password** (`npm run auth` or first-run wizard). Without it the dashboard fails closed.
-- **Keep tgdl-core private.** It is the front server on `PORT` and talks to Node over `127.0.0.1` with a per-start token; do not publish any other port it uses.
+- **Set a dashboard password** (`tgdl-server setup --password-stdin` inside the running container, or the loopback first-run form). Without it the dashboard fails closed.
+- **Keep the Go server private.** `tgdl-server` serves dashboard, API and media on `PORT`; expose it through your authenticated deployment and TLS reverse proxy.
 - **Don't expose `:3000` directly.** Put it behind a reverse proxy with TLS.
 - **Back up `data/secret.key`** — losing it makes every saved session unrecoverable.
-- **Run only one writer to `data/db.sqlite`** at a time (CLI monitor or web server, not both).
+- **Run only one writer to `data/db.sqlite`** at a time (one `tgdl-server` process).
 - **Pin the Docker image by digest**, not the floating tag.
 - **Don't expose sidecars without a token.** When a faces / NSFW / seekbar sidecar runs on another host, set its API token and keep its port off the public internet; restrict path mode with `TGDL_*_ALLOW_ROOTS` (see [`docs/AI.md`](docs/AI.md)).
 

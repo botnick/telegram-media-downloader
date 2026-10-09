@@ -1,27 +1,10 @@
 @echo off
-title Telegram Auto-Downloader (Safe Mode)
-color 0A
-
-:start
-cls
-echo ========================================================
-echo   Telegram Auto-Downloader - Auto Restart Mode
-echo   Protecting against crashes and network failures...
-echo ========================================================
-echo.
-
-:: Run the downloader
-node src/index.js history
-
-:: Check exit code
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo [!] Process crashed with code %ERRORLEVEL%
-    echo [!] Restarting in 5 seconds...
-    timeout /t 5 >nul
-    goto start
+setlocal
+if not defined TGDL_SERVER_BIN set "TGDL_SERVER_BIN=%~dp0core-service\tgdl-server.exe"
+if not exist "%TGDL_SERVER_BIN%" (
+    >&2 echo tgdl-server is missing. Build with go -C core-service build -o tgdl-server.exe ./cmd/tgdl-server
+    exit /b 127
 )
-
-echo.
-echo [!] Process finished normally.
-pause
+if not defined TGDL_DATA_DIR set "TGDL_DATA_DIR=%~dp0data"
+"%TGDL_SERVER_BIN%" %*
+exit /b %ERRORLEVEL%

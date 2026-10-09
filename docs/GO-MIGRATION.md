@@ -6,6 +6,13 @@ nav_order: 10
 
 # Moving the backend to pure Go
 
+> Historical migration design. The owner narrowed current delivery to necessary
+> core features on 2026-10-09. The Node backend/harness and their commands below
+> were removed; their source is preserved at Git commit `aa83eed`. Use
+> [current scope and evidence](GO-MIGRATION-STATUS.md), [architecture](ARCHITECTURE.md)
+> and [contributor commands](../CONTRIBUTING.md) for this branch.
+
+
 The backend cutover targets one Go process. The SPA in `src/web/public` stays
 as browser code and is embedded into `tgdl-server`. Every HTTP route,
 WebSocket event, data-directory format and environment variable remains

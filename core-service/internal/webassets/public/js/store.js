@@ -62,7 +62,7 @@ export const state = {
     // Canonical name cache — fed by /api/groups/refresh-info responses and
     // the WS `groups_refreshed` broadcast. Keyed by stringified id. Map
     // (not plain object) so we can LRU-cap it via `lruSet` — see
-    // CLAUDE.md → Big-data patterns rule 3. The `lookup` / `set` helpers
+    // Big-data guidelines rule 3. The `lookup` / `set` helpers
     // below are the canonical accessors; legacy callsites that read
     // `state.groupNameCache?.[key]` are tolerated via the proxy below.
     groupNameCache: new Map(),

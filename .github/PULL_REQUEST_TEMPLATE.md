@@ -25,12 +25,12 @@ For security fixes, see SECURITY.md and use a private advisory instead of a publ
 
 <!-- Spell out the manual / automated checks you ran.
      For UI changes describe the path you walked in the dashboard.
-     For engine changes paste the output of `npm test`. -->
+     For engine changes paste the output of `make test`. -->
 
 ## Checklist
 
-- [ ] `npm run lint` passes
-- [ ] `npm test` passes
+- [ ] `make check` passes
+- [ ] `make test` passes
 - [ ] New / changed behaviour is covered by a test (when applicable)
 - [ ] Docs updated (`README.md` / `CHANGELOG.md` / `docs/*`) if user-visible
 - [ ] No secrets, hashes, or `.env` content in the diff

@@ -218,7 +218,7 @@ function setupNotifyBell() {
 // triggers 100 read+stringify+write cycles per second on the main thread.
 // The buffer + unread counter still update in memory immediately so the
 // badge and the open menu reflect the latest state; the actual disk
-// flush is debounced. See CLAUDE.md → Big-data patterns rule 2.
+// flush is debounced. See Big-data guidelines rule 2.
 let _pendingBuf = null;
 let _pendingUnreadDelta = 0;
 let _flushTimer = null;

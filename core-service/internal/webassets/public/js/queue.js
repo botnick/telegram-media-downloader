@@ -1014,7 +1014,7 @@ function renderRows() {
 // scroll. A 10 k-job queue otherwise piles up 10 k <div> nodes in the
 // DOM, each with progress-bar listeners + WS-patched data hooks; the
 // browser tab eventually OOMs on heavy mobile devices.
-// See CLAUDE.md → Big-data patterns rule 4.
+// See Big-data guidelines rule 4.
 const MAX_DOM_ROWS = 500;
 function appendNextPage() {
     const rowsHost = document.getElementById('queue-rows');

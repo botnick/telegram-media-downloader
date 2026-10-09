@@ -21,10 +21,15 @@ health, embedded setup page and clean shutdown before publishing. App tags use
 `scripts/build-server-release.sh` to produce native archives and SHA-256 checksums.
 Local verification does not publish or deploy anything.
 
-The old `src/`, Node test harness and package metadata remain temporary migration
-references. They are not the build/start/test path for this Go application and
-still need removal once essential coverage is preserved. Sidecar projects are
-separate; do not rewrite them as part of core runtime cleanup.
+The old backend, npm metadata and executable Node test harness have been removed.
+Historical HTTP/WS snapshots and media fixtures stay under `tests/contract/`;
+they document the previous release and are not an executable test suite. The
+complete former harness is available in Git at `aa83eed`. New regression tests
+belong in the Go packages. Sidecar projects stay separate.
+
+Browser scripts are native ES modules; edit the embedded assets directly and
+rebuild the server. The prebuilt stylesheet is checked in; add ordinary CSS for
+new styles. No package installation, bundler or CSS compiler is required.
 
 Use existing Go packages for Telegram account/session ownership, queue work,
 path confinement and configuration. Keep Telegram IDs lossless. Changes must

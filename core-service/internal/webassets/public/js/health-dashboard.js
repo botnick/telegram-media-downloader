@@ -49,7 +49,7 @@ function _render(h) {
     const heapBar = _bar(heapPercent);
 
     return `<div class="health-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:12px 0;">
-        ${_card('Uptime', `<span style="font-size:20px;font-weight:600;">${uptimeStr}</span><br><small style="color:var(--tg-textSecondary);">PID ${p.pid} · Node ${p.nodeVersion}</small>`)}
+        ${_card('Uptime', `<span style="font-size:20px;font-weight:600;">${uptimeStr}</span><br><small style="color:var(--tg-textSecondary);">PID ${p.pid} · Runtime ${p.nodeVersion}</small>`)}
         ${_card('System Memory', `${memBar}<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--tg-textSecondary);margin-top:4px;"><span>${s.totalMemMB - s.freeMemMB} / ${s.totalMemMB} MB</span><span>${memPercent}%</span></div>`)}
         ${_card('Heap Memory', `${heapBar}<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--tg-textSecondary);margin-top:4px;"><span>${p.memoryMB.heapUsed} / ${p.memoryMB.heapTotal} MB</span><span>${heapPercent}%</span></div>`)}
         ${_card('CPU', `<span style="font-size:16px;font-weight:500;">${s.cpuCount}× ${s.cpuModel.split(' ').slice(0, 3).join(' ')}</span><br><small style="color:var(--tg-textSecondary);">Load: ${s.loadAvg.join(' / ')}</small>`)}

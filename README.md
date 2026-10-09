@@ -431,7 +431,7 @@ Downloads live under `data/downloads/<chat>/` (or `TGDL_DOWNLOADS_DIR` on anothe
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
 | [Architecture](docs/ARCHITECTURE.md) | How the pieces fit together |
 | [tgdl-core](docs/GO-CORE.md) | The Go engine and front server |
-| [Go migration plan](docs/GO-MIGRATION.md) | Roadmap for a pure-Go backend |
+| [Go migration status](docs/GO-MIGRATION-STATUS.md) | Current scope, verified behavior and remaining work |
 | [AI: faces and NSFW](docs/AI.md) | Sidecars, GPU, external hosts |
 | [Backup](docs/BACKUP.md) | S3, SFTP, FTP, Google Drive, Dropbox, local |
 | [Cluster mode](docs/CLUSTER.md) | Multi-machine federated library |
@@ -454,10 +454,9 @@ The same docs are published as a searchable site from `/docs` via GitHub Pages, 
 ## Contributing
 
 ```bash
-    go test ./core-service/...
-    go test -race ./core-service/...
-    go vet ./core-service/...
-    npm run test:contract  # recorded contract oracle while porting
+make build
+make test
+make check
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.

@@ -726,7 +726,7 @@ Monitor state resume on restart + dedup scan responsiveness fix.
 - **Dedup scan freezes dashboard** — the grouping phase (GROUP BY + 500 set-building queries) blocked the event loop without yielding; added `setImmediate` yields before/after the heavy query and every 50 sets so WS progress events flush to the browser.
 
 ### Changed
-- **Vitest config** — added `vitest.config.js` to exclude `.claude/worktrees` from test discovery (stale worktree copies caused port conflicts on cluster e2e tests).
+- **Vitest config** — added `vitest.config.js` to exclude `agent worktrees` from test discovery (stale worktree copies caused port conflicts on cluster e2e tests).
 
 ### Service worker
 - `VERSION = 'v2191'`
@@ -930,7 +930,7 @@ Final OOM-safety pass — closes the one remaining stack-overflow risk in cluste
 
 ## [2.13.1] — 2026-05-10
 
-OOM-safety sweep across every SQL / HTTP / render path that handles "lots of data". Triggered by a `FATAL ERROR: Reached heap limit Allocation failed` inside `Statement::JS_all` on a 1M-row library. Every affected surface now streams or paginates; CLAUDE.md documents the rule for future feature work.
+OOM-safety sweep across every SQL / HTTP / render path that handles "lots of data". Triggered by a `FATAL ERROR: Reached heap limit Allocation failed` inside `Statement::JS_all` on a 1M-row library. Every affected surface now streams or paginates; the contributor guide documents the rule for future feature work.
 
 ### Fixed
 - **`monitor.js` resolves synthetic `unknown:foo` group ids before probing.** Recovery groups (created by `reindexFromDisk` when files exist on disk but the DB was empty) were getting "Skipping … — no account has access" on every config reload because `getMessages('unknown:…')` always throws. The resolver now walks each loaded client's dialogs, matches `sanitizeName(title) === folderName`, rewrites `group.id` to the canonical numeric id in memory + kv['config'] + downloads.group_id, and probes with the real id.
@@ -944,7 +944,7 @@ OOM-safety sweep across every SQL / HTTP / render path that handles "lots of dat
 
 ### Added
 - `src/core/util/streaming.js` — `streamRows` (the canonical iterator-batched-drain helper), `lruCap`, `paginate`. Mirrored in `src/web/public/js/utils.js` (`lruSet`, `lruCap`).
-- `CLAUDE.md → "Big-data patterns"` section — four invariants every new feature must respect (LIMIT/iterate, yield-every-N, capped caches, virtualised lists). Code review enforces them; CI does not.
+- Big-data contributor guidelines — four invariants every new feature must respect (LIMIT/iterate, yield-every-N, capped caches, virtualised lists). Code review enforces them; CI does not.
 
 ### Internal
 - SW bumped `v2135` → `v2136`.

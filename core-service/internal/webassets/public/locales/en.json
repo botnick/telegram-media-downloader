@@ -2125,7 +2125,7 @@
     "maintenance.recovery.unignored_n": "Unignored {n} group(s)",
     "maintenance.recovery.stat.ignored": "Ignored",
     "maintenance.hub.recovery.title": "Recovery cleanup",
-    "maintenance.hub.recovery.body": "Resolve, disable, or delete groups that no loaded Telegram account can access — typically residue from npm run recover.",
+    "maintenance.hub.recovery.body": "Resolve, disable, or delete groups that no loaded Telegram account can access — typically entries retained from an earlier library import.",
     "group.modal.tab.data": "Data",
     "group.data.recent": "Recent files",
     "group.data.loadmore": "Load more",

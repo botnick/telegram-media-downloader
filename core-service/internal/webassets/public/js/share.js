@@ -355,7 +355,7 @@ export async function openShareSheet({ downloadId, fileName }) {
 
 export async function openAllSharesSheet() {
     // Paginated load — `/api/share/links` caps each response at 500 rows
-    // (server-side hard cap, see CLAUDE.md → Big-data patterns). On a
+    // (server-side hard cap, see Big-data guidelines). On a
     // library with thousands of active links the operator scrolls more
     // pages via the "Load more" button below; the server-side `?q=`
     // filter narrows the set before the wire round-trip.

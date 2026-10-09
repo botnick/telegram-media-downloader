@@ -1,4 +1,4 @@
-# Normalise line endings in the repo to LF (Biome formats with LF too), so
+# Normalise line endings in the repo to LF, so
 # Windows checkouts don't produce whole-file CRLF diffs.
 * text=auto eol=lf
 
@@ -20,5 +20,4 @@
 *.tar.gz binary
 
 # Generated / vendored — collapsed in diffs, excluded from language stats.
-package-lock.json linguist-generated=true
-src/web/public/css/tailwind.css linguist-generated=true
+core-service/internal/webassets/public/css/tailwind.css linguist-generated=true

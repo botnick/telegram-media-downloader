@@ -1,33 +1,34 @@
 # Telegram Media Downloader
 
-> Self-hosted Telegram media downloader with a web dashboard. It downloads and backs up photos, videos, documents, voice messages, GIFs, stickers and Stories from Telegram channels, groups and DMs (including private ones you belong to) using your own account over MTProto. Runs in Docker or on Node.js; MIT licensed.
+Self-hosted Telegram media downloader with a native Go backend and an embedded
+browser dashboard. Production runs one tgdl-server binary; no Node runtime,
+JavaScript server, npm installation or runtime fallback is required. Browser
+JavaScript remains in core-service/internal/webassets/public/.
 
-The app is Node.js (Express, SQLite, gramJS) plus tgdl-core, a required Go binary that does hashing, integrity checks, folder walks, face clustering and serves every media byte as the front server on PORT. Optional sidecars, each runnable locally or on another machine: faces-service (Python, face clustering), nsfw-service (Python, NSFW review), seekbar-service (Go, video hover previews).
+This branch is under development. Current scope is core Telegram downloads,
+download-time deduplication, queue reliability, files, dashboard and access
+controls. Optional feature migration is not required for historical parity.
 
-## Start here
+## Read first
 
-- [README](https://github.com/botnick/telegram-media-downloader/blob/main/README.md): features, Docker quick start, updating, FAQ
-- [Deploy](https://github.com/botnick/telegram-media-downloader/blob/main/docs/DEPLOY.md): Docker, bare metal, reverse proxies, environment variables
-- [Troubleshooting](https://github.com/botnick/telegram-media-downloader/blob/main/docs/TROUBLESHOOTING.md): common errors and fixes
+- README.md: native Go and Docker setup.
+- docs/GO-MIGRATION-STATUS.md: verified behavior, tests and remaining limitations.
+- docs/DEPLOY.md: storage, process environment, native first-password setup.
+- docs/ARCHITECTURE.md: package ownership and data flow.
+- CONTRIBUTING.md: Go build/test/check and browser asset changes.
+- SECURITY.md: security reporting and deployment practices.
 
-## Docs
+## Implementation
 
-- [Architecture](https://github.com/botnick/telegram-media-downloader/blob/main/docs/ARCHITECTURE.md): how the pieces fit together
-- [tgdl-core (Go engine)](https://github.com/botnick/telegram-media-downloader/blob/main/docs/GO-CORE.md): what it does and how it is supervised
-- [Go migration plan](https://github.com/botnick/telegram-media-downloader/blob/main/docs/GO-MIGRATION.md): roadmap for a pure-Go backend
-- [AI: faces and NSFW](https://github.com/botnick/telegram-media-downloader/blob/main/docs/AI.md): sidecars, GPU, external hosts
-- [Backup](https://github.com/botnick/telegram-media-downloader/blob/main/docs/BACKUP.md): S3, SFTP, FTP, Google Drive, Dropbox, local
-- [Cluster](https://github.com/botnick/telegram-media-downloader/blob/main/docs/CLUSTER.md): federate several instances
-- [API](https://github.com/botnick/telegram-media-downloader/blob/main/docs/API.md): HTTP and WebSocket reference
+- core-service/cmd/tgdl-server: server, setup, backup decrypt/restore commands.
+- core-service/internal/accounts and telegram: account ownership, gotd sessions,
+  login and Telegram updates.
+- core-service/internal/engine and download: durable work, ingestion, download-time
+  deduplication, verified reuse, streaming hashing and publication recovery.
+- core-service/internal/app: HTTP/WebSocket routes, authorization and integration.
+- core-service/internal/store: SQLite schema and migrations.
+- core-service/internal/webassets/public: canonical browser assets.
 
-## Project
-
-- [Changelog](https://github.com/botnick/telegram-media-downloader/blob/main/CHANGELOG.md)
-- [Contributing](https://github.com/botnick/telegram-media-downloader/blob/main/CONTRIBUTING.md)
-- [Security policy](https://github.com/botnick/telegram-media-downloader/blob/main/SECURITY.md)
-
-## Optional
-
-- [Releases](https://github.com/botnick/telegram-media-downloader/releases)
-- [Docker image](https://github.com/botnick/telegram-media-downloader/pkgs/container/telegram-media-downloader)
-- [Audit notes](https://github.com/botnick/telegram-media-downloader/blob/main/docs/AUDIT.md)
+Run make build, make test or make check. Historical contract snapshots remain in
+tests/contract; their removed recorder/backend are available at Git commit
+aa83eed. Sidecar projects are independent and are not part of core cleanup.

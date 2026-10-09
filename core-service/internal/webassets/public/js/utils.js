@@ -240,7 +240,7 @@ export function showToast(message, type = 'info', durationMs = 3000) {
 //
 // `lruSet` + `lruCap` keep client-side caches bounded so a heavy library
 // (50 k+ groups, 1 M+ files) doesn't pile up Map entries until the tab
-// runs out of heap. See `CLAUDE.md` section "Big-data patterns".
+// runs out of heap. See the big-data guidelines.
 
 /**
  * Set `key=value` into a Map and evict the oldest entries until the Map

@@ -19,7 +19,7 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Run `npm run web`
+        1. Run `make run`
         2. Click "Add account"
         3. ...
     validations:
@@ -37,16 +37,16 @@ body:
       label: Where does the bug happen?
       options:
         - Web dashboard
-        - CLI (interactive)
+        - Native command
         - Monitor (headless)
         - History backfill
         - Docker / deployment
         - Other
   - type: input
-    id: node
+    id: runtime
     attributes:
-      label: Node.js version
-      description: Output of `node --version`.
+      label: Server build
+      description: Output of `./runner.sh version` or `tgdl-server version`.
   - type: input
     id: os
     attributes:
@@ -57,5 +57,5 @@ body:
     attributes:
       label: Relevant logs
       description: |
-        Set `TGDL_DEBUG=1` and re-run; paste the relevant output. Redact tokens / credentials.
+        Paste the relevant server output and the failing request or action. Redact tokens / credentials.
       render: shell

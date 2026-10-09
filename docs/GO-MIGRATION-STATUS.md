@@ -23,7 +23,8 @@ Go without npm. Docker Compose builds this checkout with a local tag rather than
 pulling an older published image; bind paths must exist and UID/GID are explicit.
 Production builds send only the Go module and embedded assets to the builder.
 CI checks the native image before publication, and app tags build server archives
-plus checksums with `scripts/build-server-release.sh`. The obsolete companion
+plus checksums with `scripts/build-server-release.sh`. Unix, PowerShell and Windows
+batch launchers execute the native binary. The obsolete companion
 release workflow was removed. Application version output now matches AppVersion.
 
 Initial setup from a Docker-published port correctly remains forbidden. The
@@ -47,12 +48,22 @@ Packaging verification on 2026-10-09:
   execution, other release architectures and remote GitHub Actions have not been
   run in this packaging check. No image, release or branch was published.
 
-Old backend source, npm metadata and the historical contract harness remain
-migration references outside the production build. They are still cleanup work;
-this packaging correction does not claim every Node file has been removed or
-that live Telegram/browser E2E is complete. Optional feature ports remain out of
-scope. The broad contract results below are from the preceding runtime checkpoint;
-packaging-only changes do not require rerunning all optional contract scenarios.
+The obsolete backend/duplicate browser tree, npm packages and executable Node
+test/build helpers have been removed. Their source remains in Git at `aa83eed`.
+Canonical browser JavaScript stays embedded in Go; frozen JSON/schema/media
+fixtures remain as historical evidence. Native Go tests are the active test
+path. Historical contract totals below were measured before harness removal,
+not rerun or relabeled as passing. This cleanup does not establish live Telegram
+E2E or optional feature support. Sidecar projects remain independent.
+
+After removal, the complete Go race suite and `go vet ./...` pass, and the
+server builds without the deleted tree or installed Node dependencies. A fresh
+standalone binary launched outside the checkout passes health, initial setup,
+embedded dashboard/modules/styles and CSP metadata, then exits cleanly on
+SIGTERM. The tracked-file audit finds no package manifests or executable
+JavaScript outside the required embedded browser assets. Windows launchers were
+reviewed but not executed on Windows. Frozen contract totals below remain
+historical; no live Telegram claim follows from these checks.
 
 ## Core browser check (2026-10-09)
 
@@ -371,12 +382,16 @@ also cancels its in-flight media context. The queue contract and focused store
 regressions cover the stopped-engine security boundary, idempotent cleanup and
 the durable pause/claim behavior.
 
-The contract runner still uses development-time JavaScript dependencies to
-compare the Go server with frozen responses. It does not launch a Node server
-for these Go-target tests. Removing this test tooling remains part of the
-migration; the current source tree is not yet free of Node dependencies.
+The former development-time contract runner has been removed. Its frozen
+responses, schema and fixtures remain historical references; active regression
+checks run in Go. See the cleanup verification near the top of this document.
 
-## Required before release
+## Historical full-migration checklist
+
+This broader checklist predates the owner's scope reduction. Optional AI, advanced
+cluster and cloud-provider ports are deferred, not requirements for the current
+core delivery. Recheck current implementation and evidence before selecting an
+item; the scope and verification sections above take precedence.
 
 - Validate native Telegram login/account management, history, URL and Stories
   jobs on a real account; complete account-wide oversized-gap repair, broader

@@ -7,6 +7,10 @@ permalink: /docs/
 
 # Documentation
 
+The Go branch uses [DEPLOY.md](DEPLOY.md), [ARCHITECTURE.md](ARCHITECTURE.md)
+and [GO-MIGRATION-STATUS.md](GO-MIGRATION-STATUS.md). Older feature guides describe
+the released application; optional features are not all available in this branch.
+
 Guides for [Telegram Media Downloader](https://github.com/botnick/telegram-media-downloader), a self-hosted tool that downloads and archives Telegram channel, group and DM media through a web dashboard. New here? Start with the [Docker quick start](https://github.com/botnick/telegram-media-downloader#quick-start) and [DEPLOY.md](DEPLOY.md).
 
 | Guide | What it covers |
@@ -18,8 +22,8 @@ Guides for [Telegram Media Downloader](https://github.com/botnick/telegram-media
 | [CLUSTER.md](CLUSTER.md) | Pairing several instances into a federated library |
 | [API.md](API.md) | HTTP + WebSocket API reference |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit together — for contributors |
-| [GO-CORE.md](GO-CORE.md) | `tgdl-core`, the app's required Go binary: hashing, integrity checks, folder walks, face clustering and the front server that serves every media byte |
-| [GO-MIGRATION.md](GO-MIGRATION.md) | The plan for a pure-Go backend: waves, the API contract gate, data-compatibility rules |
+| [GO-MIGRATION-STATUS.md](GO-MIGRATION-STATUS.md) | Current scope, verified native/browser behavior and remaining work |
+| [GO-MIGRATION.md](GO-MIGRATION.md) | Historical design and data-compatibility considerations |
 | [AUDIT.md](AUDIT.md) | Security / reliability audit notes |
 | [MIGRATION-v2.9-to-v2.10.md](MIGRATION-v2.9-to-v2.10.md) | Upgrade notes for that release |
 
@@ -29,10 +33,9 @@ Release notes: [CHANGELOG.md](https://github.com/botnick/telegram-media-download
 
 | Component | Tag | Artifacts |
 |---|---|---|
-| App (dashboard + downloader) | `vX.Y.Z` | `ghcr.io/botnick/telegram-media-downloader` |
+| App (`tgdl-server`) | `vX.Y.Z` | Native archives + SHA-256 checksums; Docker image after candidate smoke checks |
 | faces-service | `faces-vX.Y.Z` | binaries for Windows / Linux / macOS, `ghcr.io/botnick/tgdl-faces` |
 | nsfw-service | `nsfw-vX.Y.Z` | `ghcr.io/botnick/tgdl-nsfw` (CPU and `gpu-` tags) |
 | seekbar-service | `seekbar-vX.Y.Z` | binaries for Windows / Linux / macOS (downloaded by the app on first use) |
-| core-service (`tgdl-core`) | `core-vX.Y.Z` | `tgdl-core-<slug>.tar.gz` for Windows / Linux (x64, arm64, ARMv7, x86) / macOS (arm64, x64) + `SHA256SUMS` (downloaded and verified by `npm install` and on startup; built into the Docker image) |
 
 A sidecar release always ships before an app release that depends on it, so updating the app never points at a sidecar version that doesn't exist yet.

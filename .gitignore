@@ -1,10 +1,10 @@
-# Dependencies
+# Obsolete tool caches (keep accidental installs out of Git)
 node_modules/
 .pnp/
 .pnp.js
 .yarn/install-state.gz
 
-# Lockfiles from package managers we don't use (we use npm)
+# Lockfiles from unused package managers
 yarn.lock
 pnpm-lock.yaml
 
