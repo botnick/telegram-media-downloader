@@ -264,7 +264,29 @@ func (c *GotdClient) DownloadMedia(ctx context.Context, a Attachment, w io.Write
 	if c == nil || c.client == nil || a.Location == nil || a.DC <= 0 {
 		return errors.New("invalid Telegram download request")
 	}
-	return downloadMedia(ctx, c.client, a, w)
+	return downloadMedia(ctx, guardedClient{c.client, c.guard}, a, w)
+}
+
+// guardedClient puts download pools behind the account's flood guard.
+type guardedClient struct {
+	*gotd.Client
+	guard *floodGuard
+}
+
+func (c guardedClient) Pool(max int64) (gotd.CloseInvoker, error) {
+	pool, err := c.Client.Pool(max)
+	if err != nil || c.guard == nil {
+		return pool, err
+	}
+	return guardedInvoker{pool, c.guard}, nil
+}
+
+func (c guardedClient) DC(ctx context.Context, dc int, max int64) (gotd.CloseInvoker, error) {
+	pool, err := c.Client.DC(ctx, dc, max)
+	if err != nil || c.guard == nil {
+		return pool, err
+	}
+	return guardedInvoker{pool, c.guard}, nil
 }
 
 type downloadClient interface {

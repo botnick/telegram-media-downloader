@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	sessionconv "github.com/botnick/telegram-media-downloader/core-service/internal/session"
 	"github.com/gotd/td/session"
@@ -29,6 +30,16 @@ type GotdConfig struct {
 // that starts network I/O; constructing it validates config and never dials.
 type GotdClient struct {
 	client *gotd.Client
+	guard  *floodGuard
+}
+
+// FloodWaitUntil reports when Telegram allows this account's requests again
+// (zero when it is not flood-limited).
+func (c *GotdClient) FloodWaitUntil() time.Time {
+	if c == nil || c.guard == nil {
+		return time.Time{}
+	}
+	return c.guard.FloodWaitUntil()
 }
 
 func NewGotdClient(cfg GotdConfig) (*GotdClient, error) {
@@ -55,7 +66,8 @@ func NewGotdClient(cfg GotdConfig) (*GotdClient, error) {
 	if err := ensureConvertedSession(cfg, storage); err != nil {
 		return nil, err
 	}
-	return &GotdClient{client: gotd.NewClient(cfg.AppID, cfg.AppHash, gotd.Options{SessionStorage: storage, UpdateHandler: cfg.UpdateHandler, Resolver: resolver})}, nil
+	guard := newFloodGuard()
+	return &GotdClient{guard: guard, client: gotd.NewClient(cfg.AppID, cfg.AppHash, gotd.Options{SessionStorage: storage, UpdateHandler: cfg.UpdateHandler, Resolver: resolver, Middlewares: []gotd.Middleware{guard.Middleware()}})}, nil
 }
 
 func ensureConvertedSession(cfg GotdConfig, storage session.Storage) error {

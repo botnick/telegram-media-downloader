@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.0.1] — 2026-10-09
+
+Telegram FloodWait protection for downloads and every other Telegram request.
+
+### Fixed
+- **FloodWait is respected again.** Each account's requests (including the per-datacenter download connections) pass one flood gate and a request-rate limit. A wait of up to 60 s is slept through and retried, as 2.x did; a longer wait pauses only that account's queue until Telegram allows it again, and the affected item is rescheduled for that moment without using up one of its retry attempts.
+- **Add-account wizard:** a cancellation racing a submitted step could leave the flow in an error state without a message.
+
+### Service worker
+- `VERSION = 'v3010'`
+
 ## [3.0.0] — 2026-10-09
 
 One native Go server replaces the Node backend: a single `tgdl-server` binary (or the Docker image) runs the dashboard, Telegram accounts, downloads, backups and maintenance. Existing data folders and Telegram sessions are reused in place.

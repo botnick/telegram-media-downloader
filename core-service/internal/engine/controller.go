@@ -13,6 +13,7 @@ import (
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 )
 
 type Account interface {
@@ -799,7 +800,7 @@ func (c *Controller) worker(run *running) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for run.ctx.Err() == nil {
-		work, err := c.work.Claim(run.ctx, run.ids, time.Now(), !run.observing.Load())
+		work, err := c.work.Claim(run.ctx, run.unthrottled(), time.Now(), !run.observing.Load())
 		if err != nil {
 			if run.ctx.Err() == nil {
 				run.cancel(fmt.Errorf("claim work: %w", err))
@@ -890,11 +891,16 @@ func (c *Controller) worker(run *running) {
 		delete(run.progress, work.ID)
 		run.mu.Unlock()
 		retry := time.Time{}
-		if err != nil && !errors.Is(err, errFiltered) && !wasCancelled && work.Attempts < run.maxAttempts {
+		flooded := false
+		if d, ok := tgerr.AsFloodWait(err); ok && !wasCancelled {
+			// Telegram asked this account to wait: reschedule after the wait
+			// without spending one of the item's retry attempts.
+			retry, flooded = time.Now().Add(d+time.Second), true
+		} else if err != nil && !errors.Is(err, errFiltered) && !wasCancelled && work.Attempts < run.maxAttempts {
 			retry = time.Now().Add(time.Second * time.Duration(1<<min(work.Attempts-1, 8)))
 		}
 		finishCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
-		finishErr := c.work.Finish(finishCtx, work, err, wasCancelled, retry)
+		finishErr := c.work.Finish(finishCtx, work, err, wasCancelled || flooded, retry)
 		stop()
 		if finishErr != nil {
 			run.cancel(fmt.Errorf("finish work: %w", finishErr))
@@ -908,4 +914,17 @@ func (c *Controller) worker(run *running) {
 func attemptTimeout(size int64) time.Duration {
 	seconds := min(max(size, 0)/(16*1024), int64((24*time.Hour)/time.Second))
 	return min(2*time.Minute+time.Duration(seconds)*time.Second, 24*time.Hour)
+}
+
+// unthrottled lists the run's accounts that Telegram is not currently
+// flood-limiting, so workers leave a waiting account's queue alone.
+func (r *running) unthrottled() []string {
+	ids := make([]string, 0, len(r.ids))
+	for _, id := range r.ids {
+		if gated, ok := r.accounts[id].(interface{ FloodWaitUntil() time.Time }); ok && !gated.FloodWaitUntil().IsZero() {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids
 }

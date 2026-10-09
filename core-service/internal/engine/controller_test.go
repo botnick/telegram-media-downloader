@@ -3,9 +3,12 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 	"io"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -301,5 +304,51 @@ func TestPendingHistoryRecoveryPreventsStartup(t *testing.T) {
 	c := New(s.writer, s.reader, t.TempDir(), factory, filter, func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error { return nil }, nil)
 	if err := c.Start(ctx, ctx, []AccountConfig{{ID: "one"}}, 1, 1); err == nil {
 		t.Fatal("lost history recovery marker")
+	}
+}
+
+func TestFloodWaitReschedulesWithoutSpendingAttempts(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	if _, _, err := s.Enqueue(ctx, "one", Target{}, testMessage(1, 1, 1)); err != nil {
+		t.Fatal(err)
+	}
+	factory := func(AccountConfig, *telegram.UpdateState, func(context.Context, tg.UpdatesClass) error, func(int64)) (Account, error) {
+		return &readyAccount{}, nil
+	}
+	filter := func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error) {
+		return Target{}, true, nil
+	}
+	var calls atomic.Int64
+	sink := func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error {
+		calls.Add(1)
+		return fmt.Errorf("download: %w", &tgerr.Error{Code: 420, Type: "FLOOD_WAIT", Argument: 120})
+	}
+	c := New(s.writer, s.reader, t.TempDir(), factory, filter, sink, nil)
+	started := time.Now()
+	if err := c.Start(ctx, ctx, []AccountConfig{{ID: "one"}}, 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Stop(ctx)
+	var status string
+	var attempts, retryAt int64
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := s.reader.QueryRow(`SELECT status,attempts,retry_at FROM tgdl_work`).Scan(&status, &attempts, &retryAt); err != nil {
+			t.Fatal(err)
+		}
+		if calls.Load() == 1 && status == "pending" {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := c.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// One allowed attempt, yet the item is still pending, its attempt refunded,
+	// and not retried before Telegram's 120 s wait.
+	wait := time.UnixMilli(retryAt).Sub(started)
+	if status != "pending" || attempts != 0 || wait < 120*time.Second || wait > 125*time.Second || calls.Load() != 1 {
+		t.Fatalf("status=%s attempts=%d wait=%s calls=%d", status, attempts, wait, calls.Load())
 	}
 }

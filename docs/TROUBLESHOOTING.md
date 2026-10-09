@@ -242,12 +242,17 @@ avoid running many large history backfills at once.
 
 ### Downloads fail or keep retrying
 
-A failed download, including one Telegram rate-limited, is retried
-automatically after a growing pause, up to **Maximum Download Attempts**
-(Settings, 1–20, counting the first try). After that it's marked failed.
-Use **Retry all** on the **Queue** page once the cause is fixed.
+A failed download is retried automatically after a growing pause, up to
+**Maximum Download Attempts** (Settings, 1–20, counting the first try).
+After that it's marked failed. Use **Retry all** on the **Queue** page once
+the cause is fixed.
 
-If Telegram rate-limits you often (`FLOOD_WAIT` in the queue errors):
+A Telegram rate limit (`FLOOD_WAIT`) is not a failure. Since 3.0.1 a wait of
+up to 60 s is slept through automatically; a longer one pauses only that
+account's downloads until Telegram allows requests again, and the item is
+retried then without using up an attempt.
+
+If Telegram rate-limits you often:
 
 - Lower **Concurrent Downloads** (1–3 is conservative).
 - Set a **Max Download Speed** limit; it applies to all downloads together
