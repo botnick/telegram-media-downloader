@@ -10,6 +10,41 @@ import (
 	"testing"
 )
 
+func TestSetupUsesIPv6LoopbackWhenBoundToIPv6(t *testing.T) {
+	listener, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback unavailable: %v", err)
+	}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/auth/setup" {
+			t.Errorf("unexpected setup path: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"success":true}`))
+	}))
+	server.Listener = listener
+	server.Start()
+	defer server.Close()
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
+	t.Setenv("PORT", port)
+	for _, bind := range []string{"::1", "::"} {
+		t.Setenv("TGDL_BIND_HOST", bind)
+		var out, errOut bytes.Buffer
+		if code := setupDashboard([]string{"--password-stdin"}, strings.NewReader("local-fixture-password"), &out, &errOut); code != 0 {
+			t.Fatalf("IPv6 setup code=%d error=%s", code, errOut.String())
+		}
+	}
+}
+
+func TestSetupRejectsNonLoopbackBindBeforeReadingPassword(t *testing.T) {
+	for _, host := range []string{"192.0.2.1", "2001:db8::1", "example.com"} {
+		t.Setenv("TGDL_BIND_HOST", host)
+		var out, errOut bytes.Buffer
+		if code := setupDashboard([]string{"--password-stdin"}, strings.NewReader("short"), &out, &errOut); code != 2 || !strings.Contains(errOut.String(), "TGDL_BIND_HOST") {
+			t.Fatalf("non-local bind not rejected before password processing: code=%d error=%s", code, errOut.String())
+		}
+	}
+}
+
 func TestSetupDashboardLocalRequest(t *testing.T) {
 	const password = "  private password  "
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -66,8 +67,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer a.Close()
-	log.Printf("tgdl-server listening on :%d", cfg.Port)
-	server := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 1 << 20}
+	address := net.JoinHostPort(cfg.BindHost, strconv.Itoa(cfg.Port))
+	log.Printf("tgdl-server listening on %s", address)
+	server := &http.Server{Addr: address, Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 1 << 20}
 	if err := serve(ctx, server); err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1

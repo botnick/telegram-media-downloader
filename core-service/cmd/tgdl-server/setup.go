@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -44,6 +45,19 @@ func setupDashboard(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		}
 		port = n
 	}
+	host := "127.0.0.1"
+	if raw := strings.TrimSpace(os.Getenv("TGDL_BIND_HOST")); raw != "" {
+		ip := net.ParseIP(raw)
+		if ip == nil || (!ip.IsLoopback() && !ip.IsUnspecified()) {
+			_, _ = fmt.Fprintln(stderr, "Initial setup requires a loopback listener; use TGDL_BIND_HOST=127.0.0.1 while configuring the password")
+			return 2
+		}
+		if ip.IsLoopback() {
+			host = ip.String()
+		} else if ip.To4() == nil {
+			host = "::1"
+		}
+	}
 	raw, err := io.ReadAll(io.LimitReader(stdin, 4099))
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "Cannot read password from standard input")
@@ -62,7 +76,7 @@ func setupDashboard(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	defer client.CloseIdleConnections()
-	response, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d/api/auth/setup", port), "application/json", bytes.NewReader(body))
+	response, err := client.Post("http://"+net.JoinHostPort(host, strconv.Itoa(port))+"/api/auth/setup", "application/json", bytes.NewReader(body))
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "Cannot reach setup endpoint; start the server and run setup on the same machine or inside its container")
 		return 1

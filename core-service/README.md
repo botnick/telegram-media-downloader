@@ -126,6 +126,13 @@ Shutdown/edit cancellation returns work to pending without spending a retry;
 a transfer deadline consumes one of the configured attempts. Queued Telegram
 payloads stay private: the dashboard receives a bounded field projection.
 Set `TGDL_SECURE_COOKIES=1` when serving behind HTTPS.
+Set `TGDL_BIND_HOST=127.0.0.1` to restrict the native listener to local clients
+when a same-host reverse proxy exposes the dashboard. This accepts a literal
+IPv4/IPv6 address; `PORT` sets the port separately. An empty value listens on
+all interfaces.
+For a specific non-loopback interface, configure the initial password while
+bound to loopback, then restart with the intended bind address. The setup command
+never sends the password to a remote address or a different loopback service.
 Native HTTP policy now honors `TRUST_PROXY`, live HTTPS/CSP/API-limit settings,
 and bounded gzip/deflate/Brotli response compression. Compose forwards these
 options. See [HTTP policy, verification and limits](../docs/GO-HTTP-SECURITY.md).

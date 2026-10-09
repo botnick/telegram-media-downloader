@@ -287,6 +287,7 @@ not controls for the native engine, which receives Telegram updates directly.
 |----------|---------|-------------|
 | `TGDL_PORT` | `3000` | Dashboard port (host side in the compose file) |
 | `TGDL_DATA_DIR` | `./data` | Base data directory |
+| `TGDL_BIND_HOST` | all interfaces | Literal listen IP; use `127.0.0.1` for a local reverse proxy |
 | `TGDL_DOWNLOADS_DIR` | _(unset)_ | Split downloads onto separate disk |
 | `TGDL_DEBUG` | _(unset)_ | `1` = verbose logging |
 | `FFMPEG_HWACCEL` | _(empty)_ | `cuda` / `vaapi` / `qsv` / `videotoolbox` |
