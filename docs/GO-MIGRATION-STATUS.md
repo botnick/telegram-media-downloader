@@ -54,6 +54,34 @@ that live Telegram/browser E2E is complete. Optional feature ports remain out of
 scope. The broad contract results below are from the preceding runtime checkpoint;
 packaging-only changes do not require rerunning all optional contract scenarios.
 
+## Core browser check (2026-10-09)
+
+A real Chrome window against an isolated Go server verified first-time setup,
+login/logout, dashboard and empty queue navigation, connected WebSocket status,
+gallery search, image decoding, pin/unpin, pin/session persistence across process
+restart, and confirmation-based deletion of both the catalog row and physical
+file. Browser input/clicks also saved and reset CSP settings; response headers
+changed immediately. This is a focused browser smoke check, not full browser or
+live Telegram E2E.
+
+Two reproduced failures were corrected: the security editor's missing admin
+`GET /api/csp` metadata route, and gallery URLs that incorrectly placed an existing
+root-level file under a synthesized group directory. The latter retains an
+existing legacy group file when basenames collide, treats permission/I/O errors
+as inconclusive, confines filesystem checks to the media root, and does not use
+local files to resolve peer rows. Regression tests verify root, legacy and shared
+paths through all/group/search feeds and actual media reads, plus same-basename
+collisions and inaccessible legacy directories. Focused race tests also cover
+native raw-message ingestion/dedup, history and URL downloads with fixture RPCs.
+
+The browser still requests optional AI/NSFW status routes that are absent; those
+ports remain outside current scope. A synthetic group with no cached avatar
+returns 404 for its photo as expected. The first image fixture had invalid PNG
+bytes and was replaced with a valid generated fixture; that decoding failure was
+not attributed to application code. Project-local data contains no configured
+Telegram API credentials or account sessions, so a real Telegram network run
+remains unverified. No other room's accounts or data were inspected.
+
 ## Verified in the current application
 
 - Native backup management and local/S3/SFTP/FTP mirror/snapshot jobs include automatic

@@ -2,8 +2,10 @@ package app
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -172,6 +174,13 @@ func (a *App) queryGalleryFiles(r *http.Request, q galleryQuery) ([]map[string]a
 	}
 	defer rows.Close()
 	out := make([]map[string]any, 0)
+	var mediaRoot *os.Root
+	rootChecked := false
+	defer func() {
+		if mediaRoot != nil {
+			_ = mediaRoot.Close()
+		}
+	}()
 	for rows.Next() {
 		var id, pinned int64
 		var groupID, groupName, name, filePath, kind, peerID, peerName sql.NullString
@@ -189,7 +198,26 @@ func (a *App) queryGalleryFiles(r *http.Request, q galleryQuery) ([]map[string]a
 		stored := strings.ReplaceAll(filePath.String, "\\", "/")
 		fullPath := stored
 		if !strings.Contains(fullPath, "/") {
+			// Filename-only legacy rows use the group layout. If that file is
+			// absent, an existing root file is authoritative (e.g. after reindex).
+			// Check both within downloads/ so a root basename cannot shadow an
+			// established legacy file or escape via a symlink.
 			fullPath = galleryGroupFolder(displayName) + "/" + folder + "/" + fileName
+			if stored != "" && peerID.String == "self" {
+				if !rootChecked {
+					mediaRoot, _ = os.OpenRoot(filepath.Join(a.dataDir, "downloads"))
+					rootChecked = true
+				}
+				if mediaRoot != nil {
+					legacy, legacyErr := mediaRoot.Stat(fullPath)
+					if errors.Is(legacyErr, os.ErrNotExist) || (legacyErr == nil && !legacy.Mode().IsRegular()) {
+						info, err := mediaRoot.Stat(stored)
+						if err == nil && info.Mode().IsRegular() {
+							fullPath = stored
+						}
+					}
+				}
+			}
 		}
 		item := map[string]any{
 			"id": id, "name": nullableString(name), "path": nullableString(filePath), "fullPath": fullPath,

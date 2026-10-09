@@ -17,6 +17,7 @@ import (
 
 func registerConfigWriteRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("GET /api/config", a.requireSession(http.HandlerFunc(a.handleAPIConfigGet)))
+	mux.Handle("GET /api/csp", a.requireAdmin(http.HandlerFunc(a.handleCSPMetadata)))
 	mux.Handle("GET /api/maintenance/config/raw", a.requireAdmin(http.HandlerFunc(a.handleAPIRawConfig)))
 	mux.Handle("POST /api/config", a.requireAdmin(http.HandlerFunc(a.handleAPIConfigSave)))
 	mux.Handle("PUT /api/groups/{id}", a.requireAdmin(http.HandlerFunc(a.handleAPIGroupSave)))

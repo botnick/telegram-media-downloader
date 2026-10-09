@@ -75,6 +75,55 @@ func TestProxyPolicyTrustBoundary(t *testing.T) {
 }
 func strptr(s string) *string { return &s }
 
+func TestCSPSettingsMetadataUsesEnforcedDefaultsAndAdminGate(t *testing.T) {
+	for _, off := range []bool{false, true} {
+		t.Run(fmt.Sprint(off), func(t *testing.T) {
+			a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), HTTP: HTTPOptions{DisableCSP: off}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer a.Close()
+			for _, role := range []string{"", "guest", "admin"} {
+				r := httptest.NewRequest("GET", "/api/csp", nil)
+				if role != "" {
+					token, err := a.sessions.Create(context.Background(), role)
+					if err != nil {
+						t.Fatal(err)
+					}
+					r.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+				}
+				w := httptest.NewRecorder()
+				a.Handler().ServeHTTP(w, r)
+				want := map[string]int{"": 401, "guest": 403, "admin": 200}[role]
+				if w.Code != want {
+					t.Fatalf("%s metadata status=%d want=%d", role, w.Code, want)
+				}
+				if role != "admin" {
+					continue
+				}
+				var got struct {
+					EnvOff   bool
+					Defaults struct {
+						Enabled, ReportOnly bool
+						Directives          map[string][]string
+					}
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+					t.Fatal(err)
+				}
+				if got.EnvOff != off || !got.Defaults.Enabled || got.Defaults.ReportOnly || len(got.Defaults.Directives) != len(defaultCSP) {
+					t.Fatalf("bad metadata: %s", w.Body.String())
+				}
+				for _, d := range defaultCSP {
+					if strings.Join(got.Defaults.Directives[d.name], " ") != strings.Join(d.sources, " ") {
+						t.Fatalf("editor defaults differ from header for %s", d.name)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestHTTPOptionsRejectInvalidSettings(t *testing.T) {
 	for _, env := range []map[string]string{{"TRUST_PROXY": "evil"}, {"COMPRESSION_LEVEL": "-1"}, {"COMPRESSION_LEVEL": "10"}, {"COMPRESSION_LEVEL": "2x"}} {
 		if _, err := HTTPOptionsFromEnv(func(k string) (string, bool) { v, ok := env[k]; return v, ok }); err == nil {

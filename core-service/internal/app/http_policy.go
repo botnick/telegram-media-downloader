@@ -61,6 +61,17 @@ var defaultCSP = []struct {
 }
 var cspName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 
+func (a *App) handleCSPMetadata(w http.ResponseWriter, _ *http.Request) {
+	directives := make(map[string][]string, len(defaultCSP))
+	for _, directive := range defaultCSP {
+		directives[directive.name] = directive.sources
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"defaults": map[string]any{"enabled": true, "reportOnly": false, "directives": directives},
+		"envOff":   a.httpOptions.DisableCSP,
+	})
+}
+
 func normalizeCSP(raw any) (map[string]any, error) {
 	input, ok := raw.(map[string]any)
 	if !ok || input == nil {
