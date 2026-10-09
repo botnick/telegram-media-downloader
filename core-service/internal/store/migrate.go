@@ -166,6 +166,25 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 			return 0, fmt.Errorf("add queue pause state: %w", err)
 		}
 	}
+	// Descriptive Telegram media facts for likely-duplicate detection. Added
+	// columns only; existing rows simply keep NULLs.
+	for _, column := range []struct{ name, kind string }{
+		{"telegram_mime", "TEXT"}, {"media_width", "INTEGER"}, {"media_height", "INTEGER"},
+		{"media_duration_ms", "INTEGER"}, {"forward_origin", "TEXT"}, {"telegram_thumb", "BLOB"},
+	} {
+		var exists int
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name=?`, column.name).Scan(&exists); err != nil {
+			return 0, err
+		}
+		if exists == 0 {
+			if _, err := db.ExecContext(ctx, `ALTER TABLE downloads ADD COLUMN `+column.name+` `+column.kind); err != nil {
+				return 0, fmt.Errorf("add media fact %s: %w", column.name, err)
+			}
+		}
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_media_facts ON downloads(file_type, media_duration_ms, media_width, media_height) WHERE media_width IS NOT NULL OR media_duration_ms IS NOT NULL`); err != nil {
+		return 0, err
+	}
 	var version int
 	// The old runtime placed stories in the message ID namespace. Relocate
 	// only positively identified story rows; keep row IDs, files and metadata.

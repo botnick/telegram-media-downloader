@@ -485,3 +485,34 @@ func TestLibraryRecoveryRejectsMutationWhileWaitingForWriter(t *testing.T) {
 		t.Fatalf("recovered mutated file: %v", err)
 	}
 }
+
+func TestLibraryStoresMediaFactsAndLeavesUnknownFactsNull(t *testing.T) {
+	library, db := openTestLibrary(t, t.TempDir())
+	client := clientFunc(func(_ context.Context, _ telegram.MediaIdentity, w io.Writer) error {
+		_, err := w.Write([]byte("video"))
+		return err
+	})
+	facts := telegram.MediaFacts{Mime: "video/mp4", Width: 1920, Height: 1080, DurationMs: 12345, Origin: "-1000000000077:12", Thumb: []byte{1, 2}}
+	item := Item{GroupID: "1", MessageID: 1, Name: "a.mp4", Type: "video", Identity: telegram.MediaIdentity{Kind: "document", ID: "5", Size: 5}, Facts: facts}
+	if _, err := library.Ingest(context.Background(), item, client); err != nil {
+		t.Fatal(err)
+	}
+	// A forwarded copy reuses the file but keeps its own facts row.
+	item.MessageID, item.Facts = 2, telegram.MediaFacts{}
+	if _, err := library.Ingest(context.Background(), item, client); err != nil {
+		t.Fatal(err)
+	}
+	var mime, origin string
+	var w, h, d int64
+	var thumb []byte
+	if err := db.Reader.QueryRow(`SELECT telegram_mime,media_width,media_height,media_duration_ms,forward_origin,telegram_thumb FROM downloads WHERE message_id=1`).Scan(&mime, &w, &h, &d, &origin, &thumb); err != nil {
+		t.Fatal(err)
+	}
+	if mime != "video/mp4" || w != 1920 || h != 1080 || d != 12345 || origin != "-1000000000077:12" || string(thumb) != "\x01\x02" {
+		t.Fatalf("stored facts mime=%s %dx%d d=%d origin=%s thumb=%v", mime, w, h, d, origin, thumb)
+	}
+	var nulls int
+	if err := db.Reader.QueryRow(`SELECT (telegram_mime IS NULL)+(media_width IS NULL)+(media_duration_ms IS NULL)+(forward_origin IS NULL)+(telegram_thumb IS NULL) FROM downloads WHERE message_id=2`).Scan(&nulls); err != nil || nulls != 5 {
+		t.Fatalf("unknown facts stored as values: nulls=%d err=%v", nulls, err)
+	}
+}

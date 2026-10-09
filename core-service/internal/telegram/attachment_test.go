@@ -73,3 +73,41 @@ func TestMessageAttachmentKeepsDocumentIdentityForVideoAndSticker(t *testing.T) 
 		}
 	}
 }
+
+func TestMessageAttachmentRecordsDescriptiveMediaFacts(t *testing.T) {
+	photo := &tg.Message{ID: 5, PeerID: &tg.PeerChannel{ChannelID: 123}, Media: &tg.MessageMediaPhoto{Photo: &tg.Photo{ID: 999, DCID: 2, Sizes: []tg.PhotoSizeClass{
+		&tg.PhotoStrippedSize{Type: "i", Bytes: []byte{1, 2, 3}}, &tg.PhotoSize{Type: "x", Size: 100, W: 320, H: 240}, &tg.PhotoSize{Type: "y", Size: 900, W: 1280, H: 960},
+	}}}}
+	photo.SetFwdFrom(tg.MessageFwdHeader{FromID: &tg.PeerChannel{ChannelID: 77}, ChannelPost: 12})
+	a, err := MessageAttachment(photo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := a.Facts; f.Mime != "image/jpeg" || f.Width != 1280 || f.Height != 960 || f.Origin != "-1000000000077:12" || string(f.Thumb) != "\x01\x02\x03" || f.DurationMs != 0 {
+		t.Fatalf("photo facts=%+v", f)
+	}
+
+	video := &tg.Message{ID: 6, PeerID: &tg.PeerUser{UserID: 5}, Media: &tg.MessageMediaDocument{Document: &tg.Document{ID: 1, DCID: 2, Size: 10, MimeType: "video/mp4; codecs=avc1",
+		Thumbs:     []tg.PhotoSizeClass{&tg.PhotoStrippedSize{Type: "i", Bytes: []byte{9}}},
+		Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeVideo{W: 1920, H: 1080, Duration: 12.345}, &tg.DocumentAttributeFilename{FileName: "clip.mp4"}},
+	}}}
+	video.SetFwdFrom(tg.MessageFwdHeader{SavedFromPeer: &tg.PeerUser{UserID: 42}})
+	a, err = MessageAttachment(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := a.Facts; f.Mime != "video/mp4" || f.Width != 1920 || f.Height != 1080 || f.DurationMs != 12345 || f.Origin != "42" || string(f.Thumb) != "\x09" {
+		t.Fatalf("video facts=%+v", f)
+	}
+
+	audio := &tg.Message{ID: 7, PeerID: &tg.PeerChat{ChatID: 8}, Media: &tg.MessageMediaDocument{Document: &tg.Document{ID: 2, DCID: 2, Size: 10, MimeType: "audio/ogg",
+		Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeAudio{Duration: 61, Voice: true}},
+	}}}
+	a, err = MessageAttachment(audio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := a.Facts; f.DurationMs != 61000 || f.Origin != "" || f.Width != 0 || f.Thumb != nil {
+		t.Fatalf("audio facts=%+v", f)
+	}
+}
