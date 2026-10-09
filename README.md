@@ -400,7 +400,7 @@ In Docker, use **Settings > Maintenance > Install update** or run `docker compos
 
 ### Where are the files stored, and can I back them up?
 
-Downloads live under `data/downloads/<chat>/` (or `TGDL_DOWNLOADS_DIR` on another disk). Optional backups go to S3-compatible storage, SFTP, Google Drive, Dropbox or a local mount, with client-side encryption. See [Backup](docs/BACKUP.md).
+Downloads live under `data/downloads/<chat>/` (or `TGDL_DOWNLOADS_DIR` on another disk). Native backups support S3-compatible storage, SFTP and local mounts, with client-side encryption and offline recovery. FTP/FTPS, Google Drive and Dropbox are still pending in this Go migration. See [native backup behavior and recovery](docs/GO-BACKUP.md).
 
 ---
 

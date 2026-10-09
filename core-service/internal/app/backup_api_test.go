@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -13,6 +14,65 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/gotd/td/tg"
 )
+
+func TestBackupRecoveryParametersRequireAdministrator(t *testing.T) {
+	ctx := context.Background()
+	a, err := newConfiguredTestApp(ctx, Config{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	admin, err := a.sessions.Create(ctx, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	guest, err := a.sessions.Create(ctx, "guest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := a.backups.Create(ctx, map[string]any{"name": "encrypted", "provider": "local", "config": map[string]any{"rootPath": t.TempDir()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := d["id"].(int64)
+	endpoint := "/api/backup/destinations/1/recovery"
+	if r := requestPurge(a, admin, "GET", endpoint, ""); r.Code != 404 {
+		t.Fatal("unencrypted destination has recovery info", r.Code)
+	}
+	if _, err = a.backups.Encryption(ctx, id, true, "private-passphrase", false); err != nil {
+		t.Fatal(err)
+	}
+	if r := requestPurge(a, guest, "GET", endpoint, ""); r.Code != 403 {
+		t.Fatal("guest can access recovery info", r.Code)
+	}
+	r := requestPurge(a, admin, "GET", endpoint, "")
+	if r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	var response struct {
+		Recovery struct {
+			SaltHex string `json:"saltHex"`
+			Format  string `json:"format"`
+		} `json:"recovery"`
+	}
+	if err = json.Unmarshal(r.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	salt, err := hex.DecodeString(response.Recovery.SaltHex)
+	if err != nil || len(salt) != 16 || response.Recovery.Format != "TGDB" {
+		t.Fatal("invalid recovery parameters", err)
+	}
+	if strings.Contains(r.Body.String(), "private-passphrase") || strings.Contains(r.Body.String(), "keyVerifier") {
+		t.Fatal("secret recovery response")
+	}
+	if _, err = a.backups.Encryption(ctx, id, false, "", false); err != nil {
+		t.Fatal(err)
+	}
+	disabled := requestPurge(a, admin, "GET", endpoint, "")
+	if disabled.Code != 200 || disabled.Body.String() != r.Body.String() {
+		t.Fatal("disabling encryption lost recovery salt")
+	}
+}
 
 func TestNativeBackupHTTPAndLiveTelegramIngestion(t *testing.T) {
 	ctx := context.Background()

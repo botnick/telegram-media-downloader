@@ -95,6 +95,10 @@ func NewManager(ctx context.Context, opts Options) (*Manager, error) {
 		cancel()
 		return nil, err
 	}
+	if err := m.recoverPayloadStages(ctx); err != nil {
+		cancel()
+		return nil, err
+	}
 	ds, err := m.destinations(ctx)
 	if err != nil {
 		cancel()
@@ -631,6 +635,7 @@ func (m *Manager) Encryption(ctx context.Context, id int64, enabled bool, passph
 }
 
 const backupSchema = `
+CREATE TABLE IF NOT EXISTS native_backup_staging(name TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS native_backup_transfers(
  id TEXT PRIMARY KEY,destination_id INTEGER NOT NULL,provider TEXT NOT NULL,config_blob BLOB NOT NULL,
  kind TEXT NOT NULL,remote_path TEXT NOT NULL,upload_id TEXT NOT NULL DEFAULT '',state TEXT NOT NULL,

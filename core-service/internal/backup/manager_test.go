@@ -368,7 +368,7 @@ func TestSnapshotContainsRecoverableStateAndPrunesOnlySnapshots(t *testing.T) {
 		t.Fatal("unrelated object deleted")
 	}
 }
-func TestEncryptedAndUnimplementedTransfersRemainPending(t *testing.T) {
+func TestLockedEncryptedTransfersRemainPendingAfterRestart(t *testing.T) {
 	m, db, dir := fixtureManager(t, nil)
 	id := addLocal(t, m, filepath.Join(dir, "target"), "mirror")
 	if _, err := m.Encryption(context.Background(), id, true, "test-pass", false); err != nil {
@@ -377,6 +377,13 @@ func TestEncryptedAndUnimplementedTransfersRemainPending(t *testing.T) {
 	if _, err := m.Encryption(context.Background(), id, true, "wrong-pass", true); err == nil {
 		t.Fatal("wrong key accepted")
 	}
+	m.Close()
+	next, err := NewManager(context.Background(), m.opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close()
+	m = next
 	addSource(t, db, dir, "a.bin", "must not leak", 1)
 	m.Wake()
 	deadline := time.Now().Add(2 * time.Second)
@@ -399,6 +406,14 @@ func TestEncryptedAndUnimplementedTransfersRemainPending(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "target/a.bin")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("encrypted job leaked plaintext")
+	}
+	if _, err = m.Encryption(context.Background(), id, true, "test-pass", true); err != nil {
+		t.Fatal(err)
+	}
+	waitBackup(t, m, id, 1, 0)
+	raw, err := os.ReadFile(filepath.Join(dir, "target/a.bin"))
+	if err != nil || !bytes.HasPrefix(raw, []byte("TGDB\x01")) {
+		t.Fatal("unlock did not resume encrypted transfer", err)
 	}
 }
 func TestScheduleSurvivesRestartAndRejectsMalformedCron(t *testing.T) {

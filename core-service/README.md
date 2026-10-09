@@ -64,8 +64,9 @@ Useful commands:
   Shared upload pacing respects network deadlines, and a durable journal cleans
   owned multipart uploads/temporary files after process death or destination
   edits/deletion. Local/snapshot staging cleanup, the empty S3 reservation gap,
-  FTP/FTPS, Drive, Dropbox and encrypted payload
-  streaming/restore remain incomplete. See [backup scope and tests](../docs/GO-BACKUP.md).
+  TGDB v1 encrypted uploads and offline `backup-decrypt`/`backup-restore`
+  commands use bounded buffers and authenticate before publishing output.
+  FTP/FTPS, Drive and Dropbox remain incomplete. See [backup scope and tests](../docs/GO-BACKUP.md).
 
 ## Data safety
 

@@ -218,8 +218,6 @@ func (m *Manager) work(ctx context.Context, id int64, w *worker) {
 			if d.Encrypted && pending > 0 {
 				if !m.unlocked(d) {
 					blockedError = "backup encryption is locked; unlock this destination"
-				} else {
-					blockedError = "native TGDB payload streaming is not available yet"
 				}
 			}
 			if blockedError == "" && provider == nil && time.Now().Before(retryProviderAt) {
@@ -334,6 +332,19 @@ func (m *Manager) transfer(ctx context.Context, d destination, j job, p Provider
 			permanent = true
 		}
 		if err == nil {
+			var stage *payloadStage
+			uploadFile, uploadSize := file, info.Size()
+			if d.Encrypted {
+				m.mu.Lock()
+				key := append([]byte(nil), m.keys[d.ID]...)
+				m.mu.Unlock()
+				stage, err = m.stagePayload(ctx, file, info.Size(), key)
+				clear(key)
+				if err == nil {
+					uploadFile = stage.file
+					uploadSize += payloadHeaderSize + payloadTagSize
+				}
+			}
 			last := time.Time{}
 			progress := func(n int64) {
 				if time.Since(last) >= 500*time.Millisecond {
@@ -341,7 +352,14 @@ func (m *Manager) transfer(ctx context.Context, d destination, j job, p Provider
 					m.emit("backup_progress", map[string]any{"destinationId": d.ID, "jobId": j.ID, "downloadId": nullableInt(j.Download), "bytesUploaded": n})
 				}
 			}
-			result, err = p.Upload(ctx, j.Remote.String, file, info.Size(), progress)
+			if err == nil {
+				result, err = p.Upload(ctx, j.Remote.String, uploadFile, uploadSize, progress)
+			}
+			if stage != nil {
+				if e := stage.Close(); e != nil {
+					m.Log("warn", fmt.Sprintf("encrypted backup staging cleanup remains pending: %v", e))
+				}
+			}
 		}
 	}
 	if ctx.Err() != nil {

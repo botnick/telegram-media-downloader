@@ -15,18 +15,28 @@ functionality. Do not deploy this branch over a working library yet.
   cleans owned S3 multipart uploads and SFTP temporary files after process death,
   including destination edits/deletion; actual child-process kill tests pass.
   Local/snapshot staging cleanup and the empty S3 reservation boundary remain
-  open. FTP/FTPS, Drive, Dropbox and
-  TGDB payload streaming/restore remain incomplete even when frozen contracts
-  pass; their pending jobs display an explicit error without sending plaintext.
+  open. TGDB v1 encrypted uploads and offline decrypt/restore commands now use bounded
+  buffers, private staging and authentication before publication. Native tests
+  restore database/config/sessions and reject corrupt or unsafe archives; this
+  is not an independent crypto audit or live recovery E2E. FTP/FTPS, Drive and
+  Dropbox remain incomplete even when frozen contracts pass; unsupported or
+  locked pending jobs display an explicit error without sending plaintext.
   See [scope and independent native tests](GO-BACKUP.md).
 
 - Authentication, first-time setup, password changes/reset, guest access,
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the Go executable passes **239 of 324
-  tests**, with **24 of 36 files passing**. The remaining **85 failed cases in
-  12 files** are still release blockers, not waived expectations. One new
+- The latest full black-box run against the Go executable passes **238 of 324
+  tests**, with **23 of 36 files passing**. The remaining **86 failed cases in
+  13 files** are still recorded failures, not waived expectations. The preceding full
+  run passed 239/324. The additional file-token case differs only in the
+  request normalizer placeholder (`filetoken:1` versus `filetoken:3`); status
+  200, headers and file hash match. Separate mint requests can cross a second
+  and produce different expiry/signature values in both Go and the released
+  implementation. An isolated unchanged recheck passes 14/14. Fixing that
+  timing assumption belongs to the native contract runner; this does not change
+  the recorded full-run total. One other
   difference is the additional SFTP host-key fingerprint field in provider
   metadata (backup 16/17). Maintenance is now 8/8 on this fixture. Its earlier
   VACUUM failure reproduced legitimate 129 → 130 page growth; the additional

@@ -2,12 +2,25 @@ package app
 
 import (
 	"fmt"
-	"github.com/botnick/telegram-media-downloader/core-service/internal/backup"
 	"net/http"
 	"strconv"
+
+	"github.com/botnick/telegram-media-downloader/core-service/internal/backup"
 )
 
 func registerBackupRoutes(mux *http.ServeMux, a *App) {
+	mux.Handle("GET /api/backup/destinations/{id}/recovery", a.requireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, ok := backupID(w, r)
+		if !ok {
+			return
+		}
+		info, err := a.backups.RecoveryInfo(r.Context(), id)
+		if err != nil {
+			writeJSONError(w, 404, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"success": true, "recovery": info})
+	})))
 	mux.Handle("GET /api/backup/cleanup", a.requireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		jobs, err := a.backups.Cleanup(r.Context(), backupQueryInt(r, "limit", 50), backupQueryInt(r, "offset", 0))
 		if err != nil {

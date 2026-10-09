@@ -1,6 +1,6 @@
 //go:build windows
 
-package download
+package filepublish
 
 import (
 	"golang.org/x/sys/windows"
@@ -10,7 +10,7 @@ import (
 
 // NT rename uses the open directory as the destination root, so replacing
 // an ancestor with a junction cannot redirect publication outside the library.
-func publishExclusiveAt(dir *os.File, from, to string) error {
+func renameExclusiveAt(dir *os.File, from, to string) error {
 	name, err := windows.NewNTUnicodeString(from)
 	if err != nil {
 		return err
@@ -19,7 +19,7 @@ func publishExclusiveAt(dir *os.File, from, to string) error {
 	attrs.Length = uint32(unsafe.Sizeof(attrs))
 	var status windows.IO_STATUS_BLOCK
 	var source windows.Handle
-	err = windows.NtCreateFile(&source, windows.DELETE, &attrs, &status, nil, 0, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT, 0, 0)
+	err = windows.NtCreateFile(&source, windows.DELETE, &attrs, &status, nil, 0, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, windows.FILE_OPEN, windows.FILE_OPEN_REPARSE_POINT, 0, 0)
 	if err != nil {
 		return ntError(err)
 	}

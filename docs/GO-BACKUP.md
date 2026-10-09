@@ -2,10 +2,10 @@
 
 The Go application now implements destination management and local, S3 and SFTP
 mirror/snapshot transports. **Backup migration is incomplete.** FTP/FTPS,
-Google Drive, Dropbox and TGDB payload encryption/restore still need native
-implementations. Existing configuration forms and stored credentials remain
+Google Drive and Dropbox still need native implementations. TGDB v1 encrypted
+uploads, offline decryption and snapshot restore now run in Go. Existing configuration forms and stored credentials remain
 readable. Unsupported transports report unavailable; their queued uploads and
-encrypted payload jobs remain pending with an explicit destination error.
+locked encrypted jobs remain pending with an explicit destination error.
 Those blocked jobs do not consume retry attempts, send plaintext, or invoke
 another runtime. Supported transports use the durable queue's actual retries.
 The frozen backup contracts do not exercise successful remote or encrypted
@@ -207,9 +207,94 @@ An incorrect passphrase is rejected once a verifier exists. An imported legacy
 destination has no verifier: its first accepted passphrase cannot be independently
 confirmed without decrypting an old payload. Disabling encryption preserves its
 salt/verifier so older objects remain recoverable; changing that passphrase is
-not silently treated as key rotation. **Payload streaming and a restore command
-remain required release work.** Go's ordinary AEAD API is not a streaming file
-API; no custom GCM primitive or whole-library RAM buffer was introduced.
+not silently treated as key rotation.
+
+## TGDB v1 encrypted uploads and offline recovery
+
+The released payload format is preserved:
+`TGDB | version=1 | nonce[12] | AES-256-GCM ciphertext | tag[16]`, without AAD.
+The key uses the exact UTF-8 passphrase and the destination salt with
+PBKDF2-HMAC-SHA256, 200,000 iterations. Each encryption generates a new random
+96-bit nonce. This format limits one plaintext file to **64 GiB minus 32 bytes**;
+larger inputs are rejected. This is the GCM limit, not a memory limit.
+
+The project owns a narrow streaming GCM adapter using Go AES/CTR and the pinned
+`ericlagergren/polyval` package for polynomial multiplication. GHASH conversion
+follows RFC 8452 Appendix A; counter, padding and length/tag handling follow
+NIST SP 800-38D. This is project-owned cryptographic composition, not Go's
+high-level AEAD implementation. Neither this adapter nor the dependency has an
+independent security audit. Differential tests, known vectors and fuzzing are
+correctness evidence, not an audit or a proof of side-channel resistance.
+
+A reusable 64 KiB buffer encrypts to a private ciphertext staging file before
+provider upload. This gives checksum/seek/retry code stable bytes and prevents
+reusing a nonce against a source that changes on a second read. It needs free
+local disk for one ciphertext copy per active destination; snapshots also need
+their archive/database staging space. Remote filenames remain unchanged. Upload
+progress and byte totals include the 33-byte TGDB overhead. Fresh nonces mean
+identical plaintext is not skipped by comparing ciphertext from an earlier run.
+
+`native_backup_staging` records ownership before creating ciphertext files.
+Normal completion/error removes them. Startup removes only recorded names in
+batches of 256, preserving unrelated files; failed cleanup retains ownership.
+There is no general directory sweep. Local mirror and snapshot-construction
+staging have separate outstanding cleanup work. Unlock keys remain in memory;
+after restart an encrypted destination waits without spending attempts until an
+administrator unlocks it. It never uploads plaintext to bypass a missing key.
+
+**Save recovery parameters before deleting a destination or losing its database.**
+TGDB v1 contains no salt. The administrator endpoint
+`GET /api/backup/destinations/{id}/recovery` returns a JSON object containing
+`recovery` with format, version, KDF, iterations and `saltHex`. It contains no
+passphrase or derived key. It remains available after disabling encryption.
+Save that response separately from the backup and retain the exact passphrase.
+Existing databases retain the original salt in `backup_destinations.encryption_salt`.
+
+The server executable also runs offline commands; no server configuration or
+other runtime is needed. Passphrase files are read as exact bytes: a trailing
+newline is part of the password. Use a private file prepared without adding an
+unintended newline. The output parent must already exist; the output itself
+must not exist.
+
+```sh
+# Decrypt an individual mirrored file or a snapshot archive.
+tgdl-server backup-decrypt --input saved-backup --output new-file \
+  --passphrase-file private-passphrase --recovery-info saved-recovery.json
+
+# Authenticate, validate and extract a snapshot into a new inactive directory.
+tgdl-server backup-restore --input saved-snapshot --output restored-data \
+  --passphrase-file private-passphrase --recovery-info saved-recovery.json
+
+# An unencrypted archive requires an explicit flag.
+tgdl-server backup-restore --input snapshot.tar.gz --output restored-data --plaintext
+```
+
+`--salt-hex` may replace `--recovery-info`; the command rejects ambiguous or
+unsupported recovery parameters. Restore defaults to 16 GiB extracted bytes and
+100,000 entries, adjustable using `--max-bytes` and `--max-files`. These limits
+bound extraction; encrypted archive staging can still reach the TGDB file-size
+limit. Verify adequate disk capacity before restoring large archives.
+
+Decryption stages plaintext with private permissions and authenticates the
+entire payload before publishing it or giving it to the archive parser. A bad
+key, tag, length or version fails without a final output. Snapshot restore
+allows only the database, config, secret and sessions; rejects traversal,
+links, special files and duplicate files; verifies gzip checksums, JSON shape
+and SQLite integrity/schema; and requires a session key for native sessions.
+It publishes the completed directory using the same OS-level exclusive rename
+as file downloads. An existing destination, including an empty directory,
+cannot be replaced. A forced process kill can leave a private restore staging
+file/directory; offline restore has no persistent cleanup service. After such
+an interruption, remove only the abandoned `.tgdb-restore-*` or
+`.tgdb-restore-dir-*` entry from that command's output parent after confirming
+no restore process still owns it. It has not been authenticated or published.
+
+Snapshots contain state and sessions, **not downloaded media**. Restore media
+from the corresponding mirror separately. Stop the original server before
+starting its restored copy: account sessions and queued remote cleanup work
+must not run simultaneously from two copies. Successful extraction does not
+prove a live Telegram login or provider connection.
+
 
 ## Validation and limits
 
@@ -251,8 +336,14 @@ binaries build, but the foreign binaries have not been run on those platforms.
 The old Node contract runner is still development tooling; its removal remains
 part of the overall migration. No frozen expectations were edited. Backup
 passes 16/17: the unchanged provider-metadata snapshot lacks the new optional
-SFTP host-key field. The full run passes 239/324, leaving 85 failed cases in
-12 files. Maintenance now passes 8/8 with the host-key table present. At the
+SFTP host-key field. The final full run passes 238/324, leaving 86 failed cases in
+13 files; the preceding run passed 239/324. The additional file-token failure
+only changes a normalized request token placeholder after separate mint calls
+cross a second: the response remains 200 with identical headers and file hash.
+Both released and Go minting derive the token from expiry seconds. An isolated
+unchanged file-contract recheck passes 14/14. This timing-sensitive snapshot
+assumption remains recorded, without changing expectations or rounding the
+final total up. Maintenance now passes 8/8 with the host-key table present. At the
 previous checkpoint, its non-growth assertion failed because a quiescent native
 database grew from 129 to 130 pages during VACUUM. That earlier evidence remains
 valid: different schema packing does not make non-growth a general guarantee.
@@ -261,8 +352,8 @@ the added field and the earlier VACUUM finding are documented rather than
 hidden by changing frozen expectations. See
 [the current migration totals and release gates](GO-MIGRATION-STATUS.md).
 
-Further work includes the three remaining remote transports, encrypted upload
-and restore compatibility, bounded concurrency tuning, cleanup of interrupted
+Further work includes the three remaining remote transports, independent crypto
+review, bounded concurrency tuning, cleanup of interrupted
 local/snapshot staging files, the empty S3 reservation boundary described above,
 rebasing completed jobs after changing a destination's root/bucket, and real
 browser/Telegram/provider/migration E2E.
@@ -289,10 +380,42 @@ peak process RSS, or a comparison against the previous implementation.
 The comparable unstripped Linux builds grew from 33,838,568 to 38,669,142 bytes
 after adding the remote transports and dependencies at checkpoint `84e3637`
 (about 4.61 MiB). With pacing, the cleanup journal and ListParts verification,
-the current build is 38,803,200 bytes, another 134,058 bytes. These are
+the build at checkpoint `700db88` is 38,803,200 bytes, another 134,058 bytes. These are
 binary sizes, not resident memory. The implementation uses the maintained AWS
 S3 client and Go SSH/SFTP libraries; no deprecated S3 transfer-manager dependency
 is retained.
+
+Native encrypted-backup regressions additionally cover Local/S3/SFTP queue
+uploads decoded by the standard Go AEAD, unlock/resume after restart, preserved
+salt after disabling encryption, and encrypted/plaintext snapshots restored with
+committed database values, config, sessions and secret intact. Offline command
+tests use independently constructed AEAD fixtures and require no server data
+directory. Wrong keys, corruption, traversal, archive links, duplicate entries,
+extraction limits, missing native session keys and existing outputs are rejected.
+A separate native-process smoke check decrypts and restores independent Python
+AESGCM/PAX-tar fixtures, reopens the restored database, checks session bytes,
+and rejects tampering and replacement without leftover staging.
+Staging recovery tests inject durable ownership for more than one cleanup batch;
+this is a restart fixture, not an encrypted-staging Process.Kill test.
+
+`BenchmarkTGDBEncryption` on the same CPU/toolchain, three runs of 20
+iterations, with other task checks stopped: 1 MiB takes 0.367–0.537 ms;
+64 MiB takes 39.0–51.2 ms. Both sizes allocate 66,937–66,938 bytes and
+12 objects per operation. The input is preallocated warm memory and output
+is discarded; this excludes PBKDF2, disk staging and provider upload. It
+shows size-independent crypto working allocations, not peak process RSS,
+end-to-end speed or a comparison with the old implementation.
+
+The encrypted-backup Linux executable is 38,980,630 bytes, 177,430 bytes
+more than checkpoint `700db88`; this is unstripped file size, not RSS.
+
+The streaming profile matches Go's standard AEAD across empty, partial-block,
+64 KiB boundary, fragmented and 1 MiB inputs; an independent Python vector;
+and a fixed fixture produced by the released streaming encryptor. Both the
+architecture assembly and `-tags=purego` paths pass. A 30-second, two-worker
+fuzz run completed 284,211 executions without a mismatch, varying payload,
+key, nonce and input fragmentation. This is a bounded test run, not exhaustive
+verification.
 
 ## References
 
@@ -302,6 +425,12 @@ is retained.
   database copy while retaining the existing database.
 - [SQLite CREATE TRIGGER](https://www.sqlite.org/lang_createtrigger.html): download
   publication and mirror enqueue are implemented in database transactions.
+- [NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final): GCM profile,
+  authentication lengths and per-invocation plaintext limit.
+- [RFC 8452 Appendix A](https://www.rfc-editor.org/rfc/rfc8452.html#appendix-A):
+  relationship between GHASH and POLYVAL; the payload remains AES-GCM, not GCM-SIV.
+- [POLYVAL package](https://pkg.go.dev/github.com/ericlagergren/polyval): pinned
+  multiplication implementation with architecture assembly and generic Go paths.
 - [Go cipher AEAD](https://pkg.go.dev/crypto/cipher#AEAD): used for the bounded TGDC
   configuration blobs, not a whole-file streaming substitute.
 - [AWS PutObject integrity](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)
