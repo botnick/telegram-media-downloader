@@ -62,7 +62,8 @@ func (a *App) statsPayload(ctx context.Context) (map[string]any, bool) {
 	}
 	apiConfigured := false
 	if telegramCfg, ok := config["telegram"].(map[string]any); ok {
-		apiConfigured = stringOr(telegramCfg["apiId"], "") != "" && stringOr(telegramCfg["apiHash"], "") != ""
+		// Node releases saved apiId as a JSON number.
+		apiConfigured = number(telegramCfg["apiId"], 0) > 0 && stringOr(telegramCfg["apiHash"], "") != ""
 	}
 	return map[string]any{
 		"accounts": accounts, "apiConfigured": apiConfigured, "diskUsage": totalSize,
