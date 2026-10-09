@@ -1,25 +1,13 @@
 version: 2
 updates:
-  # npm — group every patch + minor into one PR per ecosystem so the dashboard
-  # doesn't flood with one PR per dep. Major bumps stay separate (and we only
-  # see them once a month).
-  - package-ecosystem: npm
-    directory: "/"
+  - package-ecosystem: gomod
+    directory: "/core-service"
     schedule:
       interval: monthly
     open-pull-requests-limit: 2
     groups:
-      production:
-        dependency-type: production
+      go-dependencies:
         update-types: ["minor", "patch"]
-      development:
-        dependency-type: development
-        update-types: ["minor", "patch"]
-    ignore:
-      # Skip cosmetic devDep majors that never matter for the runtime; keep
-      # them on minor/patch via the group above.
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
 
   # Docker base image — patch only.
   - package-ecosystem: docker

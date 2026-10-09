@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
 )
 
 func TestRunVersionDoesNotRequireServerConfig(t *testing.T) {
@@ -11,7 +13,7 @@ func TestRunVersionDoesNotRequireServerConfig(t *testing.T) {
 	if code := run([]string{"version"}, &out, &errOut); code != 0 {
 		t.Fatalf("version exit code = %d stderr=%s", code, errOut.String())
 	}
-	if !strings.Contains(out.String(), "tgdl-server") || !strings.Contains(out.String(), "0.4.0") {
+	if !strings.HasPrefix(out.String(), "tgdl-server "+version.AppVersion+" ") {
 		t.Fatalf("version output = %q", out.String())
 	}
 }

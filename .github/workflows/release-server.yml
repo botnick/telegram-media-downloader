@@ -1,0 +1,38 @@
+name: Release native server
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: core-service/go.mod
+          cache-dependency-path: core-service/go.sum
+      - name: Verify Go application
+        run: |
+          go -C core-service vet ./...
+          go -C core-service test ./...
+      - name: Build release archives
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: RELEASE_VERSION=${RELEASE_TAG#v} ./scripts/build-server-release.sh
+      - name: Verify archive and checksums
+        run: |
+          mkdir -p /tmp/tgdl-release-smoke
+          tar -xzf core-service/dist/tgdl-server-${GITHUB_REF_NAME}-linux-amd64.tar.gz -C /tmp/tgdl-release-smoke
+          /tmp/tgdl-release-smoke/tgdl-server version | grep -F "tgdl-server ${GITHUB_REF_NAME#v} "
+          (cd core-service/dist && sha256sum -c SHA256SUMS)
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            core-service/dist/tgdl-server-*.tar.gz
+            core-service/dist/SHA256SUMS
+          fail_on_unmatched_files: true

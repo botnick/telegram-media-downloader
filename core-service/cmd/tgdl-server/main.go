@@ -29,15 +29,17 @@ func main() {
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
 		switch strings.ToLower(args[0]) {
+		case "setup":
+			return setupDashboard(args[1:], os.Stdin, stdout, stderr)
 		case "backup-restore":
 			return backupRestore(args[1:], stdout, stderr)
 		case "backup-decrypt":
 			return backupDecrypt(args[1:], stdout, stderr)
 		case "version", "--version", "-v":
-			_, _ = fmt.Fprintf(stdout, "tgdl-server %s %s/%s %s\n", version.Version, runtime.GOOS, runtime.GOARCH, runtime.Version())
+			_, _ = fmt.Fprintf(stdout, "tgdl-server %s %s/%s %s\n", version.AppVersion, runtime.GOOS, runtime.GOARCH, runtime.Version())
 			return 0
 		case "help", "--help", "-h":
-			_, _ = io.WriteString(stdout, "usage: tgdl-server [version | backup-decrypt --help | backup-restore --help]\nTGDL_DATA_DIR is required for the server.\n")
+			_, _ = io.WriteString(stdout, "usage: tgdl-server [version | setup --help | backup-decrypt --help | backup-restore --help]\nTGDL_DATA_DIR is required for the server.\n")
 			return 0
 		}
 	}

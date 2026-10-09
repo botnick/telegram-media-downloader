@@ -99,4 +99,6 @@ seekbar-service/seekbar-cli
 # Go core (core-service/) build artefacts
 core-service/bin/
 core-service/dist/
+core-service/tgdl-server
+core-service/tgdl-server.exe
 faces-service/tgdl-faces-win-x64.spec

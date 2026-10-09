@@ -11,6 +11,9 @@ RUN GOARM_V="${TARGETVARIANT#v}"; \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${GOARM_V:-7} \
     go build -trimpath -ldflags "-s -w" -o /out/tgdl-server ./cmd/tgdl-server
 
+FROM scratch AS binaries
+COPY --from=build /out/tgdl-server /tgdl-server
+
 FROM debian:bookworm-slim AS runtime
 ARG GIT_SHA=dev
 ARG BUILT_AT=
@@ -21,7 +24,8 @@ ENV PORT=3000 \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini ffmpeg ca-certificates wget \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --home-dir /app --create-home --shell /usr/sbin/nologin tgdl
+    && groupadd --gid 1000 tgdl \
+    && useradd --uid 1000 --gid 1000 --home-dir /app --create-home --shell /usr/sbin/nologin tgdl
 WORKDIR /app
 COPY --from=build /out/tgdl-server /usr/local/bin/tgdl-server
 RUN mkdir -p /app/data /app/data/downloads /app/data/logs /app/data/sessions /app/data/backups \

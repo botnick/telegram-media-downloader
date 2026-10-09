@@ -21,9 +21,7 @@
         html.theme-light .text-gray-400, html.theme-light .text-gray-500 { color: #65737E !important; }
         html.theme-light pre { background: #0F172A !important; }
     </style>
-    <!-- Prebuilt Tailwind utilities (`npm run build:css`). Kept last in
-         <head> so utilities win same-specificity ties, exactly like the
-         old Play CDN <style> that was appended at the end of <head>. -->
+    <!-- Prebuilt dashboard styles. -->
     <link rel="stylesheet" href="/css/tailwind.css">
 </head>
 <body class="flex items-center justify-center min-h-screen p-6">
@@ -48,7 +46,7 @@
         </form>
 
         <div class="mt-6 text-xs text-gray-500 space-y-2">
-            <p><strong>Note:</strong> first-time setup only works from the local machine. If you're seeing this page from another device, run <code class="bg-black px-1 rounded">npm run auth</code> on the host instead.</p>
+            <p><strong>Note:</strong> first-time setup only works from the local machine. If you're seeing this page from another device, run <code class="bg-black px-1 rounded">tgdl-server setup --password-stdin &lt; password-file</code> on the host instead. For Docker, run <code>docker compose exec -T telegram-downloader tgdl-server setup --password-stdin &lt; password-file</code>, then reload this page and sign in. The file must contain your chosen password and be readable only by you.</p>
         </div>
     </div>
 

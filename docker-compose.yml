@@ -2,14 +2,22 @@
 # the embedded browser bundle; no Node sidecar or runtime fallback is used.
 services:
   telegram-downloader:
-    image: ghcr.io/botnick/telegram-media-downloader:latest
-    pull_policy: always
+    image: telegram-media-downloader:go-local
+    build:
+      context: .
+    pull_policy: never
     container_name: telegram-downloader
+    user: "${TGDL_UID:-1000}:${TGDL_GID:-1000}"
     restart: unless-stopped
+    stop_grace_period: 60s
     ports:
       - "${TGDL_PORT:-3000}:3000"
     volumes:
-      - ./data:/app/data
+      - type: bind
+        source: ./data
+        target: /app/data
+        bind:
+          create_host_path: false
     environment:
       - TZ=${TZ:-UTC}
       - PORT=3000

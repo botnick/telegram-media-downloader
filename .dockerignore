@@ -1,29 +1,12 @@
-# Anything we don't actually want shipped into the runtime image.
-.git
-.gitignore
-.github
-.vscode
-.idea
-node_modules
-data
-docs
-tests
-**/*.test.js
-*.md
-!README.md
-!SECURITY.md
-!CHANGELOG.md
-!LICENSE
-.editorconfig
-.nvmrc
-.prettierrc
-.prettierignore
-.eslintrc*
-eslint.config.js
-.husky
-coverage
-.claude
-CLAUDE.md
-# Local Go builds; the image compiles tgdl-core itself.
-core-service/bin
-core-service/dist
+# The image build needs only the Go module and its embedded browser assets.
+**
+!Dockerfile
+!core-service/
+!core-service/**
+core-service/bin/
+core-service/dist/
+core-service/tgdl-server
+core-service/tgdl-server.exe
+core-service/.local/
+core-service/data/
+core-service/.env*

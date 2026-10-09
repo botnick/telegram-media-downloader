@@ -1,13 +1,21 @@
 services:
   telegram-downloader:
-    image: ghcr.io/botnick/telegram-media-downloader:latest
-    pull_policy: always
+    image: telegram-media-downloader:go-local
+    build:
+      context: .
+    pull_policy: never
     container_name: telegram-downloader
+    user: "${TGDL_UID:-1000}:${TGDL_GID:-1000}"
     restart: unless-stopped
+    stop_grace_period: 60s
     ports:
       - "${TGDL_PORT:-3000}:3000"
     volumes:
-      - /volume3/Downloads/telegram-media-downloader/data:/app/data
+      - type: bind
+        source: /volume3/Downloads/telegram-media-downloader/data
+        target: /app/data
+        bind:
+          create_host_path: false
     devices:
       - /dev/dri:/dev/dri
     environment:
@@ -45,7 +53,7 @@ services:
       - AUTOHEAL_CONTAINER_LABEL=autoheal
       - AUTOHEAL_INTERVAL=30
       - AUTOHEAL_START_PERIOD=60
-      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=60
       - TZ=${TZ:-UTC}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

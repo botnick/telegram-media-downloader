@@ -1,7 +1,7 @@
 <p align="center">
   <a href="https://github.com/botnick/telegram-media-downloader/releases/latest"><img src="https://img.shields.io/github/v/release/botnick/telegram-media-downloader?label=Version&color=blue&style=for-the-badge" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
-  <img src="https://img.shields.io/badge/Node.js-22+-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 22+">
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go 1.26">
   <a href="https://github.com/botnick/telegram-media-downloader/pkgs/container/telegram-media-downloader"><img src="https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker image on ghcr.io"></a>
   <a href="https://github.com/botnick/telegram-media-downloader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/botnick/telegram-media-downloader/ci.yml?branch=main&label=CI&style=for-the-badge" alt="CI status"></a>
 </p>
@@ -10,12 +10,12 @@
 
 > This branch is undergoing a Go backend migration and is not ready for
 > production replacement. [Verified coverage and remaining work](docs/GO-MIGRATION-STATUS.md).
-> The feature and installation documentation below describes the existing release.
+> The feature catalog describes the existing release; Quick Start covers this Go branch.
 
 <p align="center">
   <b>A self-hosted Telegram media downloader with a web dashboard.</b><br>
   Download Telegram channel and group media, or back up any chat you belong to — photos, videos, documents,<br>
-  voice messages, GIFs, stickers and Stories — with your own account. Runs in Docker or on Node.js. No bot, no cloud.
+  voice messages, GIFs, stickers and Stories — with your own account. Runs as a native Go binary or in Docker. No bot, no cloud.
 </p>
 
 <p align="center">
@@ -93,37 +93,52 @@
 
 ## Quick Start
 
-### Docker (recommended, about 60 seconds)
+### Docker (local build)
 
 Needs Docker with Compose and a Telegram `apiId` / `apiHash` from [my.telegram.org](https://my.telegram.org).
 
 ```bash
 git clone https://github.com/botnick/telegram-media-downloader.git
 cd telegram-media-downloader
-docker compose up -d
+mkdir -p data
+TGDL_UID=$(id -u) TGDL_GID=$(id -g) docker compose up --build -d
 ```
 
-Open `http://localhost:3000` and follow the setup wizard:
+Set the first dashboard password from a private file containing one line
+(at least 8 characters; restrict the file to your user):
 
-1. **Set password** (first run only)
+```bash
+docker compose exec -T telegram-downloader tgdl-server setup --password-stdin < /path/to/private-password-file
+```
+
+Remove the password file after setup. Open `http://localhost:3000`:
+
+1. **Sign in** with the password you just set
 2. **Settings > Telegram API** — paste `apiId` + `apiHash` from [my.telegram.org](https://my.telegram.org)
 3. **Settings > Accounts > Add** — phone, OTP, optional 2FA
 4. **Start monitor** — or paste a `t.me/` link to download a single message
 
-### One-click cloud deploy
+### Native Go (bare metal)
 
-| Provider | |
-|----------|---|
-| **Render** | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/botnick/telegram-media-downloader) |
-| **Railway** | [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/?template=https://github.com/botnick/telegram-media-downloader) |
-
-### Node.js (bare metal)
+Install Go 1.26.8 and ffmpeg, then from this checkout:
 
 ```bash
-git clone https://github.com/botnick/telegram-media-downloader.git
-cd telegram-media-downloader
-npm ci && npm start
+make build
+./runner.sh
 ```
+
+The launcher defaults to this checkout's `data/` directory. To keep an existing
+library elsewhere, set `TGDL_DATA_DIR` explicitly before starting. PowerShell:
+
+```powershell
+go -C core-service build -trimpath -o tgdl-server.exe ./cmd/tgdl-server
+.\watchdog.ps1
+```
+
+These launchers execute the Go server directly. Use Docker, systemd or a Windows
+service for automatic restart. The image is built locally from this branch;
+Compose does not pull an older published runtime. Browser JavaScript stays in
+the embedded dashboard and requires no Node installation. See [deployment](docs/DEPLOY.md).
 
 ---
 
@@ -333,13 +348,17 @@ Expose via Cloudflare Tunnel or any reverse proxy, then paste the URLs in **Main
 
 | Command | Description |
 |---------|-------------|
-| `npm start` | Dashboard at `http://localhost:3000` |
-| `npm run dev` | Dashboard with auto-restart on edits |
-| `npm run monitor` | Headless realtime monitor (no UI) |
-| `npm run history` | Bulk backfill from terminal |
-| `npm run doctor` | Diagnostics (Node, SQLite, ffmpeg, sidecars) |
-| `npm run auth` | Reset dashboard password |
-| `npm test` | Run the vitest suite |
+| `make build` | Build the native server |
+| `./runner.sh` | Run the dashboard with the embedded browser assets |
+| `./runner.sh version` | Show the application version |
+| `make test` | Run native Go tests |
+| `make check` | Formatting, vet and Go race checks |
+| `./runner.sh backup-restore --help` | Offline snapshot recovery |
+
+Telegram monitoring, history and account setup use the dashboard. Optional
+legacy CLI commands are not part of the native server. Development references
+below describe the previous release where noted; current delivery scope is in
+[the migration status](docs/GO-MIGRATION-STATUS.md).
 
 ---
 

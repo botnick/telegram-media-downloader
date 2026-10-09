@@ -71,7 +71,7 @@ func (a *App) gateway(next http.Handler) http.Handler {
 		upgrade := websocket.IsWebSocketUpgrade(r)
 		if !auth.IsConfigured(config) || !webBoolValue(web, "enabled", true) {
 			if strings.HasPrefix(r.URL.Path, "/api/") || upgrade || strings.HasPrefix(r.URL.Path, "/v1/") {
-				writeJSON(w, 503, map[string]any{"error": "Web dashboard not initialised. Run `npm run auth` to set a password.", "setupRequired": true})
+				writeJSON(w, 503, map[string]any{"error": "Web dashboard not initialised. Run `tgdl-server setup --password-stdin` to set a password.", "setupRequired": true})
 			} else {
 				redirect(w, r, "/setup-needed.html")
 			}

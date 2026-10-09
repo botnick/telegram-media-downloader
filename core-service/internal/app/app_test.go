@@ -198,6 +198,23 @@ func TestAuthSetupLoginAndLogout(t *testing.T) {
 	}
 	defer a.Close()
 	setupBody, _ := json.Marshal(map[string]string{"password": "correct horse"})
+	for _, tc := range []struct{ remote, header, value string }{
+		{"172.17.0.1:1234", "", ""},
+		{"127.0.0.1:1234", "Forwarded", "for=127.0.0.1"},
+		{"127.0.0.1:1234", "X-Forwarded-For", "127.0.0.1"},
+		{"192.0.2.1:1234", "X-Forwarded-For", "127.0.0.1"},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/setup", bytes.NewReader(setupBody))
+		req.RemoteAddr = tc.remote
+		if tc.header != "" {
+			req.Header.Set(tc.header, tc.value)
+		}
+		rr := httptest.NewRecorder()
+		a.Handler().ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("setup from %s (%s) = %d; expected 403", tc.remote, tc.header, rr.Code)
+		}
+	}
 	setupReq := httptest.NewRequest(http.MethodPost, "/api/auth/setup", bytes.NewReader(setupBody))
 	setupReq.RemoteAddr = "127.0.0.1:1234"
 	setup := httptest.NewRecorder()

@@ -65,7 +65,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !configured {
-		writeJSON(w, 503, map[string]any{"error": "Web dashboard not initialised. Run `npm run auth`.", "setupRequired": true})
+		writeJSON(w, 503, map[string]any{"error": "Web dashboard not initialised. Run `tgdl-server setup --password-stdin`.", "setupRequired": true})
 		return
 	}
 	if role == "" {
@@ -112,7 +112,7 @@ func (a *App) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !localBootstrap(r) {
-		writeJSONError(w, 403, "Initial setup must be done from the local machine. Run `npm run auth` instead.")
+		writeJSONError(w, 403, "Initial setup must be done from the local machine. Run `tgdl-server setup --password-stdin` on the host or inside the running container.")
 		return
 	}
 	if err := a.config.SetAdminPassword(r.Context(), password); err != nil {

@@ -16,6 +16,44 @@ just to reproduce every historical API. The legacy contract totals below remain
 honest compatibility evidence, but optional feature failures are not a mandate to
 build those features. Production must still use Go without a Node runtime fallback.
 
+## Build and delivery path
+
+The root Makefile, direct Unix/PowerShell launchers and application CI now use
+Go without npm. Docker Compose builds this checkout with a local tag rather than
+pulling an older published image; bind paths must exist and UID/GID are explicit.
+Production builds send only the Go module and embedded assets to the builder.
+CI checks the native image before publication, and app tags build server archives
+plus checksums with `scripts/build-server-release.sh`. The obsolete companion
+release workflow was removed. Application version output now matches AppVersion.
+
+Initial setup from a Docker-published port correctly remains forbidden. The
+native `tgdl-server setup --password-stdin` command now configures the running
+server over its own loopback interface. It accepts no password argument, ignores
+proxy environment variables, refuses redirects, bounds reads, and cannot replace
+an existing password. Setup-page/API instructions point to this command.
+
+Packaging verification on 2026-10-09:
+
+- Native build, vet and the full server-command race suite pass. Focused setup
+  tests also pass under the race detector, including remote/forwarded-header
+  rejection and password setup/login/logout.
+- An actual Linux amd64 image passes fresh host-owned bind storage, non-root
+  UID/GID 1000, no `node`/`npm`/`npx`, external setup rejection, local command setup,
+  duplicate-setup rejection, login, embedded dashboard/assets, exact ranged media
+  bytes, persistent login/library after restart, and graceful exit code 0.
+- Linux/Windows amd64 release archives build and pass SHA-256 checks; the extracted
+  Linux binary runs the setup command help. Unix launcher works from another cwd.
+- Both Compose manifests validate; shell scripts and workflow YAML parse. Windows
+  execution, other release architectures and remote GitHub Actions have not been
+  run in this packaging check. No image, release or branch was published.
+
+Old backend source, npm metadata and the historical contract harness remain
+migration references outside the production build. They are still cleanup work;
+this packaging correction does not claim every Node file has been removed or
+that live Telegram/browser E2E is complete. Optional feature ports remain out of
+scope. The broad contract results below are from the preceding runtime checkpoint;
+packaging-only changes do not require rerunning all optional contract scenarios.
+
 ## Verified in the current application
 
 - Native backup management and local/S3/SFTP/FTP mirror/snapshot jobs include automatic
