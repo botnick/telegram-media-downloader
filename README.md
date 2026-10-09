@@ -108,7 +108,7 @@ Set the first dashboard password from a private file containing one line
 (at least 8 characters; restrict the file to your user):
 
 ```bash
-docker compose exec -T telegram-downloader tgdl-server setup --password-stdin < /path/to/private-password-file
+docker compose exec -T -u node telegram-downloader tgdl-server setup --password-stdin < /path/to/private-password-file
 ```
 
 Remove the password file after setup. Open `http://localhost:3000`:

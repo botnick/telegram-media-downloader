@@ -38,7 +38,7 @@ on one line (8 characters minimum, UTF-8, 4096 bytes maximum). With the server
 running:
 
 ```sh
-docker compose exec -T telegram-downloader tgdl-server setup --password-stdin < /path/to/private-password-file
+docker compose exec -T -u node telegram-downloader tgdl-server setup --password-stdin < /path/to/private-password-file
 # Bare metal, beside the running server:
 PORT=3000 ./core-service/tgdl-server setup --password-stdin < /path/to/private-password-file
 ```

@@ -3,6 +3,8 @@
 !Dockerfile
 !core-service/
 !core-service/**
+!docker/
+!docker/**
 core-service/bin/
 core-service/dist/
 core-service/tgdl-server

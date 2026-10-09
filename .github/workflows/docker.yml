@@ -50,19 +50,29 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --entrypoint=sh tgdl-smoke:candidate -ec '
-            test "$(id -u)" != 0
             test -x /usr/local/bin/tgdl-server
-            for command in node npm npx; do
+            for command in npm npx; do
               if command -v "$command" >/dev/null 2>&1; then exit 1; fi
             done
+            # `node` is only the 2.x compose compatibility shim, never a runtime.
+            if node --version >/dev/null 2>&1; then exit 1; fi
             /usr/local/bin/tgdl-server version
           '
-          trap 'docker rm -f tgdl-smoke >/dev/null 2>&1 || true' EXIT
+          trap 'docker rm -f tgdl-smoke tgdl-smoke-2x >/dev/null 2>&1 || true' EXIT
           docker run -d --name tgdl-smoke tgdl-smoke:candidate
+          # A 2.x Synology compose overrides the command and healthcheck.
+          docker run -d --name tgdl-smoke-2x --health-cmd 'node scripts/healthcheck.js' --health-interval 2s tgdl-smoke:candidate node src/web/server.js
           for attempt in $(seq 1 30); do
             if docker exec tgdl-smoke wget -qO- http://127.0.0.1:3000/health; then
+              # The server drops root in the entrypoint and runs as uid 1000.
+              test "$(docker exec tgdl-smoke sh -c 'stat -c %u /proc/$(pidof tgdl-server)')" = 1000
+              for wait in $(seq 1 20); do
+                test "$(docker inspect --format '{{.State.Health.Status}}' tgdl-smoke-2x)" = healthy && break
+                sleep 1
+              done
+              test "$(docker inspect --format '{{.State.Health.Status}}' tgdl-smoke-2x)" = healthy
               docker exec tgdl-smoke wget -qO- http://127.0.0.1:3000/setup-needed.html >/dev/null
-              printf '%s\n' 'ci-setup-fixture-password' | docker exec -i tgdl-smoke tgdl-server setup --password-stdin
+              printf '%s\n' 'ci-setup-fixture-password' | docker exec -i -u node tgdl-smoke tgdl-server setup --password-stdin
               docker stop --time 60 tgdl-smoke >/dev/null
               test "$(docker inspect --format '{{.State.ExitCode}}' tgdl-smoke)" = 0
               exit 0
