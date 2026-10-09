@@ -7,13 +7,23 @@ functionality. Do not deploy this branch over a working library yet.
 
 ## Verified in the current application
 
+- Native backup management and local mirror/snapshot jobs now include automatic
+  transactional enqueue, edit revisions, real file comparison, retries, pause,
+  cron, consistent archives and a durable retention outbox. Remote providers and
+  TGDB payload streaming/restore remain incomplete even when frozen contracts
+  pass; their pending jobs display an explicit error without sending plaintext.
+  See [scope and independent native tests](GO-BACKUP.md).
+
 - Authentication, first-time setup, password changes/reset, guest access,
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the Go executable passes **223 of 324
-  tests**, with **24 of 36 files passing**. The remaining **101 failed cases in
-  12 files** are still release blockers, not waived expectations. These are
+- The latest full black-box run against the Go executable passes **239 of 324
+  tests**, with **24 of 36 files passing**. The remaining **85 failed cases in
+  12 files** are still release blockers, not waived expectations. These include one new frozen VACUUM assumption: SQLite now repacks the
+  small migrated database into one additional page. Actual page counts remain
+  visible; the old non-increasing-size assertion is not waived or falsified.
+  A native isolated-writer probe reproduces 129 → 130 pages. These are
   fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
 - Passing domains include accounts, authentication, shares, queue controls,
   chats, downloads/groups, files/static assets, configuration, AI library reads
@@ -239,11 +249,13 @@ migration; the current source tree is not yet free of Node dependencies.
   and full browser interaction. Durable Go pause/resume/cancel/retry controls
   and the queue snapshot are implemented, but the complete queue workflow still
   needs browser and performance coverage.
-- Complete backup, cluster/peer/cluster-WebSocket, AI-job, NSFW, seekbar
-  maintenance, recovery, purge, security,
-  update and periodic WebSocket contracts. These are the 12 failing files in
-  the latest full run. A low-level Go
-  projection or helper is not a replacement for the public workflow.
+- Complete backup remote transports, encrypted payload streaming and restore.
+  Passing its frozen local-upload/control contracts is not complete backup coverage.
+- Resolve the 12 remaining contract files: cluster/peer/cluster-WebSocket,
+  AI jobs, NSFW, seekbar, maintenance, recovery, purge, security, updates and
+  periodic WebSocket events. Three cleanup corrections and the VACUUM page
+  growth assumption are documented differences, still counted as failures.
+  A low-level Go projection or helper is not a replacement for a public workflow.
 - Finish the native test runner, remove the old server sources and launchers,
   and run the full HTTP/WebSocket/browser/data-migration E2E and performance
   checks. Live Telegram E2E still requires an authorized test account.

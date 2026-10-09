@@ -59,6 +59,7 @@ type App struct {
 	closeOnce        sync.Once
 	closeErr         error
 
+	backups             *backup.Manager
 	db                  *store.DB
 	library             *download.Library
 	sessions            *auth.SessionStore
@@ -220,6 +221,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerConfigWriteRoutes(mux, a)
 	registerMediaRoutes(mux, a)
 	registerArchiveRoutes(mux, a)
+	registerBackupRoutes(mux, a)
 	registerShareRoutes(mux, a)
 	registerReadRoutes(mux, read, a.requireSession)
 	mux.HandleFunc("GET /ws", a.handleWebSocket)
@@ -239,6 +241,17 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	if err != nil {
 		a.Close()
 		return nil, err
+	}
+	a.backups, err = backup.NewManager(a.ctx, backup.Options{
+		Writer: db.Writer, Reader: db.Reader, DataDir: a.dataDir, Secret: a.shareSecret,
+		Publish: func(kind string, payload map[string]any) {
+			a.hub.Broadcast(ws.Event{Type: kind, Flat: true, Payload: payload, Roles: []string{"admin"}})
+		},
+		LockSnapshot: func() func() { a.configMu.Lock(); return a.configMu.Unlock },
+	})
+	if err != nil {
+		a.Close()
+		return nil, fmt.Errorf("initialize native backups: %w", err)
 	}
 	if monitor, ok := stored["monitor"].(map[string]any); ok && monitor["autoStart"] == true {
 		a.bootWG.Add(1)
@@ -547,6 +560,9 @@ func (a *App) Close() error {
 		a.groupRefreshMu.Unlock()
 		if a.cancel != nil {
 			a.cancel()
+		}
+		if a.backups != nil {
+			a.backups.Close()
 		}
 		a.chatRecheckWG.Wait()
 		a.groupRefreshWG.Wait()

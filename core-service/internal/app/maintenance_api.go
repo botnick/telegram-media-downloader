@@ -410,6 +410,7 @@ func (a *App) handleDBVacuum(w http.ResponseWriter, r *http.Request) {
 	attempts, _ := a.vacuumStatus["attempts"].(int)
 	successes, _ := a.vacuumStatus["successes"].(int)
 	status := maintenanceIdleStatus("dbVacuum")
+	status["failures"] = a.vacuumStatus["failures"]
 	started := time.Now()
 	status["attempts"], status["running"], status["stage"], status["startedAt"] = attempts+1, true, "vacuuming", started.UnixMilli()
 	a.vacuumStatus = cloneConfigValue(status).(map[string]any)
@@ -423,21 +424,44 @@ func (a *App) handleDBVacuum(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) runDBVacuum(status map[string]any, started time.Time, previousSuccesses int) {
 	a.hub.Broadcast(ws.Event{Type: "db_vacuum_progress", Flat: true, Payload: map[string]any{"stage": "vacuuming"}})
-	var beforePages, pageSize int64
-	_ = a.db.Writer.QueryRow("PRAGMA page_count").Scan(&beforePages)
-	_ = a.db.Writer.QueryRow("PRAGMA page_size").Scan(&pageSize)
-	beforeBytes := beforePages * pageSize
-	_, _ = a.db.Writer.Exec("VACUUM")
-	var afterPages int64
-	_ = a.db.Writer.QueryRow("PRAGMA page_count").Scan(&afterPages)
-	afterBytes := afterPages * pageSize
-	result := map[string]any{"beforeBytes": beforeBytes, "afterBytes": afterBytes, "reclaimedBytes": maxInt64(0, beforeBytes-afterBytes)}
+	// Hold the sole writer connection across both measurements and VACUUM so
+	// another application write cannot be included on only one side. SQLite
+	// may still grow a small database while repacking its schema/B-trees.
+	var beforePages, afterPages, pageSize int64
+	conn, err := a.db.Writer.Conn(a.ctx)
+	if err == nil {
+		defer conn.Close()
+		err = conn.QueryRowContext(a.ctx, "PRAGMA page_count").Scan(&beforePages)
+		if err == nil {
+			err = conn.QueryRowContext(a.ctx, "PRAGMA page_size").Scan(&pageSize)
+		}
+		if err == nil {
+			_, err = conn.ExecContext(a.ctx, "VACUUM")
+		}
+		if err == nil {
+			err = conn.QueryRowContext(a.ctx, "PRAGMA page_count").Scan(&afterPages)
+		}
+	}
 	finished := time.Now()
-	status["running"], status["stage"], status["finishedAt"], status["durationMs"], status["successes"], status["result"] = false, "done", finished.UnixMilli(), finished.Sub(started).Milliseconds(), previousSuccesses+1, result
+	status["running"], status["finishedAt"], status["durationMs"] = false, finished.UnixMilli(), finished.Sub(started).Milliseconds()
+	payload := map[string]any{"kind": "dbVacuum", "durationMs": finished.Sub(started).Milliseconds()}
+	if err != nil {
+		status["stage"], status["error"], status["result"], status["successes"] = "error", err.Error(), nil, previousSuccesses
+		failures, _ := status["failures"].(int)
+		status["failures"] = failures + 1
+		payload["error"] = err.Error()
+	} else {
+		beforeBytes, afterBytes := beforePages*pageSize, afterPages*pageSize
+		result := map[string]any{"beforeBytes": beforeBytes, "afterBytes": afterBytes, "reclaimedBytes": maxInt64(0, beforeBytes-afterBytes)}
+		status["stage"], status["error"], status["successes"], status["result"] = "done", nil, previousSuccesses+1, result
+		for k, v := range result {
+			payload[k] = v
+		}
+	}
 	a.maintenanceMu.Lock()
 	a.vacuumStatus = cloneConfigValue(status).(map[string]any)
 	a.maintenanceMu.Unlock()
-	a.hub.Broadcast(ws.Event{Type: "db_vacuum_done", Flat: true, Payload: map[string]any{"afterBytes": afterBytes, "beforeBytes": beforeBytes, "durationMs": finished.Sub(started).Milliseconds(), "kind": "dbVacuum", "reclaimedBytes": maxInt64(0, beforeBytes-afterBytes)}})
+	a.hub.Broadcast(ws.Event{Type: "db_vacuum_done", Flat: true, Payload: payload})
 }
 
 func maxInt64(a, b int64) int64 {

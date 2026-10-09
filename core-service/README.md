@@ -58,6 +58,10 @@ Useful commands:
   DCs. Handshakes are bounded and invalid settings cannot silently select direct
   connections. See [proxy configuration and verification](../docs/GO-PROXIES.md).
 
+- Native local mirror/snapshot backups now cover durable automatic enqueue,
+  destination controls, retry/pause, cron and retention. Remote transports and
+  encrypted payload streaming remain incomplete. See [backup scope and tests](../docs/GO-BACKUP.md).
+
 ## Data safety
 
 SQLite uses WAL, `synchronous=NORMAL`, `busy_timeout=5000` and foreign keys.

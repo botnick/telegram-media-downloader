@@ -1,0 +1,278 @@
+[
+  {
+    "configSchema": [
+      {
+        "help": "Absolute path to the destination directory. The dashboard process must have read+write permissions there.",
+        "label": "Root path",
+        "name": "rootPath",
+        "placeholder": "/mnt/nas/tgdl-backup",
+        "required": true,
+        "type": "text"
+      }
+    ],
+    "displayName": "Local filesystem / NAS mount",
+    "name": "local"
+  },
+  {
+    "configSchema": [
+      {
+        "help": "Full URL. AWS users can leave blank to use the default. R2: https://<acct>.r2.cloudflarestorage.com. B2: https://s3.<region>.backblazeb2.com.",
+        "label": "Endpoint URL",
+        "name": "endpoint",
+        "placeholder": "https://s3.us-east-1.amazonaws.com",
+        "type": "text"
+      },
+      {
+        "help": "R2: \"auto\". B2: matches the endpoint.",
+        "label": "Region",
+        "name": "region",
+        "placeholder": "us-east-1",
+        "required": true,
+        "type": "text"
+      },
+      {
+        "label": "Bucket",
+        "name": "bucket",
+        "placeholder": "tgdl-backup",
+        "required": true,
+        "type": "text"
+      },
+      {
+        "label": "Access key ID",
+        "name": "accessKeyId",
+        "required": true,
+        "secret": true,
+        "type": "text"
+      },
+      {
+        "label": "Secret access key",
+        "name": "secretAccessKey",
+        "required": true,
+        "secret": true,
+        "type": "password"
+      },
+      {
+        "help": "Object keys will be stored under this prefix. Trailing slash optional.",
+        "label": "Prefix (optional)",
+        "name": "prefix",
+        "placeholder": "tgdl/",
+        "type": "text"
+      },
+      {
+        "help": "MinIO and some self-hosted gateways require path-style. Cloud S3 / R2 / B2 don't.",
+        "label": "Force path-style addressing",
+        "name": "forcePathStyle",
+        "options": [
+          {
+            "label": "Auto (off for AWS, on for MinIO)",
+            "value": "auto"
+          },
+          {
+            "label": "On",
+            "value": "true"
+          },
+          {
+            "label": "Off",
+            "value": "false"
+          }
+        ],
+        "type": "select"
+      }
+    ],
+    "displayName": "S3-compatible (AWS / R2 / B2 / MinIO / Wasabi)",
+    "name": "s3"
+  },
+  {
+    "configSchema": [
+      {
+        "label": "Host",
+        "name": "host",
+        "placeholder": "nas.lan",
+        "required": true,
+        "type": "text"
+      },
+      {
+        "label": "Port",
+        "name": "port",
+        "placeholder": "22",
+        "type": "number"
+      },
+      {
+        "label": "Username",
+        "name": "username",
+        "required": true,
+        "type": "text"
+      },
+      {
+        "help": "Provide a password OR a private key, not both. If both, the key wins.",
+        "label": "Password",
+        "name": "password",
+        "secret": true,
+        "type": "password"
+      },
+      {
+        "label": "Private key (PEM)",
+        "name": "privateKey",
+        "placeholder": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
+        "secret": true,
+        "type": "textarea"
+      },
+      {
+        "help": "Only needed if the private key is encrypted.",
+        "label": "Key passphrase",
+        "name": "passphrase",
+        "secret": true,
+        "type": "password"
+      },
+      {
+        "help": "Absolute path on the remote where uploads land. Will be auto-created.",
+        "label": "Remote root",
+        "name": "remoteRoot",
+        "placeholder": "/home/user/tgdl-backup",
+        "required": true,
+        "type": "text"
+      }
+    ],
+    "displayName": "SFTP (SSH file transfer)",
+    "name": "sftp"
+  },
+  {
+    "configSchema": [
+      {
+        "label": "Host",
+        "name": "host",
+        "placeholder": "ftp.example.com",
+        "required": true,
+        "type": "text"
+      },
+      {
+        "label": "Port",
+        "name": "port",
+        "placeholder": "21",
+        "type": "number"
+      },
+      {
+        "label": "Username",
+        "name": "username",
+        "required": true,
+        "type": "text"
+      },
+      {
+        "help": "Empty for anonymous FTP.",
+        "label": "Password",
+        "name": "password",
+        "secret": true,
+        "type": "password"
+      },
+      {
+        "help": "Most modern hosts use Explicit FTPS. Plain FTP transmits credentials in cleartext.",
+        "label": "TLS mode",
+        "name": "secure",
+        "options": [
+          {
+            "label": "Plain FTP (no TLS)",
+            "value": "false"
+          },
+          {
+            "label": "Explicit FTPS — AUTH TLS on port 21",
+            "value": "control"
+          },
+          {
+            "label": "Implicit FTPS — TLS from connect on port 990",
+            "value": "true"
+          }
+        ],
+        "type": "select"
+      },
+      {
+        "help": "Absolute path on the remote where uploads land. Auto-created.",
+        "label": "Remote root",
+        "name": "remoteRoot",
+        "placeholder": "/tgdl-backup",
+        "required": true,
+        "type": "text"
+      }
+    ],
+    "displayName": "FTP / FTPS",
+    "name": "ftp"
+  },
+  {
+    "configSchema": [
+      {
+        "help": "From Google Cloud Console → Credentials → OAuth client ID (Desktop app).",
+        "label": "OAuth client ID",
+        "name": "clientId",
+        "placeholder": "...apps.googleusercontent.com",
+        "required": true,
+        "type": "text"
+      },
+      {
+        "label": "OAuth client secret",
+        "name": "clientSecret",
+        "required": true,
+        "secret": true,
+        "type": "password"
+      },
+      {
+        "help": "Generate via the Google OAuth Playground — see the walkthrough below.",
+        "label": "OAuth refresh token",
+        "name": "refreshToken",
+        "required": true,
+        "secret": true,
+        "type": "password"
+      },
+      {
+        "help": "A folder with this name is auto-created at My Drive root if folderId is empty.",
+        "label": "Backup folder name",
+        "name": "folderName",
+        "placeholder": "tgdl-backup",
+        "type": "text"
+      },
+      {
+        "help": "Paste the destination folder ID from its Drive URL if you've already made one.",
+        "label": "Folder ID (optional)",
+        "name": "folderId",
+        "placeholder": "leave blank to create one",
+        "type": "text"
+      }
+    ],
+    "displayName": "Google Drive",
+    "name": "gdrive"
+  },
+  {
+    "configSchema": [
+      {
+        "help": "Found in Dropbox developer console → Apps → Settings tab.",
+        "label": "App key",
+        "name": "appKey",
+        "required": true,
+        "type": "text"
+      },
+      {
+        "label": "App secret",
+        "name": "appSecret",
+        "required": true,
+        "secret": true,
+        "type": "password"
+      },
+      {
+        "help": "Long-lived token from the OAuth flow. See the walkthrough below.",
+        "label": "Refresh token",
+        "name": "refreshToken",
+        "required": true,
+        "secret": true,
+        "type": "password"
+      },
+      {
+        "help": "Absolute path inside the app folder (or full Dropbox if your app has full-access scope).",
+        "label": "Remote root path",
+        "name": "remoteRoot",
+        "placeholder": "/tgdl-backup",
+        "required": true,
+        "type": "text"
+      }
+    ],
+    "displayName": "Dropbox",
+    "name": "dropbox"
+  }
+]
