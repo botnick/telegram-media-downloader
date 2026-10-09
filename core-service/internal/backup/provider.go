@@ -75,6 +75,8 @@ func nativeProvider(_ context.Context, name string, cfg map[string]any) (Provide
 		p, err = newS3(cfg)
 	case "sftp":
 		p, err = newSFTP(cfg, nil)
+	case "ftp":
+		p, err = newFTP(cfg)
 	default:
 		return nil, fmt.Errorf("native backup provider %q is not available yet", name)
 	}
@@ -104,6 +106,9 @@ func (m *Manager) provider(ctx context.Context, d destination, cfg map[string]an
 	p, err := nativeProvider(ctx, d.Provider, cfg)
 	if err != nil {
 		return nil, err
+	}
+	if ftp, ok := p.(*ftpProvider); ok {
+		ftp.journal = journal
 	}
 	if s3, ok := p.(*s3Provider); ok {
 		s3.journal = journal

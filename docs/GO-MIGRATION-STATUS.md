@@ -7,18 +7,21 @@ functionality. Do not deploy this branch over a working library yet.
 
 ## Verified in the current application
 
-- Native backup management and local/S3/SFTP mirror/snapshot jobs include automatic
+- Native backup management and local/S3/SFTP/FTP mirror/snapshot jobs include automatic
   transactional enqueue, edit revisions, real file comparison, retries, pause,
   cron, consistent archives and a durable retention outbox. Native wire fixtures
   verify signed S3 multipart transfers and SSH/SFTP with persisted host-key
   checks. Upload pacing is separate from network deadlines. A durable journal
-  cleans owned S3 multipart uploads and SFTP temporary files after process death,
+  cleans owned S3 multipart uploads and SFTP/FTP temporary files after process death,
   including destination edits/deletion; actual child-process kill tests pass.
-  Local/snapshot staging cleanup and the empty S3 reservation boundary remain
+  FTP supports explicit/implicit TLS, strict MLSD listings and content readback
+  before rename. A separate pyftpdlib server verifies the real HTTP/queue/upload/
+  encrypted-snapshot/offline-restore path over loopback.
+  Local/snapshot staging cleanup and empty S3/FTP reservation boundaries remain
   open. TGDB v1 encrypted uploads and offline decrypt/restore commands now use bounded
   buffers, private staging and authentication before publication. Native tests
   restore database/config/sessions and reject corrupt or unsafe archives; this
-  is not an independent crypto audit or live recovery E2E. FTP/FTPS, Drive and
+  is not an independent crypto audit or live recovery E2E. Drive and
   Dropbox remain incomplete even when frozen contracts pass; unsupported or
   locked pending jobs display an explicit error without sending plaintext.
   See [scope and independent native tests](GO-BACKUP.md).
@@ -27,17 +30,17 @@ functionality. Do not deploy this branch over a working library yet.
   session expiry/renewal, cross-origin guards and browser WebSocket transport.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
-- The latest full black-box run against the Go executable passes **238 of 324
-  tests**, with **23 of 36 files passing**. The remaining **86 failed cases in
-  13 files** are still recorded failures, not waived expectations. The preceding full
-  run passed 239/324. The additional file-token case differs only in the
-  request normalizer placeholder (`filetoken:1` versus `filetoken:3`); status
-  200, headers and file hash match. Separate mint requests can cross a second
-  and produce different expiry/signature values in both Go and the released
-  implementation. An isolated unchanged recheck passes 14/14. Fixing that
-  timing assumption belongs to the native contract runner; this does not change
-  the recorded full-run total. One other
-  difference is the additional SFTP host-key fingerprint field in provider
+- The latest full black-box run against the FTP-enabled Go executable passes
+  **239 of 324 tests**, with **24 of 36 files passing** (61.96 seconds).
+  The remaining **85 failed cases in 12 files** are recorded failures, not
+  waived expectations. The preceding encrypted-backup checkpoint passed
+  238/324: a file-token case differed only in the request normalizer placeholder
+  (`filetoken:1` versus `filetoken:3`); status 200, headers and file hash matched.
+  Separate mint requests can cross a second and produce different expiry/signature
+  values in both implementations. This run's 14 file cases pass, but that
+  timing assumption still needs correction in the native contract runner.
+  Another difference is the additional SFTP host-key fingerprint and FTP
+  passive-mode/CA fields in provider
   metadata (backup 16/17). Maintenance is now 8/8 on this fixture. Its earlier
   VACUUM failure reproduced legitimate 129 → 130 page growth; the additional
   host-key table changes the fixture's packing again. Actual sizes remain
@@ -267,13 +270,14 @@ migration; the current source tree is not yet free of Node dependencies.
   and full browser interaction. Durable Go pause/resume/cancel/retry controls
   and the queue snapshot are implemented, but the complete queue workflow still
   needs browser and performance coverage.
-- Complete FTP/FTPS, Drive, Dropbox, encrypted payload streaming/restore,
-  local/snapshot staging cleanup and the empty S3 reservation boundary. S3/SFTP wire
-  fixtures do not establish real provider or full restore E2E coverage.
+- Complete Drive, Dropbox, local/snapshot staging cleanup and empty S3/FTP
+  reservation boundaries. Validate encrypted backup and restore with real
+  providers; S3/SFTP/FTP wire fixtures and loopback interoperability checks do
+  not establish live provider or full migration E2E coverage.
 - Resolve the 12 remaining contract files: cluster/peer/cluster-WebSocket,
   AI jobs, NSFW, seekbar, backup provider metadata, recovery, purge, security,
   updates and periodic WebSocket events. Three cleanup corrections and the
-  added SFTP host-key field are documented differences, still counted as failures.
+  added SFTP/FTP form fields are documented differences, still counted as failures.
   The old VACUUM non-growth assumption also remains incorrect in general even
   though the current schema's fixture passes it.
   A low-level Go projection or helper is not a replacement for a public workflow.

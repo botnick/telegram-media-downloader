@@ -159,6 +159,16 @@ func (m *Manager) reclaimTransfer(ctx context.Context, r pendingTransfer) error 
 			return err
 		}
 		return p.abortMultipart(ctx, r.name, r.uploadID)
+	case "ftp-temp":
+		if r.provider != "ftp" {
+			return errors.New("invalid FTP cleanup record")
+		}
+		p, err := newFTP(cfg)
+		if err != nil {
+			return err
+		}
+		defer p.Close()
+		return p.removeOwnedTemporary(ctx, r.name)
 	case "sftp-temp":
 		if r.provider != "sftp" {
 			return errors.New("invalid SFTP cleanup record")

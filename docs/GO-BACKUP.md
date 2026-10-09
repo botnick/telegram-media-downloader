@@ -1,7 +1,7 @@
 # Native backup migration
 
-The Go application now implements destination management and local, S3 and SFTP
-mirror/snapshot transports. **Backup migration is incomplete.** FTP/FTPS,
+The Go application now implements destination management and local, S3, SFTP and
+FTP/FTPS mirror/snapshot transports. **Backup migration is incomplete.**
 Google Drive and Dropbox still need native implementations. TGDB v1 encrypted
 uploads, offline decryption and snapshot restore now run in Go. Existing configuration forms and stored credentials remain
 readable. Unsupported transports report unavailable; their queued uploads and
@@ -21,7 +21,8 @@ cleanup records (at most 200 per page), including their state, error and next
 retry time. It never returns credentials or multipart upload IDs. Backup
 WebSocket events and logs are flat and administrator-only.
 Provider metadata retains the released form fields and adds an optional SSH
-host fingerprint for SFTP. The presence of a form does not establish that all
+host fingerprint for SFTP, plus passive-mode and private-CA settings for FTP.
+The presence of a form does not establish that all
 six transports are ready.
 
 Provider credentials retain the existing TGDC v1 layout:
@@ -150,10 +151,68 @@ provide directory-handle-relative opens, so this cannot prevent an untrusted
 server/account from swapping paths between checks; use a trusted remote account
 and, where appropriate, a server-side chroot. No real NAS deployment was tested.
 
+## Native FTP/FTPS transport
+
+The provider uses Go TCP/TLS directly, with no additional FTP dependency or
+runtime. It reuses a healthy control connection and requires RFC 3659 MLST/MLSD
+support. Directory facts are parsed strictly; malformed or duplicate entries
+fail the operation. A directory is limited to 100,000 entries, 64 MiB of listing
+data and 8 KiB per line; a recursive listing also stops at 100,000 entries.
+Reported symbolic links cannot become upload targets or path components.
+A 550 response remains an error, since it cannot distinguish a missing object
+from denied access. Absence is established only by a successful parent listing.
+
+The `secure` setting follows the existing form labels:
+
+| Value | Mode | Default port |
+| --- | --- | --- |
+| `false` | Plain FTP | 21 |
+| `control` | Explicit FTPS, AUTH TLS before credentials | 21 |
+| `true` | Implicit FTPS, TLS before greeting | 990 |
+
+Boolean `true`/`false` settings are also accepted. This corrects an old mismatch:
+the released basic-ftp call treated `true` as explicit TLS despite the form's
+implicit label. A saved `true` destination previously using explicit TLS must
+select `control`; the provider never infers TLS mode from the port or retries
+with weaker encryption. TLS requires version 1.2 or later, validates the host
+and certificate, and protects both control and data connections using PROT P.
+An optional PEM `tlsCA` replaces the system trust roots for this destination;
+hostname verification remains enabled. Plain FTP does not encrypt credentials
+or files unless payload encryption is separately enabled.
+
+`passiveMode=auto` chooses PASV for IPv4 and EPSV for IPv6. The explicit `pasv`
+and `epsv` values select one command; a rejected command is an error, not a
+trigger to try another transport. Data connections always use the actual
+control peer IP, ignoring the IP advertised by PASV. Control commands have a
+whole-command deadline, including slow replies. Data reads/writes have network
+deadlines; local rate-limiter waits do not consume them. Cancellation closes
+the sockets, and provider shutdown joins active work and cleanup.
+
+Uploads hash the source before connecting. Equal-size destinations are read
+back and SHA-256 compared before a skip. Because STOR cannot exclusively create
+a file, a random directory is reserved with MKD before writing its fixed
+`payload` member. Durable ownership is recorded before MKD. Streaming hashing
+detects source mutation, and the staged file is read back and checked before
+RNFR/RNTO publishes it. The provider never deletes the old target to make rename
+succeed; the server must support replacement by rename on the same filesystem.
+Normal completion removes the empty staging directory and confirms absence.
+Failures and restart cleanup use the original endpoint and remove only the
+owned directory's expected regular payload. Unexpected members retain an error
+and journal record rather than being recursively deleted.
+
+FTP cannot prove server-side atomic rename, disk synchronization, or path
+containment against a hostile server or concurrent path swaps. Some servers
+report a symbolic link's target as a regular file in MLSD; only reported links
+can be rejected. Use a trusted server/account and an appropriate server-side
+chroot. If an MKD reply is lost, the remote server might create the empty
+reservation after cleanup has observed absence. No payload is sent before that
+reply, but this narrow empty-directory cleanup boundary remains open. Real
+NAS deployment and every server's TLS-session-reuse policy remain unverified.
+
 ## Durable remote transfer cleanup
 
-`native_backup_transfers` records ownership before S3 part data or SFTP temporary
-files are written. Failure to persist ownership stops the transfer. Active and
+`native_backup_transfers` records ownership before S3 part data, SFTP temporary
+files, or FTP staging reservations are written. Failure to persist ownership stops the transfer. Active and
 interrupted cleanup records become pending on startup. Four workers claim rows
 atomically and retry failures with exponential backoff from five seconds up to
 thirty minutes, with a 30-second limit per cleanup operation. Shutdown joins
@@ -168,7 +227,7 @@ undecryptable; the error remains visible and the record is retained. SFTP uses
 the same host-key checks as uploads. Cleanup validates the configured root or
 prefix and removes only the recorded random temporary name or exact multipart
 ID. It does not sweep unowned files, abort unrelated uploads or delete completed
-S3 objects. This journal covers native S3/SFTP transfers; local mirror temporary
+S3 objects. This journal covers native S3/SFTP/FTP transfers; local mirror temporary
 files and interrupted snapshot construction still need startup staging cleanup.
 
 ## Snapshots and restart recovery
@@ -318,8 +377,26 @@ connection reuse, cancellation/reconnect/cleanup, symlink rejection, missing
 atomic-rename support and automatic queued mirror recovery. These are protocol
 integration tests; they are not live provider or browser E2E results.
 
+FTP fixtures exercise plain, explicit and implicit TLS with PASV/EPSV, Unicode
+and empty files, equal-size corruption, source changes, readback mismatch,
+rename failure, permission errors, connection reuse, cancellation, shutdown,
+low upload rates, and malformed listings. Untrusted certificates and refused
+TLS fail before credentials are sent. A child-process kill after a real partial
+STOR verifies queued recovery and owned cleanup; rejected journal writes prevent
+STOR. Cleanup after deleting the destination preserves unrelated files.
+A 30-second, two-worker metadata/parser fuzz run completed 325,419 executions
+without failure; it is bounded testing, not exhaustive verification.
+
+An additional native executable check used independent pyftpdlib 2.2.0 FTP and
+explicit-FTPS servers over loopback. Through the application's authenticated
+HTTP API it created/probed destinations and enabled encryption, then verified
+automatic mirrored bytes, equal-size source edits, an encrypted snapshot, and
+offline recovery with SQLite integrity and restored values intact. This checks
+the real API/queue/protocol/CLI path against a separate server implementation;
+it does not contact Telegram, a cloud account or a production NAS.
+
 Process-death regressions kill a child test executable after the fixture stores
-real S3 part bytes or an SFTP partial file, bypassing all graceful cleanup. A
+real S3 part bytes or an SFTP/FTP partial file, bypassing all graceful cleanup. A
 new manager recovers the queued file and removes the old transfer. Additional
 tests cover destination edits/deletion, failed cleanup retries, unrelated data
 preservation, rejected journal writes, and invalid provider configuration being
@@ -336,29 +413,42 @@ binaries build, but the foreign binaries have not been run on those platforms.
 The old Node contract runner is still development tooling; its removal remains
 part of the overall migration. No frozen expectations were edited. Backup
 passes 16/17: the unchanged provider-metadata snapshot lacks the new optional
-SFTP host-key field. The final full run passes 238/324, leaving 86 failed cases in
-13 files; the preceding run passed 239/324. The additional file-token failure
-only changes a normalized request token placeholder after separate mint calls
-cross a second: the response remains 200 with identical headers and file hash.
-Both released and Go minting derive the token from expiry seconds. An isolated
-unchanged file-contract recheck passes 14/14. This timing-sensitive snapshot
-assumption remains recorded, without changing expectations or rounding the
-final total up. Maintenance now passes 8/8 with the host-key table present. At the
+SFTP host-key and FTP passive-mode/CA fields. The final FTP executable's full
+run passes 239/324, leaving 85 failed cases in 12 files (61.96 seconds).
+The preceding encrypted-backup checkpoint passed 238/324: an additional
+file-token failure changed only a normalized request token placeholder after
+separate mint calls crossed a second; the response stayed 200 with identical
+headers and file hash. Both implementations derive tokens from expiry seconds.
+That timing-sensitive snapshot assumption remains unresolved even though this
+run's 14 file cases pass. No expectations were changed or tests skipped.
+Maintenance now passes 8/8 with the host-key table present. At the
 previous checkpoint, its non-growth assertion failed because a quiescent native
 database grew from 129 to 130 pages during VACUUM. That earlier evidence remains
 valid: different schema packing does not make non-growth a general guarantee.
 The application keeps actual measurements and database errors visible. Both
-the added field and the earlier VACUUM finding are documented rather than
+the added fields and the earlier VACUUM finding are documented rather than
 hidden by changing frozen expectations. See
 [the current migration totals and release gates](GO-MIGRATION-STATUS.md).
 
-Further work includes the three remaining remote transports, independent crypto
+Further work includes the two remaining remote transports, independent crypto
 review, bounded concurrency tuning, cleanup of interrupted
-local/snapshot staging files, the empty S3 reservation boundary described above,
+local/snapshot staging files, the empty S3/FTP reservation boundaries described above,
 rebasing completed jobs after changing a destination's root/bucket, and real
 browser/Telegram/provider/migration E2E.
 
 ## Local verification benchmark
+
+`BenchmarkFTPVerifiedUpload1MiB`, Linux amd64, Go 1.26.8, Intel Core Ultra 7
+270K Plus, three runs of ten iterations with other task checks stopped:
+plain FTP takes 6.01–7.21 ms and explicit FTPS 17.62–21.28 ms per 1 MiB file.
+Allocated bytes are 281,946–284,216 (793–797 objects) for plain FTP and
+1,826,020–1,858,404 (7,419–7,428 objects) for FTPS. These allocations include
+the Go fixture server in the same process; they are not client-only allocations
+or RSS. Setup, input allocation and initial connection are excluded. Each
+iteration uploads a new file, reads it back completely for verification and
+publishes it: at least 2 MiB crosses loopback. Source-equivalent throughput is
+145–174 MB/s plain and 49–60 MB/s TLS, not WAN/NAS performance or a comparison
+with the released Node implementation.
 
 `BenchmarkLocalMirrorVerify1MiB`, Linux amd64, Go 1.26.8, Intel Core Ultra 7
 270K Plus, three runs of 1,000 iterations with other task checks stopped:
@@ -408,6 +498,8 @@ end-to-end speed or a comparison with the old implementation.
 
 The encrypted-backup Linux executable is 38,980,630 bytes, 177,430 bytes
 more than checkpoint `700db88`; this is unstripped file size, not RSS.
+With native FTP/FTPS added, the comparable executable is 39,099,144 bytes,
+another 118,514 bytes, with no new module dependencies.
 
 The streaming profile matches Go's standard AEAD across empty, partial-block,
 64 KiB boundary, fragmented and 1 MiB inputs; an independent Python vector;
@@ -418,6 +510,18 @@ key, nonce and input fragmentation. This is a bounded test run, not exhaustive
 verification.
 
 ## References
+
+- [RFC 959](https://www.rfc-editor.org/rfc/rfc959.html): FTP commands, replies,
+  data connections and rename sequence.
+- [RFC 2428](https://www.rfc-editor.org/rfc/rfc2428.html): extended passive mode.
+- [RFC 3659](https://www.rfc-editor.org/rfc/rfc3659.html): machine-readable
+  directory facts and MLST/MLSD negotiation.
+- [RFC 4217](https://www.rfc-editor.org/rfc/rfc4217.html): AUTH TLS, PBSZ and
+  protection of data connections.
+- [basic-ftp](https://github.com/patrickjuchli/basic-ftp): released dependency's
+  explicit versus implicit TLS option semantics.
+- [pyftpdlib server tutorial](https://pyftpdlib.readthedocs.io/en/latest/tutorial.html):
+  independent FTP/FTPS server used for native process interoperability checks.
 
 - [Go traversal-resistant file APIs](https://go.dev/blog/osroot): directory handles
   prevent ordinary path/symlink traversal during file operations.

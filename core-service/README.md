@@ -58,15 +58,17 @@ Useful commands:
   DCs. Handshakes are bounded and invalid settings cannot silently select direct
   connections. See [proxy configuration and verification](../docs/GO-PROXIES.md).
 
-- Native local, S3 and SFTP mirror/snapshot backups cover durable enqueue,
+- Native local, S3, SFTP and FTP/FTPS mirror/snapshot backups cover durable enqueue,
   destination controls, retry/pause, cron and retention. S3 uses bounded multipart
   uploads and checksums; SFTP persists host keys and publishes complete files.
   Shared upload pacing respects network deadlines, and a durable journal cleans
   owned multipart uploads/temporary files after process death or destination
-  edits/deletion. Local/snapshot staging cleanup, the empty S3 reservation gap,
+  edits/deletion. FTP verifies uploaded content before rename, requires MLSD,
+  and supports explicit/implicit TLS without downgrading the selected mode.
   TGDB v1 encrypted uploads and offline `backup-decrypt`/`backup-restore`
   commands use bounded buffers and authenticate before publishing output.
-  FTP/FTPS, Drive and Dropbox remain incomplete. See [backup scope and tests](../docs/GO-BACKUP.md).
+  Drive, Dropbox, local/snapshot staging cleanup and empty S3/FTP reservation
+  boundaries remain incomplete. See [backup scope and tests](../docs/GO-BACKUP.md).
 
 ## Data safety
 

@@ -198,6 +198,32 @@
         "placeholder": "/tgdl-backup",
         "required": true,
         "type": "text"
+      },
+      {
+        "name": "passiveMode",
+        "label": "Passive mode",
+        "type": "select",
+        "options": [
+          {
+            "value": "auto",
+            "label": "PASV for IPv4, EPSV for IPv6"
+          },
+          {
+            "value": "epsv",
+            "label": "EPSV"
+          },
+          {
+            "value": "pasv",
+            "label": "PASV"
+          }
+        ],
+        "help": "Uses one selected command. Data connections stay on the control server IP."
+      },
+      {
+        "name": "tlsCA",
+        "label": "Custom TLS CA (PEM)",
+        "type": "textarea",
+        "help": "Optional CA for a private FTPS server. Hostname verification remains enabled."
       }
     ],
     "displayName": "FTP / FTPS",
