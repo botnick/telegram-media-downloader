@@ -64,7 +64,13 @@ func TestAmbientNoSubscribersNoQueriesAndSlowPushDoesNotOverlap(t *testing.T) {
 	var calls atomic.Int64
 	go func() {
 		defer close(done)
-		a.runPushes(ctx, 5*time.Millisecond, func(ctx context.Context) error { calls.Add(1); close(entered); <-ctx.Done(); return ctx.Err() })
+		a.runPushes(ctx, 5*time.Millisecond, func(ctx context.Context) error {
+			if calls.Add(1) == 1 {
+				close(entered)
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		})
 	}()
 	time.Sleep(30 * time.Millisecond)
 	if calls.Load() != 0 {
@@ -86,6 +92,9 @@ func TestAmbientNoSubscribersNoQueriesAndSlowPushDoesNotOverlap(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("push loop did not join")
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("push loop restarted after cancellation: %d calls", calls.Load())
 	}
 }
 

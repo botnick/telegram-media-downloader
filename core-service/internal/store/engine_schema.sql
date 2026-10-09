@@ -12,6 +12,11 @@ CREATE TABLE IF NOT EXISTS tgdl_rescue_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_tgdl_rescue_channel ON tgdl_rescue_messages(channel_id,message_id);
 CREATE INDEX IF NOT EXISTS idx_tgdl_rescue_account ON tgdl_rescue_messages(account_id,message_id) WHERE channel_id=0;
+CREATE TABLE IF NOT EXISTS tgdl_cluster_replay (
+ peer_id TEXT NOT NULL, signature TEXT NOT NULL, expires_at INTEGER NOT NULL,
+ PRIMARY KEY(peer_id,signature)
+);
+CREATE INDEX IF NOT EXISTS idx_tgdl_cluster_replay_expiry ON tgdl_cluster_replay(expires_at);
 CREATE TABLE IF NOT EXISTS tgdl_work (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  account_id TEXT NOT NULL,

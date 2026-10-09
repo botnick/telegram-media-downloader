@@ -146,7 +146,9 @@ func TestRescueSweepRollbackAndRestartCleanup(t *testing.T) {
 
 func TestRescueSweepBoundsBacklogAndPreservesUnexpiredRow(t *testing.T) {
 	a, _ := socketTestApp(t)
-	now := time.Now()
+	// Drive the explicit sweep with a future clock. Its expired rows remain
+	// unexpired for the real background timer even on a slow race-test run.
+	now := time.Now().Add(24 * time.Hour)
 	tx, err := a.db.Writer.Begin()
 	if err != nil {
 		t.Fatal(err)

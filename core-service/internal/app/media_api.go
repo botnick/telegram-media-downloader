@@ -34,8 +34,10 @@ func registerMediaRoutes(mux *http.ServeMux, a *App) {
 }
 
 func (a *App) handleFile(w http.ResponseWriter, r *http.Request) {
-	decoded, err := url.PathUnescape(r.PathValue("path"))
-	if err != nil || !utf8.ValidString(decoded) || strings.ContainsRune(decoded, 0) {
+	// ServeMux has already decoded the path variable once. Decoding again
+	// rejects literal percent filenames and changes encoded filename bytes.
+	decoded := r.PathValue("path")
+	if !utf8.ValidString(decoded) || strings.ContainsRune(decoded, 0) {
 		fileText(w, r, http.StatusBadRequest, "Bad request")
 		return
 	}
@@ -58,13 +60,7 @@ func (a *App) handleFile(w http.ResponseWriter, r *http.Request) {
 			fileText(w, r, http.StatusForbidden, "Forbidden")
 			return
 		}
-		if peer == "nope" || peer == "no-such-peer" {
-			fileText(w, r, http.StatusGone, "Peer revoked")
-			return
-		}
-		w.Header().Set("Cache-Control", "private, max-age=2592000, immutable")
-		w.Header().Del("Vary")
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "storage_offline", "message": "fetch failed"})
+		a.proxyClusterFile(w, r, peer, rel)
 		return
 	}
 	f, err := openMedia(filepath.Join(a.dataDir, "downloads"), rel)
@@ -183,21 +179,6 @@ func (a *App) autoPruneMissingFile(r *http.Request, rel string) {
 	if _, err := a.deleteByWhere(r, `REPLACE(file_path,char(92),'/')=?`, filepath.ToSlash(rel)); err == nil {
 		a.hub.Broadcast(ws.Event{Type: "file_deleted", Flat: true, Payload: map[string]any{"path": filepath.ToSlash(rel), "autoPruned": true}})
 	}
-}
-
-func (a *App) handleClusterFile(w http.ResponseWriter, r *http.Request, rel string) {
-	parts := strings.Split(rel, "/")
-	if len(parts) < 3 || strings.TrimSpace(parts[1]) == "" || strings.TrimSpace(parts[2]) == "" || parts[1] == "no-such-peer" {
-		fileText(w, r, http.StatusNotFound, "Cluster file not found in catalog cache")
-		return
-	}
-	if parts[2] == "999" {
-		fileText(w, r, http.StatusNotFound, "Cluster file not found in catalog cache")
-		return
-	}
-	w.Header().Set("Cache-Control", "private, max-age=2592000, immutable")
-	w.Header().Del("Vary")
-	writeJSON(w, http.StatusBadGateway, map[string]any{"error": "storage_offline", "message": "fetch failed"})
 }
 
 func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {

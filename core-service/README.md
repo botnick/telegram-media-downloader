@@ -46,8 +46,11 @@ Useful commands:
 - `/v1/db/*` exposes the read projections used by the gallery, maintenance,
   AI, NSFW, integrity, dedup and cluster surfaces. They run directly against
   a query-only pool and require a valid session.
-- Pin mutations, job status/cancellation, SQLite backup and cluster pairing
+- Pin mutations, job status/cancellation and SQLite backup
   are owned by Go and commit before broadcasting their event.
+- Cluster pairing, durable request replay checks, automatic paged catalog pulls
+  and ranged peer-file proxying run in Go. Peer WebSockets, old-row reconciliation,
+  discovery and failover remain incomplete. See [cluster scope and evidence](../docs/GO-CLUSTER.md).
 - `/api/history` runs native durable backfills using the shared account/queue
   engine, including jobs-only operation, cancellation and restart resumption.
   See [history limits, semantics and validation](../docs/GO-HISTORY.md).

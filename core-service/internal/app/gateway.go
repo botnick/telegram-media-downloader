@@ -30,6 +30,22 @@ func (a *App) gateway(next http.Handler) http.Handler {
 				return
 			}
 		}
+		if strings.HasPrefix(r.URL.Path, "/api/cluster/") {
+			var finish func()
+			var ok bool
+			r, finish, ok = a.beginClusterRequest(r)
+			if !ok {
+				writeJSONError(w, 503, "Server closing")
+				return
+			}
+			defer finish()
+			_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Second))
+			defer http.NewResponseController(w).SetReadDeadline(time.Time{})
+		}
+		if isClusterPeerPath(r.URL.Path) {
+			a.clusterGate(w, r, next)
+			return
+		}
 		// Auth routes do their own checks so change-password shares the login
 		// limiter even when the supplied session is missing or expired.
 		if isPublicPath(r.URL.Path) || isAuthRoute(r.URL.Path) || r.URL.Path == "/api/logout" {

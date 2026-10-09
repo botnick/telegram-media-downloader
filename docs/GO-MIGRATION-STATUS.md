@@ -33,6 +33,12 @@ functionality. Do not deploy this branch over a working library yet.
   deletion during transfer or publication recovery. Bounded expiration batches
   preserve pinned and shared-file owners; actual process checks cover 503 rows,
   ordered browser frames and restart. See [rescue scope and limits](GO-RESCUE.md).
+- Native cluster identity, atomic code pairing, per-pair request authentication,
+  persistent replay checks, automatic paged catalog pulls and actual peer-file
+  range proxying are implemented. An independent two-process experiment verifies
+  restart, 502-row pagination, the real timer discovering row 503, key rotation
+  and revocation. Peer WebSockets and old-row reconciliation remain incomplete.
+  See [cluster scope, limits and measurements](GO-CLUSTER.md).
 - Native reverse-proxy trust, live HTTPS/CSP enforcement and optional API quotas
   now apply before route dispatch. Login and share quotas use the same resolved
   client identity. Text compression streams gzip/deflate/Brotli with bounded
@@ -42,9 +48,12 @@ functionality. Do not deploy this branch over a working library yet.
 - Signed share creation/listing/revocation, expiry/signature rejection,
   partial transfers, access counters and configurable request limiting.
 - The latest full black-box run against the Go executable passes
-  **239 of 324 tests**, with **23 of 36 files passing** (58.42 seconds).
-  The remaining **85 failed cases in 13 files** are recorded failures, not
-  waived expectations. Both periodic WebSocket/rescue contracts now pass. The
+  **246 of 324 tests**, with **22 of 36 files passing** (62.92 seconds).
+  The remaining **78 failed cases in 14 files** are recorded failures, not
+  waived expectations. Cluster/peer contracts improve from 33 to 25 failures;
+  the file suite adds one failure for the real peer proxy's error/cache headers
+  instead of its former fabricated response. Both periodic WebSocket/rescue
+  contracts pass. The preceding rescue checkpoint passed 239/324. The
   prior session checkpoint passed 236/324; its snapshot-backup terminal-frame
   timing failure is absent in this run (backup 16/17, metadata difference only).
   The HTTP transport checkpoint passed 242/324; session
@@ -60,7 +69,8 @@ functionality. Do not deploy this branch over a working library yet.
   238/324: a file-token case differed only in the request normalizer placeholder
   (`filetoken:1` versus `filetoken:3`); status 200, headers and file hash matched.
   Separate mint requests can cross a second and produce different expiry/signature
-  values in both implementations. This run's 14 file cases pass, but that
+  values in both implementations. The current file suite passes 13/14, with
+  only the peer-proxy difference above; that separate file-token
   timing assumption still needs correction in the native contract runner.
   Another difference is the additional SFTP host-key fingerprint and FTP
   passive-mode/CA fields in provider
@@ -70,7 +80,7 @@ functionality. Do not deploy this branch over a working library yet.
   visible, and one green run does not prove VACUUM never grows a database. These are
   fixture-based HTTP/WebSocket contracts, not live Telegram or browser E2E.
 - Passing domains include accounts, basic authentication/setup, shares, queue controls,
-  chats, downloads/groups, files/static assets, configuration, AI library reads
+  chats, downloads/groups, local files/static assets, configuration, AI library reads
   and edits, dedup, deletion, thumbnails, faststart, database/file maintenance
   and system reads. Credential revocation and system revoke-all deliberately differ
   from the frozen expectations described above. Telegram-action validation and preflight
@@ -298,9 +308,9 @@ migration; the current source tree is not yet free of Node dependencies.
   reservation boundaries. Validate encrypted backup and restore with real
   providers; S3/SFTP/FTP wire fixtures and loopback interoperability checks do
   not establish live provider or full migration E2E coverage.
-- Resolve the 13 remaining contract files: cluster/peer/cluster-WebSocket,
+- Resolve the 14 remaining contract files: cluster/peer/cluster-WebSocket,
   AI jobs, NSFW, seekbar, backup provider metadata, recovery, purge, security,
-  updates, plus auth-password/system compatibility
+  updates, federated files, plus auth-password/system compatibility
   for prompt session revocation. Three cleanup corrections and the
   added SFTP/FTP form fields and omitted Express response header are documented
   differences, still counted as failures.

@@ -77,7 +77,12 @@ type App struct {
 	config              auth.ConfigStore
 	jobs                *jobs.Tracker
 	dataDir             string
-	pairing             *cluster.PairingStore
+	cluster             cluster.Store
+	clusterHTTP         *cluster.Client
+	clusterMu           sync.Mutex
+	clusterWG           sync.WaitGroup
+	clusterClosed       bool
+	clusterSyncMu       sync.Mutex
 	loginRL             *rateLimiter
 	handler             http.Handler
 	configMu            sync.Mutex
@@ -176,10 +181,16 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		ttl = 7 * 24 * time.Hour
 	}
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
-	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, pairing: cluster.NewPairingStore(10 * time.Minute), loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum")}
+	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum")}
 	a.httpOptions, a.proxyPolicy, a.apiRL = cfg.HTTP, proxy, newRateLimiter(10000, time.Minute)
 	a.ctx, a.cancel = context.WithCancel(ctx)
 	a.releaseOwnership = release
+	a.cluster = cluster.Store{Writer: db.Writer, Reader: db.Reader}
+	if err = a.cluster.Initialize(ctx); err != nil {
+		a.Close()
+		return nil, err
+	}
+	a.clusterHTTP = cluster.NewClient(a.cluster)
 	a.accounts = accounts.NewRepository(db.Writer, db.Reader, cfg.DataDir, &a.configMu)
 	if err = a.accounts.Recover(ctx); err != nil {
 		a.Close()
@@ -219,7 +230,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("GET /api/jobs/{id}", a.requireSession(http.HandlerFunc(a.handleJob)))
 	mux.Handle("POST /api/jobs/{id}/cancel", a.requireAdmin(http.HandlerFunc(a.handleJobCancel)))
 	mux.Handle("POST /api/maintenance/db/backup", a.requireAdmin(http.HandlerFunc(a.handleBackup)))
-	mux.Handle("POST /api/cluster/pairing-code", a.requireAdmin(http.HandlerFunc(a.handlePairingCode)))
+	registerClusterRoutes(mux, a)
 	registerMonitorRoutes(mux, a)
 	registerMonitorMaintenance(mux, a)
 	registerHistoryRoutes(mux, a)
@@ -436,15 +447,6 @@ func (a *App) handleBackup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "backup": result})
 }
 
-func (a *App) handlePairingCode(w http.ResponseWriter, _ *http.Request) {
-	code, err := a.pairing.Issue("local")
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"code": code, "expiresInSec": 600})
-}
-
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any) error {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	err := decoder.Decode(dst)
@@ -508,6 +510,13 @@ func (a *App) Close() error {
 		}
 		a.closeWebSockets()
 		a.ambientWG.Wait()
+		a.clusterMu.Lock()
+		a.clusterClosed = true
+		a.clusterMu.Unlock()
+		a.clusterWG.Wait()
+		if a.clusterHTTP != nil {
+			a.clusterHTTP.Close()
+		}
 		if a.backups != nil {
 			a.backups.Close()
 		}
