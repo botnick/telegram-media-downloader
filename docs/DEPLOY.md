@@ -7,8 +7,9 @@ nav_order: 2
 # Install and deploy
 
 Telegram Media Downloader is one `tgdl-server` process with the dashboard
-embedded in the binary. ffmpeg (for thumbnails and video work) is the only
-external program it calls. Pick one of the three ways to run it:
+embedded in the binary. ffmpeg (for thumbnails, seekbar previews and video
+work) is the only external program it calls. Face recognition and NSFW
+scanning are [optional sidecar containers](#optional-ai-sidecars). Pick one of the three ways to run it:
 
 | Option | Best for | Needs |
 |---|---|---|
@@ -58,6 +59,15 @@ volume path, and start it the same way (Container Manager project or
 To build the image from source, replace the `image:` and `pull_policy:` lines
 in `docker-compose.yml` with `build: .` inside a git checkout.
 
+### Optional AI sidecars
+
+Seekbar previews need nothing extra. For NSFW scanning, both compose files
+contain a commented `tgdl-nsfw` service: uncomment it and the `volumes:`
+block at the end of the file, set `TGDL_NSFW_SIDECAR_URL=http://tgdl-nsfw:8012`
+in `.env`, and run `docker compose up -d`. Face recognition uses the
+`tgdl-faces` container in the same way. Leaving them commented changes
+nothing. Setup, tokens and GPU images: [AI](AI.md).
+
 ## First dashboard password
 
 For safety, the first password can only be set from the machine itself.
@@ -93,7 +103,7 @@ arm64, arm, 386), Windows (amd64, arm64) and macOS (amd64, arm64), plus a
 `SHA256SUMS` file.
 
 ```sh
-VERSION=3.0.0
+VERSION=3.4.0
 curl -fsSLO https://github.com/botnick/telegram-media-downloader/releases/download/v$VERSION/tgdl-server-v$VERSION-linux-amd64.tar.gz
 curl -fsSLO https://github.com/botnick/telegram-media-downloader/releases/download/v$VERSION/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
@@ -103,7 +113,7 @@ TGDL_DATA_DIR=./data PORT=3000 ./tgdl-server
 
 Install ffmpeg from your package manager for thumbnails, or point
 `FFMPEG_PATH` at it. `./tgdl-server help` lists the commands (`setup`,
-`backup-restore`, `backup-decrypt`, `version`).
+`backup-restore`, `backup-decrypt`, `backup-oauth`, `version`).
 
 ### systemd
 

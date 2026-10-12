@@ -1,6 +1,6 @@
 ---
 title: "Features"
-description: "Everything Telegram Media Downloader 3.0 does: realtime monitor, history backfill, Stories, dedup, share links, backups, cluster, and what is not in 3.0 yet."
+description: "Everything Telegram Media Downloader 3.x does: monitor, backfill, auto-forward, dedup, disk rotation, backups, cluster, AI sidecars, and the remaining gaps."
 nav_order: 5
 has_children: true
 ---
@@ -10,15 +10,16 @@ has_children: true
 Telegram Media Downloader signs in as **your own Telegram account** (MTProto,
 through [gotd](https://gotd.dev/)), so it can save media from every channel,
 group, forum topic and private chat that account can read. Everything runs on
-your machine in one `tgdl-server` process with the dashboard built in.
+your machine in one `tgdl-server` process with the dashboard built in; face
+recognition and NSFW scoring use optional companion containers.
 
-This page lists what 3.0 does today. Detailed guides:
+This page lists what the current 3.x release (3.4) does. Detailed guides:
 
 | Guide | What it covers |
 |---|---|
-| [Backup](BACKUP.md) | Local, S3, SFTP and FTP/FTPS destinations, encrypted archives, offline restore |
+| [Backup](BACKUP.md) | Local, S3, SFTP, FTP/FTPS, Google Drive and Dropbox destinations, encrypted archives, offline restore |
 | [Cluster mode](CLUSTER.md) | Pairing several instances into one library |
-| [AI: faces, NSFW and previews](AI.md) | What remains of the AI tools in 3.0 |
+| [AI: faces, NSFW and previews](AI.md) | Seekbar previews, the `tgdl-nsfw` and `tgdl-faces` sidecars |
 | [API reference](API.md) | HTTP and WebSocket endpoints of the dashboard |
 
 ## Downloading
@@ -26,6 +27,12 @@ This page lists what 3.0 does today. Detailed guides:
 - **Realtime monitor** for channels, supergroups, groups, forum topics and
   private chats. Turn it on per chat; it starts again after a restart if it was
   running before.
+- **Self-healing monitor**: while monitoring is switched on, a monitor that
+  stops on an error or a dropped connection restarts on its own (after 5 s,
+  then 30 s, 1 min and every 5 min), and a watchdog checks every minute that
+  it is still running. A channel whose missed updates are too old to replay
+  is repaired in the background while the other chats keep downloading.
+  Pressing **Stop** keeps it stopped.
 - **Per-chat filters**: photos, videos, files, links, voice messages, GIFs and
   stickers; include or exclude specific senders; include or exclude forum
   topics.
@@ -37,12 +44,31 @@ This page lists what 3.0 does today. Detailed guides:
 - **Telegram links**: paste `t.me/...` message links (channel, group, forum
   topic and private links) to download single messages.
 - **Stories**: list and download a user's Stories by username.
+- **Self-destructing (TTL) media** jumps to the front of the queue so it is
+  saved before it expires; its timer is stored with the download.
+- **Auto-forward** (per chat, **Forward to** in the chat's page): each newly
+  downloaded file is re-uploaded to a destination, `me` (Saved Messages), a
+  chat ID, `@username`, a `t.me` link or the "Telegram Downloader Storage"
+  channel, with a caption linking the source post. A **Forward account** can
+  be chosen per chat. Uploads go through the account's flood guard and never
+  hold up downloads. A destination that refuses posts is paused and checked
+  again after 1 h, 6 h and 24 h. **Delete after forward** removes only the
+  local copy, never anything on Telegram.
 - **Several accounts**: add more than one Telegram account and pin a chat to
   the account that should read it.
 - **Proxies**: SOCKS5, SOCKS4, HTTP and MTProxy, used by sign-in, live updates
   and media downloads, with a built-in connection test.
-- **Speed and limits**: 1–50 parallel downloads, 1–20 attempts per file and a
-  shared bandwidth limit that applies immediately.
+- **Adaptive speed**: the number of files downloading at once starts at
+  **Concurrent Downloads** (1–50) and, while the queue is long, grows by up to
+  3 every `advanced.downloader.scalerIntervalSec` seconds (default 5) to
+  `advanced.downloader.maxConcurrency` (default 20, at most 100). When the
+  queue empties it shrinks toward `minConcurrency` (default 3). Set
+  `maxConcurrency` equal to Concurrent Downloads for a fixed number. 1–20
+  attempts per file and a shared bandwidth limit that applies immediately.
+- **FloodWait protection**: every account's Telegram requests pass one flood
+  gate and a request-rate limit. A wait of up to 60 s is slept through; a
+  longer one pauses only that account's queue, reschedules the item without
+  using up an attempt and drops the download concurrency to the minimum.
 - **Durable queue**: downloads are written to a `.part` file and published
   atomically; queued work survives restarts. Pause, resume, retry or cancel any
   file, or the whole queue.
@@ -67,41 +93,78 @@ This page lists what 3.0 does today. Detailed guides:
 - **Deleted, restricted and inaccessible chats** have their own tab with
   Telegram's reason and a *Check again* button.
 - **Leave dead chats in bulk** from one confirmed account, either keeping the
-  downloaded files or deleting them with their history and settings.
+  downloaded files or deleting them with their history and settings. Chats
+  already gone on Telegram count as left and are removed from the app.
 
 ## Dashboard
 
 - Library with thumbnails, search, type filters, pinning, bulk delete and bulk
   ZIP download.
 - Full-screen viewer and video player; MP4 files are rewritten for instant
-  streaming (faststart).
+  streaming (faststart). Hover previews on the video scrub bar (seekbar
+  sprites, built with ffmpeg in the server).
 - Live queue with progress, speed and ETA.
 - **Share links**: signed, expiring and revocable links that open without a
   login.
 - Installable **PWA**, dark and light theme, **English and Thai**.
 - Ctrl+K palette to jump to any page, setting or chat.
 
+## AI (optional)
+
+Details and setup: [AI: faces, NSFW and previews](AI.md).
+
+- **Seekbar previews** built in the server, automatically after each video
+  download (on by default) and from Maintenance → Seekbar.
+- **NSFW scanning and review** through the `tgdl-nsfw` container
+  (`TGDL_NSFW_SIDECAR_URL`): scan, auto-check of new downloads, review tiers,
+  bulk delete and whitelist, hash blocklist.
+- **Face recognition** through the `tgdl-faces` container
+  (`FACES_SERVICE_URL` or `TGDL_FACES_SIDECAR_URL`): scan, background
+  detection of new downloads, people clustering with names kept.
+- **Hardware decoding** for thumbnails and previews with `FFMPEG_HWACCEL`
+  (`vaapi`, `qsv`, `cuda`, …), falling back to the CPU.
+
+## Backups and cluster
+
+- [Backups](BACKUP.md) to a local disk, S3-compatible storage, SFTP, FTP/FTPS,
+  Google Drive and Dropbox, as a continuous mirror or scheduled snapshots,
+  optionally encrypted, with an offline restore command.
+  `tgdl-server backup-oauth gdrive|dropbox` gets a refresh token on a headless
+  server.
+- [Cluster mode](CLUSTER.md): pair instances, browse and stream each other's
+  files, peer thumbnails, and a cross-peer duplicate sweep with conflict
+  resolution (Maintenance → Cluster).
+
 ## Maintenance
 
 - **One-click update** (Docker): checks the database, saves a verified
   snapshot to `data/backups/`, then asks the bundled watchtower service to
-  recreate the container.
+  recreate the container. The dashboard shows when a newer release is out.
+- **Automatic updates** (Docker): with `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true`
+  in `.env`, watchtower updates the whole stack on a schedule
+  (`WATCHTOWER_SCHEDULE`, default daily 04:00). See [Deploy](DEPLOY.md#updating).
 - Database integrity check, VACUUM and on-demand database snapshot.
 - File verification, thumbnail rebuild, reindex, log viewer and download,
   and a recovery page for downloads that lost their chat or account.
-- **Disk rotation**: with **Settings → Auto-rotate when full** on, every
-  `diskManagement.sweepIntervalMin` minutes (default 10) the oldest downloads
-  are deleted until the library is back under `maxTotalSize`, at most
-  `advanced.diskRotator.maxDeletesPerSweep` per sweep. Pinned and rescued
-  items, files still being downloaded and files outside the downloads folder
-  are never deleted; a file shared by several downloads stays until its last
-  one goes.
+- **Disk rotation**: with **Settings → Auto-rotate when full** on
+  (`diskManagement.enabled`), every `diskManagement.sweepIntervalMin` minutes
+  (default 10) the server compares the library size with `maxTotalSize` and,
+  above it, **deletes the oldest downloads, files included,** until the
+  library fits again, at most `advanced.diskRotator.maxDeletesPerSweep`
+  (5000) per sweep. Pinned and rescued items, files still being downloaded and
+  files outside the downloads folder are never deleted; a file shared by
+  several downloads stays until its last one goes. The size is the sum of the
+  catalog's file sizes, not free disk space. Status:
+  `GET /api/maintenance/disk-rotator/status`. Leave it off unless you want
+  old media to be removed.
 - **Integrity sweep**: 30 s after start and then every
   `advanced.integrity.intervalMin` minutes (at least 60), rows whose file is
   missing or empty are dropped and wrong file sizes corrected. It never
   deletes files, and skips pruning when the downloads folder is unreadable or
   more than half of the library looks missing (an unmounted disk); Verify
   files still prunes on request.
+- **Prometheus metrics** at `/metrics`: loaded accounts, active downloads,
+  queue size, workers and process memory (`TGDL_METRICS_TOKEN` protects it).
 - Sign out every browser at once.
 
 ## Security
@@ -118,13 +181,24 @@ This page lists what 3.0 does today. Detailed guides:
 See [SECURITY.md](https://github.com/botnick/telegram-media-downloader/blob/main/SECURITY.md)
 for how to report a vulnerability.
 
-## Not in 3.0
+## Not in 3.x
 
-These existed in 2.x or appear in old settings, but the 3.0 Go server does not
-run them. Saved settings are kept, so nothing is lost if they return.
+These existed in 2.x or appear in old settings, but the 3.x Go server does not
+do them. Saved settings are kept, so nothing is lost if they return.
 
-- **New AI results**: face detection and clustering, NSFW scoring and seekbar
-  preview generation do not run. People and previews made by 2.x can still be
-  viewed and edited. See [AI](AI.md).
-- **Auto-forward** and **self-destructing (TTL) media capture**: their
-  settings are stored but not acted on.
+- **Local face sidecar**: 2.x could download and start a `tgdl-faces` binary
+  by itself. 3.x needs a running `tgdl-faces` container (or `python -m
+  tgdl_faces`) and its URL. See [AI](AI.md#not-available-in-3x).
+- **Built-in NSFW model**: NSFW scoring always needs the `tgdl-nsfw`
+  container.
+- **Face crops from WebP images and videos** show a blank tile.
+- **Semantic search and auto-tags** (removed in 2.16).
+- **Cluster**: LAN discovery, relay through a third peer, backup peer and
+  failover, settings replication and the *direct* stream mode. See
+  [Cluster mode](CLUSTER.md#limitations).
+- **Backups**: in-dashboard restore (restore is offline with
+  `tgdl-server backup-restore`). See [Backup](BACKUP.md#limits-and-whats-not-in-3x).
+- **Live log viewer**: Maintenance → Logs only browses log files left by 2.x;
+  3.x logs to standard output (`docker compose logs`).
+- The `rateLimits` and `pollingInterval` settings are stored but have no
+  effect.

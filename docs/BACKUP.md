@@ -645,7 +645,7 @@ never completed. Once you're sure no restore is still running, delete it.
 
 For other problems, see [Troubleshooting](TROUBLESHOOTING.md).
 
-## Limits and what's not in 3.0
+## Limits and what's not in 3.x
 
 - **The 2.x OAuth helper scripts are gone.** `scripts/setup-gdrive.js` and
   `scripts/setup-dropbox.js` are replaced by `tgdl-server backup-oauth`, and

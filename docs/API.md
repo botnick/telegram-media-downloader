@@ -1,13 +1,13 @@
 ---
 title: "API reference"
-description: "HTTP and WebSocket reference for tgdl-server 3.0: dashboard login, roles, downloads, queue, backups, cluster, share links, /health and /metrics."
+description: "HTTP and WebSocket reference for tgdl-server 3.x: dashboard login, roles, downloads, queue, backups, cluster, AI sidecars, share links and /metrics."
 parent: Features
 nav_order: 4
 ---
 
 # API reference
 
-This page lists every HTTP route and WebSocket event served by `tgdl-server`, the single Go binary that runs the dashboard in 3.0. The dashboard itself uses these routes, so anything it can do you can script.
+This page lists every HTTP route and WebSocket event served by `tgdl-server`, the single Go binary that runs the dashboard in 3.x. The dashboard itself uses these routes, so anything it can do you can script.
 
 Base URL: `http://<host>:3000` (`PORT` changes the port, `TGDL_BIND_HOST` the listen address). Requests and responses are JSON unless a row says otherwise.
 
@@ -64,9 +64,9 @@ curl -b jar http://localhost:3000/api/stats
 | Method | Path | Access | Notes |
 |---|---|---|---|
 | `GET` | `/health` | Public | Liveness only: always `200 {"ok":true,"service":"tgdl-server"}` while the process is serving HTTP. It does not check Telegram, the database or disk. Used by the Docker `HEALTHCHECK`. |
-| `GET` | `/metrics` | Public, or token | Prometheus text format. If `TGDL_METRICS_TOKEN` is set, the request must include `?token=<value>`, otherwise it gets `401`. Exposes `tgdl_accounts_loaded`, `tgdl_active_downloads`, `tgdl_queue_size`, `tgdl_workers`, `process_resident_memory_bytes`, `process_heap_bytes` and `process_uptime_seconds`. In 3.0.0 the four `tgdl_*` gauges always report `0`, so only the `process_*` values are useful. |
+| `GET` | `/metrics` | Public, or token | Prometheus text format. If `TGDL_METRICS_TOKEN` is set, the request must include `?token=<value>`, otherwise it gets `401`. Exposes `tgdl_accounts_loaded`, `tgdl_active_downloads`, `tgdl_queue_size` (both queue lanes), `tgdl_workers` (current download concurrency), `process_resident_memory_bytes`, `process_heap_bytes` and `process_uptime_seconds`. Before 3.4.0 the four `tgdl_*` gauges always reported `0`. |
 | `GET` | `/api/version` | Public | `{version, commit, builtAt}`. Supports `If-None-Match`. |
-| `GET` | `/api/version/check` | Public | Kept for older clients. In 3.0 it never contacts GitHub and always returns `latest: null`, `updateAvailable: false`. |
+| `GET` | `/api/version/check` | Public | `{current, latest, updateAvailable, …}` from the newest stable GitHub release, cached 10 minutes (`?force=1` skips the cache). When GitHub can't be reached it returns the last cached answer, or `latest: null` with `error: "unreachable"`. |
 | `GET` | `/api/system/health` | Admin | Detailed runtime and system health for the Maintenance page. |
 
 ## Auth
@@ -247,7 +247,7 @@ Long tasks start with a `POST` and report progress through their `…/status` ro
 | `POST` | `/api/maintenance/thumbs/rebuild` | Admin | Rebuild all thumbnails. |
 | `GET` | `/api/maintenance/thumbs/rebuild/status` | Admin | |
 | `POST` | `/api/maintenance/thumbs/rebuild-one/{id}` | Admin | Rebuild one thumbnail. |
-| `GET` | `/api/maintenance/thumbs/hwaccel-probe` | Admin | Hardware-acceleration probe. 3.0 makes thumbnails on the CPU. |
+| `GET` | `/api/maintenance/thumbs/hwaccel-probe` | Admin | Accelerators the ffmpeg build was compiled with. The backend used comes from `FFMPEG_HWACCEL` or `advanced.thumbs.hwaccel`. |
 | `GET` | `/api/maintenance/faststart/stats` | Admin | MP4 faststart coverage. |
 | `GET` | `/api/maintenance/faststart/auto-stats` | Admin | |
 | `GET` | `/api/maintenance/faststart/status` | Admin | |
@@ -319,6 +319,12 @@ Setup and concepts are in [Cluster](CLUSTER.md).
 | `GET` | `/api/cluster/audit` | Admin | Peer request audit log. |
 | `GET` | `/api/cluster/sync/state` | Admin | Catalog sync state. |
 | `POST` | `/api/cluster/sync/run` | Admin | Sync now. |
+| `POST` | `/api/cluster/sweep/run` | Admin | Start the cross-peer duplicate sweep, optional `{minSize}` (default 1024). `409 ALREADY_RUNNING` while one runs. |
+| `GET` | `/api/cluster/sweep/status` | Admin | Sweep progress. |
+| `POST` | `/api/cluster/sweep/cancel` | Admin | Cancel the sweep. |
+| `GET` | `/api/cluster/conflicts` | Admin | Duplicate groups found by the last sweep. |
+| `POST` | `/api/cluster/conflicts/{id}/resolve` | Admin | Keep one copy and delete the others, locally and on peers. |
+| `GET` | `/api/cluster/thumbs/{peerID}/{remoteID}` | Admin | A peer file's thumbnail through this peer; a 1×1 placeholder when the peer can't serve it. |
 
 Peer-to-peer routes are not for scripts. Every request is signed with the shared cluster secret through the `X-Peer-Id`, `X-Peer-Ts` and `X-Peer-Signature` headers. Failures return `401 {"error":"cluster auth failed","code":…}` and are written to the audit log.
 
@@ -332,14 +338,32 @@ Peer-to-peer routes are not for scripts. Every request is signed with the shared
 | `GET` | `/api/cluster/groups/snapshot` | Peer | Chat snapshot. |
 | `GET` | `/api/cluster/accounts/snapshot` | Peer | Account snapshot. |
 | `GET` | `/api/cluster/files/{path}` | Peer | Media transfer with range requests. |
+| `POST` | `/api/cluster/files/delete` | Peer | Delete a copy during a conflict resolve. |
+| `GET` | `/api/cluster/peer-thumbs/{id}` | Peer | Thumbnail of one of this peer's files. |
 | `GET` (upgrade) | `/ws/cluster` | Peer | Peer WebSocket. |
 
-## AI (people and faces)
+## AI: faces and people
 
-These routes read and edit the face and people data stored in the library. See [AI](AI.md).
+Scanning needs the `tgdl-faces` sidecar; reading and editing people works
+without it. See [AI](AI.md).
 
 | Method | Path | Access | Notes |
 |---|---|---|---|
+| `GET` | `/api/ai/status` | Admin | Settings, sidecar state, counts and scan state. |
+| `GET` | `/api/ai/doctor`, `/api/ai/health` | Admin | Sidecar diagnosis. |
+| `GET` | `/api/ai/scan/status` | Admin | Face scan progress. |
+| `POST` | `/api/ai/scan/start` | Admin | Start a face scan. |
+| `POST` | `/api/ai/scan/cancel` | Admin | Cancel it. |
+| `POST` | `/api/ai/auto-scan` | Admin | `{action}`: `start`, `pause` or `stop`. |
+| `POST` | `/api/ai/faces/recluster` | Admin | Rebuild people from the stored faces; names carry over. |
+| `POST` | `/api/ai/faces/restart` | Admin | Reset the sidecar connection and probe it again. |
+| `GET`, `POST` | `/api/ai/faces/health-test` | Admin | Test the sidecar. |
+| `GET` | `/api/ai/faces/provider-probe` | Admin | Execution providers the sidecar offers. |
+| `POST` | `/api/ai/detect-test` | Admin | `{downloadId}`: detect faces in one file. |
+| `POST` | `/api/ai/preload-model/{model}` | Admin | Ask the sidecar to load a model; `GET …/status` for progress. |
+| `POST` | `/api/ai/backfill-quality` | Admin | Fill in missing face quality scores; `GET /api/ai/backfill-quality/status`. |
+| `POST` | `/api/ai/faces/install-deps` | Admin | Not applicable in 3.x (no local sidecar): answers `NOT_APPLICABLE`. |
+| `POST` | `/api/ai/search`, `/api/ai/search/similar` | Admin | Removed features: `501 SEARCH_UNAVAILABLE`. |
 | `GET` | `/api/ai/people` | Admin | People list. Query: `limit`, `offset`, `sort` (`face_count`, `name`, `avg_quality`), `dir`. |
 | `GET` | `/api/ai/people/{id}/photos` | Admin | Photos of one person. |
 | `GET` | `/api/ai/person/{id}/face` | Admin | Cover face crop for a person. |
@@ -350,8 +374,46 @@ These routes read and edit the face and people data stored in the library. See [
 | `POST` | `/api/ai/people/{id}/merge` | Admin | Merge people. |
 | `POST` | `/api/ai/people/{id}/split` | Admin | Split a person. |
 | `POST` | `/api/ai/faces/{id}/reassign` | Admin | Move a face to another person. |
-| `POST` | `/api/ai/faces/reindex` | Admin | Re-index faces. |
+| `POST` | `/api/ai/faces/reindex` | Admin | **Deletes all faces and people** and marks every photo for a new scan. `409` while a scan runs. |
 | `DELETE` | `/api/ai/people/{id}` | Admin | Delete a person. |
+
+## NSFW review
+
+Scanning needs the `tgdl-nsfw` sidecar (`TGDL_NSFW_SIDECAR_URL`); without it,
+scan and preload answer `503 NSFW_SIDECAR_REQUIRED`. See [AI](AI.md#nsfw-review-with-the-tgdl-nsfw-sidecar).
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/maintenance/nsfw/status` | Admin | Settings, sidecar state and scan progress. |
+| `POST` | `/api/maintenance/nsfw/scan` | Admin | Score unscanned files. |
+| `POST` | `/api/maintenance/nsfw/scan/cancel` | Admin | Cancel the scan. |
+| `POST` | `/api/maintenance/nsfw/preload` | Admin | Ask the sidecar to load its model. |
+| `GET` | `/api/maintenance/nsfw/model-status` | Admin | Model state on the sidecar. |
+| `POST` | `/api/maintenance/nsfw/sidecar-test` | Admin | Test a sidecar URL and token. |
+| `DELETE` | `/api/maintenance/nsfw/cache` | Admin | Kept for 2.x; the model cache lives on the sidecar, so nothing is removed. |
+| `GET` | `/api/maintenance/nsfw/results` | Admin | The 2.x candidate list: scored files below `threshold` that are not whitelisted. |
+| `POST` | `/api/maintenance/nsfw/delete` | Admin | Delete chosen files. |
+| `POST` | `/api/maintenance/nsfw/whitelist` | Admin | Whitelist chosen files. |
+| `GET` | `/api/maintenance/nsfw/v2/tiers-meta`, `/v2/tiers`, `/v2/histogram`, `/v2/list` | Admin | Review tiers, score histogram and paged lists. |
+| `POST` | `/api/maintenance/nsfw/v2/bulk-delete`, `/v2/bulk-whitelist`, `/v2/unwhitelist`, `/v2/reclassify` | Admin | Bulk actions (background); `GET /api/maintenance/nsfw/v2/bulk/status`. |
+| `GET` | `/api/maintenance/nsfw/blocklist/stats` | Admin | Hash blocklist size. |
+| `DELETE` | `/api/maintenance/nsfw/blocklist` | Admin | Clear the hash blocklist, `{confirm: true}`. |
+
+## Seekbar previews
+
+Built in the server with ffmpeg. See [AI](AI.md#seekbar-previews).
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `POST` | `/api/maintenance/seekbar/build-all` | Admin | Build missing sprites for every video. |
+| `POST` | `/api/maintenance/seekbar/build-group` | Admin | Build missing sprites for one chat. |
+| `POST` | `/api/maintenance/seekbar/build/cancel` | Admin | Cancel the build. |
+| `GET` | `/api/maintenance/seekbar/build/status`, `/build/stats` | Admin | Build progress. |
+| `POST` | `/api/maintenance/seekbar/rebuild` | Admin | Rebuild every sprite; `GET …/rebuild/status`. |
+| `POST` | `/api/maintenance/seekbar/regen/{id}` | Admin | Rebuild one video's sprite. |
+| `GET` | `/api/maintenance/seekbar/stats`, `/queue/stats`, `/list` | Admin | Coverage, queue and sprite list. |
+| `GET` | `/api/maintenance/seekbar/health` | Admin | ffmpeg found, mode `builtin`. |
+| `GET` | `/api/maintenance/seekbar/hwaccel-probe` | Admin | Compiled ffmpeg accelerators. |
 
 ## Share links
 
@@ -390,23 +452,27 @@ Connect to `ws://<host>:3000/ws` (or `wss://` behind TLS). An upgrade on `/` is 
 | Monitor | `monitor_state`, `monitor_status_push`, `resync_dialogs_progress`/`_done`, `restart_monitor_progress`/`_done` |
 | Chats | `groups_refreshed`, `groups_refresh_info_progress`/`_done`, `groups_refresh_photos_progress`/`_done`, `chat_access_changed`, `chat_access_recheck_progress`/`_done`, `chat_leave_batch_progress`/`_done`, `group_files_deleted`, `group_purged`, `group_purge_progress`/`_done` |
 | History backfill | `history_progress`, `history_done`, `history_error`, `history_cancelled`, `history_cancelling`, `history_deleted`, `history_cleared` |
-| Maintenance | `db_integrity_progress`/`_done`, `db_vacuum_progress`/`_done`, `files_verify_progress`/`_done`, `reindex_progress`/`_done`, `dedup_progress`/`_done`, `dedup_delete_progress`/`_done`, `thumbs_progress`/`_done`, `thumbs_rebuild_progress`/`_done`, `faststart_progress`/`_done`, `recovery_bulk_progress`/`_done`, `integrity_swept`, `disk_rotator_swept` (admin), `purge_all_progress`/`_done`, `purge_all` |
+| Maintenance | `integrity_swept`, `db_integrity_progress`/`_done`, `db_vacuum_progress`/`_done`, `files_verify_progress`/`_done`, `reindex_progress`/`_done`, `dedup_progress`/`_done`, `dedup_delete_progress`/`_done`, `thumbs_progress`/`_done`, `thumbs_rebuild_progress`/`_done`, `faststart_progress`/`_done`, `recovery_bulk_progress`/`_done`, `disk_rotator_swept` (admin), `purge_all_progress`/`_done`, `purge_all` |
 | Rescue | `rescued`, `rescue_sweep_done` |
 | Backup (admin sockets only) | `backup_progress`, `backup_done`, `backup_error`, `backup_queue_drained`, `backup_destination_added`, `backup_destination_updated`, `backup_destination_removed`, `log` |
-| Cluster | `peer_catalog_update` |
+| Cluster | `peer_catalog_update`, `cluster_sweep_progress`/`_done` |
+| Auto-forward and TTL | `forward_error`, `monitor_download` (self-destructing media queued) |
+| NSFW | `nsfw_progress`, `nsfw_done`, `nsfw_bulk_progress`/`_done`, `nsfw_model_downloading`, `nsfw_blocklist_deleted` |
+| Seekbar | `seekbar_progress`/`_done`, `seekbar_rebuild_progress`/`_done`, `seekbar_sprite_ready` |
+| Faces | `ai_faces_status`, `ai_people_progress`/`_done`, `quality_backfill_progress`/`_done` |
 | Settings & AI | `config_updated`, `ai_config_changed`, `ai_faces_reindexed`, `seekbar_config_changed`, `seekbar_sidecar_status` |
 | Session & update | `sessions_revoked`, `update_started`, `update_done` |
 
 ## Internal routes
 
 - **`/v1/db/*`** (`POST`, admin session) are read helpers that `tgdl-server` registers for its own use, behind the same session gate. The dashboard does not call them directly, and they are not a supported API.
-- The **`tgdl-core`** helper (`core-service/cmd/tgdl-core`) has its own `/v1/*` API secured by a bearer token. It is a development and testing tool, not part of 3.0: the Docker image, CI and the release archives only build `tgdl-server`.
+- The **`tgdl-core`** helper (`core-service/cmd/tgdl-core`) has its own `/v1/*` API secured by a bearer token. It is a development and testing tool, not part of 3.x: the Docker image, CI and the release archives only build `tgdl-server`.
 - Every path not listed here serves the embedded dashboard (HTML, JS, CSS, service worker).
 
 ## See also
 
 - [Deploy](DEPLOY.md): ports, environment variables, reverse proxy, first password
 - [Configuration](CONFIGURATION.md): every setting and environment variable
-- [Upgrading](UPGRADING.md): moving from 2.x to 3.0
+- [Upgrading](UPGRADING.md): moving from 2.x to 3.x
 - [Troubleshooting](TROUBLESHOOTING.md)
 - [Architecture](ARCHITECTURE.md)

@@ -1,13 +1,13 @@
 ---
 title: "Troubleshooting"
-description: "Fix common Telegram Media Downloader 3.0 problems: startup errors, dashboard sign-in and password reset, Telegram accounts, downloads, updates and Docker."
+description: "Fix common Telegram Media Downloader 3.x problems: startup, sign-in and password reset, Telegram accounts, monitor, downloads, updates and Docker."
 nav_order: 6
 ---
 
 # Troubleshooting
 
 Fixes for the problems people hit most often with Telegram Media Downloader
-3.0, grouped by symptom. 3.0 is a single native `tgdl-server` process with
+3.x, grouped by symptom. 3.x is a single native `tgdl-server` process with
 the dashboard built in. There is no Node.js, `npm` or gramJS any more, so
 2.x tips such as `npm run doctor`, `npm run auth` or `npm rebuild` no longer
 apply.
@@ -240,6 +240,22 @@ avoid running many large history backfills at once.
 
 ## Downloads
 
+### The monitor stopped and doesn't start again
+
+While monitoring is switched on, the server restarts a monitor that stopped
+on an error or a dropped connection by itself (after 5 s, then 30 s, 1 min and
+every 5 min), and a watchdog checks every minute. A channel gap ("requires
+history recovery") is repaired in the background for that channel only. If it
+still shows *stopped*:
+
+- It was stopped by hand (**Stop**). Press **Start**; a manual stop is kept
+  across restarts.
+- No Telegram account is loaded or signed in. See
+  [Telegram accounts](#telegram-accounts).
+- The server log shows the reason: look for lines starting with `Monitor`.
+- A start that first repairs missed channel history can take several minutes;
+  it keeps running on the server even if you close the tab.
+
 ### Downloads fail or keep retrying
 
 A failed download is retried automatically after a growing pause, up to
@@ -254,14 +270,17 @@ retried then without using up an attempt.
 
 If Telegram rate-limits you often:
 
-- Lower **Concurrent Downloads** (1–3 is conservative).
+- Lower **Concurrent Downloads** (1–3 is conservative) and, under
+  **Settings → Advanced**, **Max Workers** (`advanced.downloader.maxConcurrency`,
+  default 20): the number of parallel downloads grows up to that value while
+  the queue is long. Set both to the same value for a fixed number.
 - Set a **Max Download Speed** limit; it applies to all downloads together
   and takes effect immediately.
 - Don't restart to "skip" a wait: Telegram tracks it per account.
 
 ### A file isn't downloaded again
 
-3.0 skips media it already has, first by Telegram's media identity before
+3.x skips media it already has, first by Telegram's media identity before
 downloading, then by SHA-256 after the transfer. A re-post of a file you
 already have is recorded as a duplicate instead of saved twice.
 
@@ -289,9 +308,32 @@ In Docker the path has to exist *inside the container*: mount the disk in
 compose file has a commented example). Thumbnails and the database stay in
 the data folder.
 
+### Old downloads disappeared
+
+Check **Settings → Downloads → Auto-rotate when full**. When it is on and the
+library is larger than the size cap (`diskManagement.maxTotalSize`), the
+server deletes the oldest downloads and their files every few minutes until
+the library fits. A 2.x install that had it switched on keeps it on. Pinned
+and rescued items are never rotated. `GET /api/maintenance/disk-rotator/status`
+shows the cap, the current size and the last sweep. Turn the switch off, or
+raise the cap, to stop it.
+
+Files are also removed locally after a successful upload when **Delete after
+forward** is on for that chat.
+
+### Auto-forward doesn't post
+
+Open the chat's page, **Forward to** section. If it says it can't post to
+the destination, Telegram refused the forward account (not a member, no
+rights to post, or the destination is gone); forwarding is paused and checked
+again after 1 h, 6 h and 24 h. Pick another destination or give the account
+posting rights. Failed uploads are also shown as `forward_error` events and in
+the server log (`AutoForward:`).
+
 ### Faces, NSFW scores or hover previews don't appear for new files
 
-3.0 shows the results 2.x produced but doesn't create new ones. See
+Hover previews are built by the server when `advanced.seekbar.enabled` is on
+(the default). Faces and NSFW scores need their sidecar containers. See
 [AI troubleshooting](AI.md#troubleshooting).
 
 ### A share link says "Share link is not valid"
@@ -330,7 +372,7 @@ Download the current `docker-compose.yml` (keep your own volume paths and
 | `WATCHTOWER_UNREACHABLE` | The app couldn't reach the sidecar: it's stopped, on another network, or `WATCHTOWER_URL` is wrong. Run `docker compose up -d` and check `docker compose logs watchtower`. |
 | `WATCHTOWER_UNAUTHENTICATED` | The sidecar rejected the token. If `.env` sets `WATCHTOWER_HTTP_API_TOKEN`, both services must get the same value; otherwise both read the token generated in `data/watchtower/api-token`. Fix it, then `docker compose up -d --force-recreate watchtower`. |
 | `DB_CORRUPT` | The database integrity check failed, so no snapshot was taken. Run **Maintenance → DB integrity** and recover before retrying. |
-| `BACKUP_FAILED` / `BACKUP_VERIFY_FAILED` | The pre-update snapshot in `data/backups/` couldn't be written or verified. Check free disk space and disk health. On a very large database you can raise `UPDATE_SNAPSHOT_TIMEOUT_MS` (default 60000). |
+| `BACKUP_FAILED` / `BACKUP_VERIFY_FAILED` | The pre-update snapshot in `data/backups/` couldn't be written or verified. Check free disk space and disk health. On a very large database you can raise `UPDATE_SNAPSHOT_TIMEOUT_MS` (default 900000, 15 minutes). |
 | `TRIGGER_FAILED` | The sidecar refused the update request; the snapshot was kept. See `docker compose logs watchtower`. |
 | `STALL_TIMEOUT` | The update never reported back (default 10 minutes). Check `docker compose ps` and the logs; a manual `docker compose pull && docker compose up -d` finishes it. |
 
@@ -340,7 +382,7 @@ the app service.
 
 ### The container exits with "node: not available"
 
-3.0 has no Node runtime. A small `node` shim is kept only so the 2.x
+3.x has no Node runtime. A small `node` shim is kept only so the 2.x
 healthcheck (`node scripts/healthcheck.js`) and start command
 (`node src/web/server.js`, used by the Synology compose file) keep working.
 Any other `node ...` command in a custom `command:`, `entrypoint:` or
@@ -354,13 +396,13 @@ current compose file.
   `tgdl-server setup` for the first password, and the reset flow for a
   forgotten one.
 - `NODE_ENV`, `NODE_OPTIONS`, `TGDL_HEAP_MB`, `TGDL_GO_CORE`,
-  `TGDL_GO_FEATURES`, `TGDL_CORE_BIN` and `TGDL_CORE_RELEASE_URL` are
-  ignored; leaving them in `.env` does no harm. See
+  `TGDL_GO_FEATURES`, `TGDL_CORE_BIN`, `TGDL_CORE_RELEASE_URL` and
+  `SEEKBAR_SIDECAR_URL` are ignored; leaving them in `.env` does no harm. See
   [Configuration](CONFIGURATION.md) for the current list.
 
 ### Going back to 2.32.1
 
-If 3.0 doesn't work for you, roll back with the database snapshot taken right
+If 3.x doesn't work for you, roll back with the database snapshot taken right
 before the update. The dashboard's **Install update** saves it as
 `data/backups/db-pre-update-<date>-<time>.sqlite`. A manual
 `docker compose pull` doesn't make one; use your own backup in that case.
@@ -376,7 +418,7 @@ docker compose up -d
 ```
 
 2.x logins still work because the original session files were left in place.
-Accounts added under 3.0, and downloads recorded after the snapshot, aren't
+Accounts added under 3.x, and downloads recorded after the snapshot, aren't
 in the restored database. Their files stay on disk. On bare metal, check out
 `v2.32.1` and start it the way that release's README describes.
 
@@ -405,8 +447,9 @@ download disk, the folder in `TGDL_DOWNLOADS_DIR` needs the same access.
 ### Compose fails with an error about `/dev/dri`
 
 `docker-compose.synology.yml` passes the iGPU (`/dev/dri`) through. A host
-without that device can't start the container. 3.0 doesn't need the GPU,
-since thumbnails use the CPU, so delete the `devices:` block. When the device
+without that device can't start the container. The GPU is only used for
+hardware decoding with `FFMPEG_HWACCEL` (otherwise thumbnails and previews use
+the CPU), so delete the `devices:` block. When the device
 is present, the entrypoint adds the `node` user to its group by itself
 (`ENTRYPOINT_DEBUG_GPU=1` prints what it did).
 
@@ -461,7 +504,7 @@ so keep the system clocks synced (NTP).
 
 ## Getting help and logs
 
-- **Where the logs are:** 3.0 writes its log to standard output.
+- **Where the logs are:** 3.x writes its log to standard output.
   - Docker: `docker compose logs -f telegram-downloader` (add `--tail=500`
     or `--since 1h` to narrow it down).
   - systemd: `journalctl -u <your unit>`.
@@ -470,7 +513,7 @@ so keep the system clocks synced (NTP).
 
   `data/logs/` contains only log files left over from 2.x. **Maintenance →
   Logs** can still browse those files, but the live log viewer stays empty in
-  3.0. Use the commands above instead.
+  3.x. Use the commands above instead.
 - **No debug switch:** `TGDL_DEBUG` and `DEBUG` from 2.x have no effect.
 - **Version:** `tgdl-server version` prints the version, OS/CPU and Go
   version.

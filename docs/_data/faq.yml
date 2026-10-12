@@ -9,12 +9,12 @@
 - q: Is my Telegram session safe?
   a: Sessions are encrypted at rest in `data/sessions/`, with the key in `data/secret.key`. Nothing is sent to a service run by this project. The dashboard fails closed, so without a password nobody gets in. Put it behind HTTPS if you expose it, and back up `secret.key`, because losing it means signing in to Telegram again. See the [security policy](https://github.com/botnick/telegram-media-downloader/blob/main/SECURITY.md).
 - q: Will my account get banned?
-  a: It uses the normal user API like a Telegram app, but heavy automated downloading always carries some risk. Failed downloads retry with growing delays; keep parallel downloads and the bandwidth limit moderate and avoid running many accounts from one IP. No tool can promise zero risk.
+  a: It uses the normal user API like a Telegram app, but heavy automated downloading always carries some risk. Failed downloads retry with growing delays and Telegram FloodWait limits are respected automatically; keep parallel downloads and the bandwidth limit moderate and avoid running many accounts from one IP. No tool can promise zero risk.
 - q: Does it run on a Raspberry Pi or a Synology NAS?
   a: Yes. The Docker image is built for amd64 and arm64, release binaries also cover 32-bit ARM (`linux-arm`), and the repo ships `docker-compose.synology.yml`. See the [deploy guide](https://botnick.github.io/telegram-media-downloader/DEPLOY.html).
 - q: Can I download Stories or a single t.me link?
   a: Yes. Look up a user's Stories by username and pick what to save, or paste `t.me/...` message links into the dashboard. Channel, group, forum-topic and private links are supported.
-- q: How do I upgrade from 2.x to 3.0?
+- q: How do I upgrade from 2.x to 3.x?
   a: Nothing has to change. Press Install update in Settings > Maintenance, or run `docker compose pull && docker compose up -d`. The image, port, data folder, password and Telegram logins carry over. See [Upgrading from 2.x](https://botnick.github.io/telegram-media-downloader/UPGRADING.html).
 - q: Where are the files stored, and can I back them up?
-  a: Downloads live under `data/downloads/<chat>/`, or `TGDL_DOWNLOADS_DIR` on another disk. Backups go to a local folder, S3-compatible storage, SFTP or FTP/FTPS, with optional encryption and an offline restore command. Google Drive and Dropbox are not available in 3.0. See the [backup guide](https://botnick.github.io/telegram-media-downloader/BACKUP.html).
+  a: Downloads live under `data/downloads/<chat>/`, or `TGDL_DOWNLOADS_DIR` on another disk. Backups go to a local folder, S3-compatible storage, SFTP, FTP/FTPS, Google Drive or Dropbox, with optional encryption and an offline restore command. See the [backup guide](https://botnick.github.io/telegram-media-downloader/BACKUP.html).

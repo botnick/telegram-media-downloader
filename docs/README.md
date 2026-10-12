@@ -1,6 +1,6 @@
 ---
 title: "Documentation"
-description: "Documentation for Telegram Media Downloader 3.0, a self-hosted Telegram channel and group media downloader: one Go binary or Docker image with a web dashboard."
+description: "Documentation for Telegram Media Downloader 3.x, a self-hosted Telegram channel and group media downloader: one Go binary or Docker image with a dashboard."
 nav_order: 1
 permalink: /docs/
 ---
@@ -9,7 +9,7 @@ permalink: /docs/
 
 Telegram Media Downloader is a self-hosted web app that downloads and backs up
 media from Telegram channels, groups and private chats using your own account.
-Version 3.0 is a single Go program, `tgdl-server`, with the dashboard built in.
+Version 3.x is a single Go program, `tgdl-server`, with the dashboard built in.
 Run it with Docker or as a native binary on Linux, Windows or macOS.
 
 ## Get started
@@ -17,7 +17,7 @@ Run it with Docker or as a native binary on Linux, Windows or macOS.
 | Page | Read it when you want to |
 |---|---|
 | [Install and deploy](DEPLOY.md) | Install with Docker Compose, a release binary or a git checkout; set the first password; add a reverse proxy; update |
-| [Upgrading from 2.x](UPGRADING.md) | Move an existing 2.x install to 3.0, see what changed, roll back |
+| [Upgrading from 2.x](UPGRADING.md) | Move an existing 2.x install to 3.x, see what changed and what came back, roll back |
 | [Configuration](CONFIGURATION.md) | Look up dashboard settings, environment variables and the data folder layout |
 | [Troubleshooting](TROUBLESHOOTING.md) | Fix a problem with start-up, sign-in, Telegram accounts, downloads or updates |
 
@@ -25,10 +25,10 @@ Run it with Docker or as a native binary on Linux, Windows or macOS.
 
 | Page | Covers |
 |---|---|
-| [Features](FEATURES.md) | Everything 3.0 does, and what is not in 3.0 yet |
-| [Backup](BACKUP.md) | Local, S3, SFTP and FTP/FTPS backups, encryption, offline restore |
+| [Features](FEATURES.md) | Everything 3.x does, and what is still missing |
+| [Backup](BACKUP.md) | Local, S3, SFTP, FTP/FTPS, Google Drive and Dropbox backups, encryption, offline restore |
 | [Cluster mode](CLUSTER.md) | Pair several instances into one library |
-| [AI: faces, NSFW and previews](AI.md) | What remains of the AI tools in 3.0 |
+| [AI: faces, NSFW and previews](AI.md) | Seekbar previews, the `tgdl-faces` and `tgdl-nsfw` sidecars |
 | [API reference](API.md) | HTTP and WebSocket endpoints |
 
 ## Under the hood

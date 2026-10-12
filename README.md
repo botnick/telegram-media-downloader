@@ -23,10 +23,12 @@
   <a href="docs/README.md">Docs</a>
 </p>
 
-> **3.0 is a native Go server.** Node.js is gone: one `tgdl-server` binary
+> **3.x is a native Go server.** Node.js is gone: one `tgdl-server` binary
 > (or the Docker image) runs everything. 2.x installs upgrade in place with the
-> same image, port, data folder and logins. See
-> [Upgrading from 2.x](docs/UPGRADING.md).
+> same image, port, data folder and logins, and since 3.4 the 2.x background
+> features are back too: auto-forward, self-destructing media, disk rotation,
+> Google Drive and Dropbox backups, seekbar previews, NSFW and face sidecars.
+> See [Upgrading from 2.x](docs/UPGRADING.md).
 
 <p align="center">
   <picture>
@@ -44,7 +46,7 @@
 | The same video forwarded everywhere | **Skips duplicates before downloading**, then confirms by SHA-256 |
 | Files scattered across devices | **Web dashboard and PWA** on any browser in your network |
 | Sharing a file with someone without an account | **Signed, expiring share links** you can revoke |
-| Keeping a copy somewhere else | **Backups** to a local disk, S3, SFTP or FTP/FTPS, optionally encrypted |
+| Keeping a copy somewhere else | **Backups** to a local disk, S3, SFTP, FTP/FTPS, Google Drive or Dropbox, optionally encrypted |
 
 ## Quick start
 
@@ -88,7 +90,7 @@ TGDL_DATA_DIR=./data ./tgdl-server
 ```
 
 On the same machine, `http://localhost:3000` shows the setup form for the
-first password. Install ffmpeg for thumbnails.
+first password. Install ffmpeg for thumbnails and video previews.
 
 Prefer a git checkout? `./runner.sh` (Windows: `run_safe.bat`) downloads and
 verifies the matching release for you. Details, systemd and reverse-proxy
@@ -99,28 +101,36 @@ examples: [Install and deploy](docs/DEPLOY.md).
 **Downloading**
 - Realtime monitor for channels, groups, forum topics and private chats, with
   per-chat media-type, sender and topic filters
-- History backfill (pull older, catch up, rescan) that resumes after a restart
-- `t.me/` message links and Telegram Stories
+- Monitor that restarts itself after errors, with a per-minute watchdog
+- History backfill (pull older, catch up, rescan, optional date window) that
+  resumes after a restart
+- `t.me/` message links, Telegram Stories and self-destructing (TTL) media
+- Auto-forward each new file to Saved Messages, a channel or a chat
 - Several Telegram accounts; pin each chat to the account that reads it
 - SOCKS5, SOCKS4, HTTP and MTProxy proxies
-- 1–50 parallel downloads, retries and a live bandwidth limit
+- Adaptive parallel downloads (scale between a minimum and maximum with the
+  queue), FloodWait protection, retries and a live bandwidth limit
 - Rescue mode: keep only media whose source message was deleted
 
 **Library**
 - Duplicates skipped by Telegram media identity, confirmed by SHA-256, plus a
   duplicate finder with bulk delete
 - Gallery with thumbnails, search, pins, bulk delete and ZIP download
-- Video player with MP4 faststart; signed, expiring share links
+- Video player with MP4 faststart and seekbar hover previews; signed,
+  expiring share links
 - Separate tab for deleted or inaccessible chats; leave dead chats in bulk
 - Installable PWA, dark and light theme, English and Thai
 
 **Operations**
 - One-click update from the dashboard (Docker + bundled watchtower), with a
-  verified database snapshot first
-- Backups to local disk, S3-compatible storage, SFTP and FTP/FTPS, with
-  encrypted archives and offline restore
-- Cluster mode: pair instances and browse each other's files
-- Database integrity, vacuum, file verification and recovery tools
+  verified database snapshot first, or scheduled automatic updates
+- Backups to local disk, S3-compatible storage, SFTP, FTP/FTPS, Google Drive
+  and Dropbox, with encrypted archives and offline restore
+- Cluster mode: pair instances, browse each other's files, cross-peer
+  duplicate sweep
+- Optional disk rotation (deletes the oldest downloads over a size cap),
+  periodic integrity sweep, database and file verification, recovery tools
+- Prometheus `/metrics`; `FFMPEG_HWACCEL` hardware decoding for thumbnails
 
 **Security**
 - Fail-closed: nothing is reachable until a password is set
@@ -129,8 +139,10 @@ examples: [Install and deploy](docs/DEPLOY.md).
 - Read-only guest password; Telegram sessions encrypted at rest
 - CSP and security headers; `TRUST_PROXY` for reverse proxies
 
-**Companion containers:** face recognition and NSFW scanning run in the optional `tgdl-faces` and `tgdl-nsfw` containers. See
-[Features](docs/FEATURES.md#not-in-30).
+**AI (optional):** seekbar previews are built into the server. Face
+recognition and NSFW scanning run in the optional `tgdl-faces` and
+`tgdl-nsfw` containers (a commented `tgdl-nsfw` service is in the compose
+files). See [AI: faces, NSFW and previews](docs/AI.md).
 
 ## Dashboard
 
@@ -178,7 +190,8 @@ flowchart LR
     server --> queue[Durable queue]
     queue --> files[(downloads/)]
     server <--> db[(SQLite)]
-    server -- thumbnails --> ffmpeg[ffmpeg]
+    server -- thumbnails, previews --> ffmpeg[ffmpeg]
+    server -. optional .-> sidecars[tgdl-faces / tgdl-nsfw]
 ```
 
 `tgdl-server` is a single Go program. It serves the embedded dashboard, owns
@@ -220,6 +233,7 @@ data/
 ├── sessions/native/   # encrypted Telegram logins
 ├── downloads/<chat>/  # your media
 ├── thumbs/            # generated thumbnails
+├── seekbar/           # video preview sprites
 └── backups/           # database snapshots (incl. pre-update)
 ```
 
@@ -256,7 +270,9 @@ if you expose it, and back up `secret.key`. See [SECURITY.md](SECURITY.md).
 It uses the normal user API like a Telegram app, but heavy automated
 downloading always carries some risk. Failed downloads retry with growing
 delays; keep parallel downloads and the bandwidth limit moderate, and avoid
-running many accounts from one IP. No tool can promise zero risk.
+running many accounts from one IP. Telegram's FloodWait limits are respected
+automatically: short waits are slept through and long ones pause only that
+account. No tool can promise zero risk.
 
 ### Does it run on a Raspberry Pi or a Synology NAS?
 
@@ -289,10 +305,10 @@ an offline restore command. See
 | [Install and deploy](docs/DEPLOY.md) | Docker, release binaries, systemd, reverse proxy, updating |
 | [Upgrading from 2.x](docs/UPGRADING.md) | What carries over, what changed, rolling back |
 | [Configuration](docs/CONFIGURATION.md) | Dashboard settings, environment variables, data folder |
-| [Features](docs/FEATURES.md) | Everything 3.0 does and what is not in 3.0 yet |
-| [Backup](docs/BACKUP.md) | Local, S3, SFTP, FTP/FTPS, encryption, restore |
+| [Features](docs/FEATURES.md) | Everything 3.x does and what is still missing |
+| [Backup](docs/BACKUP.md) | Local, S3, SFTP, FTP/FTPS, Google Drive, Dropbox, encryption, restore |
 | [Cluster mode](docs/CLUSTER.md) | Pairing several instances |
-| [AI: faces, NSFW and previews](docs/AI.md) | What remains of the AI tools in 3.0 |
+| [AI: faces, NSFW and previews](docs/AI.md) | Seekbar previews and the face and NSFW sidecars |
 | [API reference](docs/API.md) | HTTP and WebSocket endpoints |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common problems and fixes |
 | [Architecture](docs/ARCHITECTURE.md) | How the server is built |

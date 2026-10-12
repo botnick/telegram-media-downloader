@@ -118,7 +118,7 @@ walks, the DBSCAN worker) is removed; Node keeps thin client calls.
 
 Lookup order, env overrides (`TGDL_CORE_BIN`, `TGDL_CORE_RELEASE_URL`,
 `TGDL_CORE_ALLOW_ROOTS`, `TGDL_CORE_SKIP_INSTALL`): see
-[core-service/README.md](https://github.com/botnick/telegram-media-downloader/blob/main/core-service/README.md#how-the-app-finds-it).
+[core-service/README.md in v2.32.1](https://github.com/botnick/telegram-media-downloader/blob/v2.32.1/core-service/README.md#how-the-app-finds-it).
 
 ## When it can't run
 

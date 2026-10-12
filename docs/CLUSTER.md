@@ -1,6 +1,6 @@
 ---
 title: "Cluster mode"
-description: "Pair two or more Telegram Media Downloader 3.0 servers to browse, search and stream each other's files from one dashboard over signed requests."
+description: "Pair two or more Telegram Media Downloader 3.x servers to browse, search, stream and dedup each other's files from one dashboard over signed requests."
 parent: Features
 nav_order: 2
 ---
@@ -26,25 +26,28 @@ Cluster mode does nothing until you pair a peer. There is no public directory
 and no automatic discovery: every pairing is started by an admin with a URL
 and a pairing code.
 
-## What 3.0 does and does not do
+## What 3.x does and does not do
 
-3.0 is a rewrite of the cluster in Go. It keeps the 2.x wire format for signed
-requests but implements a smaller feature set than late 2.x releases.
+3.0 rewrote the cluster in Go. It keeps the 2.x wire format for signed
+requests but implements a smaller feature set than late 2.x releases; 3.4
+brought back peer thumbnails and the cross-peer duplicate sweep.
 
-| Works in 3.0 | Not available in 3.0 |
+| Works in 3.x | Not available in 3.x |
 |---|---|
 | Pairing with a one-time code (or the remote peer's cluster token) | LAN auto-discovery (the UDP beacon is gone) |
 | Per-pair secrets, signed requests, replay protection, revocation | Relay through a third peer |
 | Automatic catalog sync of added, edited and deleted files | Backup peer / automatic failover |
 | *All peers* gallery view and search over the synced catalog | Replicating settings between peers (Settings → Federation) |
 | Streaming peer files through your peer, with seeking (HTTP ranges) | *Direct* stream mode (browser fetches from the owner) |
-| *Owner peer* per chat (only that peer downloads it) | Peer thumbnails in the gallery |
-| Peer status, manual *Ping*, manual sync, audit log | Cross-peer duplicate sweep, conflicts and remote delete |
+| *Owner peer* per chat (only that peer downloads it) | Retrying queued peer deletes (they are recorded, not sent later) |
+| Peer status, manual *Ping*, manual sync, audit log | |
+| Peer thumbnails in the gallery (since 3.4) | |
+| Cross-peer duplicate sweep, conflicts and remote delete (since 3.4) | |
 
 Some 2.x controls are still visible in the dashboard but have no effect on the
-3.0 server: the **Backup peer** dropdown, **Settings → Federation**
-(replication policy and failover grace), the **Cross-peer dedup** card with
-*Run sweep*, and the *Browser fetches direct* stream mode. They are described
+3.x server: the **Backup peer** dropdown, **Settings → Federation**
+(replication policy and failover grace) and the *Browser fetches direct*
+stream mode. They are described
 under [Limitations](#limitations). The engineering status is tracked in
 [GO-CLUSTER.md](GO-CLUSTER.md#remaining-cluster-work).
 
@@ -52,7 +55,7 @@ under [Limitations](#limitations). The engineering status is tracked in
 
 ### Versions
 
-Run the same major version on every peer. Pairing between 3.0 peers is the
+Run the same major version on every peer. Pairing between 3.x peers is the
 supported setup; see [Upgrading peers](#upgrading-peers) for 2.x peers.
 
 ### Network
@@ -184,7 +187,8 @@ Once a peer is paired, admins get a scope selector in the gallery header:
 The choice is remembered in the browser. Guest sessions always see local files
 only, and the scope selector is hidden when no peer is paired.
 
-Peer files show no thumbnail preview in 3.0; open them to view or play.
+Peer files show their thumbnail, fetched through your peer from the owning
+peer. An offline or 2.x peer gets a blank placeholder instead.
 
 ### Open and play a peer's file
 
@@ -195,7 +199,7 @@ are never forwarded to the other peer. If the owning peer cannot be reached,
 the request fails with *Peer stream unavailable* (`storage_offline`).
 
 Each peer's **Edit** sheet has a *Stream mode*. Keep **Proxy through this
-peer**: the *Browser fetches direct* option is not implemented in 3.0 and
+peer**: the *Browser fetches direct* option is not implemented in 3.x and
 makes the file request fail with `unsupported_stream_mode` (HTTP 501).
 
 ### Search
@@ -217,11 +221,32 @@ links for that chat are all skipped here.
 Chat settings are not shared between peers, so set this on **every peer except
 the owner**. On the owner itself leave it empty (its own name is not in its
 own list). An empty owner means "this peer downloads it as usual"; two peers
-that both monitor a chat with no owner set will both download it, and 3.0 does
-not de-duplicate files across peers.
+that both monitor a chat with no owner set will both download it. Copies
+across peers are not removed automatically; use the
+[cross-peer duplicate sweep](#cross-peer-duplicate-sweep) to find and resolve
+them.
 
-The **Backup peer** dropdown next to it is saved but not acted on in 3.0;
+The **Backup peer** dropdown next to it is saved but not acted on in 3.x;
 there is no automatic failover.
+
+### Cross-peer duplicate sweep
+
+**Maintenance → Cluster → Cross-peer dedup → Run sweep** groups your own files
+and the cached catalogs of every peer by SHA-256 and size (files of at least
+1 KiB, up to 500 groups). Every group with more than one copy is listed as a
+conflict. Only one sweep runs at a time, and it can be cancelled; a cancelled
+sweep keeps the previous list. Conflicts saved by 2.x are kept.
+
+To resolve a conflict, pick the copy to keep. The other copies are deleted:
+
+- local copies only while their row still has the conflict's hash and size,
+  and the file only once no other download references it;
+- copies on a peer through a signed delete request to that peer (recorded as
+  `cross_delete` in its audit log).
+
+If a peer is offline or still on 2.x, its delete is recorded as pending but
+not retried later; delete that copy on the peer itself. A keeper that is not
+one of the group's copies is refused, so a resolve never deletes every copy.
 
 ## What syncs between peers
 
@@ -230,7 +255,7 @@ there is no automatic failover.
 | Catalog of downloaded files (name, path, size, type, SHA-256, chat id/name, message id, date, status, NSFW score) | Yes, one way per pair (each side pulls the other) | Durable change feed, see below |
 | Added, edited and deleted file records | Yes | Deletions are sent as tombstones and remove the cached row |
 | Media files | No | Streamed on demand when opened; never copied |
-| Thumbnails | No | Not proxied in 3.0 |
+| Thumbnails | On demand | Fetched through your peer when the gallery shows a peer file |
 | Chat settings, accounts, Telegram sessions, dashboard settings | No | Each peer is configured separately |
 | Dashboard passwords, share links | No | Each peer has its own |
 
@@ -315,20 +340,20 @@ Whether a pairing needs to be redone depends on how it was made:
   shared-token fallback. Remove the peer on both sides and pair again with a
   code. [MIGRATION-v2.9-to-v2.10.md](MIGRATION-v2.9-to-v2.10.md) describes the
   2.10 change; its notes on discovery, failover, relay and config sync do not
-  apply to 3.0.
+  apply to 3.x.
 
-### Mixed 2.x and 3.0 peers
+### Mixed 2.x and 3.x peers
 
-Upgrade every peer to 3.0. A mixed cluster only partly works:
+Upgrade every peer to 3.x. A mixed cluster only partly works:
 
-- A 3.0 peer syncs only through `/api/cluster/catalog/changes`, which 2.x does
+- A 3.x peer syncs only through `/api/cluster/catalog/changes`, which 2.x does
   not have. It **cannot list a 2.x peer's files**; sync to that peer fails
   with `HTTP 404`.
-- A 2.x peer can still pull the catalog of a 3.0 peer
+- A 2.x peer can still pull the catalog of a 3.x peer
   (`/api/cluster/downloads/since` is served) and stream its files through the
-  proxy. 2.x features that call 3.0 for direct streaming, thumbnails, relay,
-  remote delete, failover or config sync get errors or are refused.
-- Pairing a 2.x peer with a 3.0 peer uses the same handshake, but this
+  proxy. 2.x features that call 3.x for direct streaming, relay, failover or config
+  sync get errors or are refused.
+- Pairing a 2.x peer with a 3.x peer uses the same handshake, but this
   combination is not tested. If you must, pair *from* 2.30 or later; versions
   up to 2.29.1 refuse every pairing-code handshake.
 
@@ -351,20 +376,22 @@ Errors appear in the pairing dialog, in the *Ping* result and in
 | `bad_signature` | Secret mismatch, or a proxy changed the path, query or body | Check the proxy passes requests unchanged; pair again |
 | `replay` | The same signed request was received twice | Usually a retrying proxy; disable retries for `/api/cluster/` |
 | Ping works from A but B shows A *Offline* | A announced an address B cannot reach (for example `localhost`) | Set `PUBLIC_URL` on A, then pair again |
-| Sync shows `HTTP 404` | The peer is still on 2.x | Upgrade it to 3.0 |
+| Sync shows `HTTP 404` | The peer is still on 2.x | Upgrade it to 3.x |
 | Peer file opens with `storage_offline` | The owning peer is down or unreachable from this peer | Bring it back; Ping to confirm |
 | Peer file fails with `unsupported_stream_mode` | Stream mode is set to *direct* | Edit the peer → *Proxy through this peer* |
 | New peer files take ~30 s to appear | The WebSocket link is blocked, so only the 30 s timer runs | Allow WebSocket upgrades for `/ws/cluster` on the proxy |
-| *Run sweep* or *Conflicts* shows an error | Cross-peer dedup is not in 3.0 | Ignore the card |
+| *Run sweep* answers `ALREADY_RUNNING` | A sweep is in progress | Wait for it or cancel it |
+| A resolved conflict still shows a copy on a peer | That peer was offline or on 2.x when you resolved it | Delete the copy on that peer, then run the sweep again |
 
 For general server problems see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ## Limitations
 
 - No LAN discovery, relay through a third peer, automatic failover, settings
-  replication, direct (browser-to-owner) streaming, peer thumbnails, or
-  cross-peer duplicate detection, sweep and remote delete. The dashboard still
-  shows some of these controls from 2.x; they do nothing on a 3.0 server.
+  replication or direct (browser-to-owner) streaming. The dashboard still
+  shows some of these controls from 2.x; they do nothing on a 3.x server.
+- Peer deletes that could not be delivered during a conflict resolve are
+  recorded but not retried.
 - No NAT traversal. Peers that cannot reach each other directly need a VPN
   such as Tailscale or WireGuard.
 - Removing a peer does not stop a file stream that is already playing.
@@ -395,6 +422,12 @@ Admin routes (dashboard session, admin role):
 | `GET /api/cluster/audit?peerId=&kind=&limit=` | Audit log (default 200, max 2000) |
 | `GET /api/cluster/sync/state` | Per-peer sync cursor and status |
 | `POST /api/cluster/sync/run` | Run a sync pass now |
+| `POST /api/cluster/sweep/run` | Start the cross-peer duplicate sweep (optional `{"minSize"}`, default 1024) |
+| `GET /api/cluster/sweep/status` | Sweep progress |
+| `POST /api/cluster/sweep/cancel` | Cancel the sweep |
+| `GET /api/cluster/conflicts` | Conflicts found by the last sweep |
+| `POST /api/cluster/conflicts/{id}/resolve` | Keep one copy, delete the others |
+| `GET /api/cluster/thumbs/{peerId}/{remoteId}` | A peer file's thumbnail, fetched through this peer |
 
 Gallery and media routes that read peer data (admin only):
 `GET /api/downloads/all?include=peers`,
@@ -410,12 +443,14 @@ with the code- or token-derived key):
 |---|---|
 | `POST /api/cluster/handshake` | Pairing |
 | `GET /api/cluster/health` | Identity, version, liveness |
-| `GET /api/cluster/catalog/changes?after=&epoch=&limit=` | Catalog change feed (used by 3.0) |
+| `GET /api/cluster/catalog/changes?after=&epoch=&limit=` | Catalog change feed (used by 3.x) |
 | `GET /api/cluster/downloads/since?sinceId=&limit=` | Catalog by row ID (kept for 2.x peers) |
 | `GET /api/cluster/search/peer?q=&limit=` | File/chat name search (kept for 2.x peers) |
 | `GET /api/cluster/groups/snapshot` | Chat settings without credentials |
 | `GET /api/cluster/accounts/snapshot` | Account ID, label, phone, disabled |
 | `GET`, `HEAD /api/cluster/files/<path>` | File bytes with HTTP ranges |
+| `POST /api/cluster/files/delete` | Delete a copy during a conflict resolve |
+| `GET /api/cluster/peer-thumbs/{id}` | Thumbnail of one of this peer's files |
 | `GET /ws/cluster` | Signed WebSocket for change hints and heartbeats |
 
 The signing format is documented in

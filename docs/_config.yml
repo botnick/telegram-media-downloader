@@ -60,6 +60,6 @@ exclude:
 
 # Read by _includes/head_custom.html (JSON-LD). Bump on each app release.
 software:
-  version: 3.0.0
+  version: 3.4.0
   repository: https://github.com/botnick/telegram-media-downloader
   license: https://github.com/botnick/telegram-media-downloader/blob/main/LICENSE

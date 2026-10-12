@@ -1,8 +1,8 @@
 # Telegram Media Downloader
 
-> Self-hosted Telegram media downloader with a web dashboard. It downloads and archives photos, videos, documents, voice messages, GIFs, stickers and Stories from Telegram channels, groups and private chats (including private ones you belong to) using your own account over MTProto. Version 3.0 is a single Go binary, tgdl-server, with the dashboard embedded; it runs from the Docker image ghcr.io/botnick/telegram-media-downloader (amd64, arm64) or as a native binary on Linux, Windows and macOS. MIT licensed.
+> Self-hosted Telegram media downloader with a web dashboard. It downloads and archives photos, videos, documents, voice messages, GIFs, stickers and Stories from Telegram channels, groups and private chats (including private ones you belong to) using your own account over MTProto. Version 3.x is a single Go binary, tgdl-server, with the dashboard embedded; it runs from the Docker image ghcr.io/botnick/telegram-media-downloader (amd64, arm64) or as a native binary on Linux, Windows and macOS. MIT licensed.
 
-Key facts for 3.0: no Node.js runtime; Telegram via gotd; state in SQLite under TGDL_DATA_DIR (./data); dashboard on port 3000; first password set with `tgdl-server setup --password-stdin`; 2.x installs upgrade in place. Not in 3.0: Google Drive and Dropbox backups, hardware-accelerated thumbnails (FFMPEG_HWACCEL ignored), new face/NSFW/seekbar AI results, auto-forward, self-destructing media capture, automatic disk rotation.
+Key facts for 3.x (current 3.4): no Node.js runtime; Telegram via gotd; state in SQLite under TGDL_DATA_DIR (./data), media optionally under TGDL_DOWNLOADS_DIR; dashboard on port 3000; first password set with `tgdl-server setup --password-stdin`; 2.x installs upgrade in place. Since 3.4 the 2.x background features are back: auto-forward, self-destructing (TTL) media capture, disk rotation (deletes the oldest downloads over diskManagement.maxTotalSize), periodic integrity sweep, Google Drive and Dropbox backups (`tgdl-server backup-oauth`), cluster dedup sweep, backfill date window, FFMPEG_HWACCEL, real /metrics. Also: adaptive download concurrency (advanced.downloader), FloodWait protection, self-restarting monitor with a watchdog, scheduled watchtower updates, built-in seekbar previews. Face recognition needs the tgdl-faces container (FACES_SERVICE_URL / TGDL_FACES_SIDECAR_URL) and NSFW scoring the tgdl-nsfw container (TGDL_NSFW_SIDECAR_URL); there is no local face-sidecar mode and no in-process NSFW model.
 
 ## Start here
 
@@ -14,10 +14,10 @@ Key facts for 3.0: no Node.js runtime; Telegram via gotd; state in SQLite under 
 
 ## Docs
 
-- [Features](https://github.com/botnick/telegram-media-downloader/blob/main/docs/FEATURES.md): everything 3.0 does and what is not in 3.0 yet
-- [Backup](https://github.com/botnick/telegram-media-downloader/blob/main/docs/BACKUP.md): local, S3, SFTP, FTP/FTPS, encrypted archives, offline restore
-- [Cluster mode](https://github.com/botnick/telegram-media-downloader/blob/main/docs/CLUSTER.md): pairing instances, catalog sync, peer media
-- [AI: faces, NSFW and previews](https://github.com/botnick/telegram-media-downloader/blob/main/docs/AI.md): what remains of the AI tools in 3.0
+- [Features](https://github.com/botnick/telegram-media-downloader/blob/main/docs/FEATURES.md): everything 3.x does and what is still missing
+- [Backup](https://github.com/botnick/telegram-media-downloader/blob/main/docs/BACKUP.md): local, S3, SFTP, FTP/FTPS, Google Drive, Dropbox, encrypted archives, offline restore
+- [Cluster mode](https://github.com/botnick/telegram-media-downloader/blob/main/docs/CLUSTER.md): pairing instances, catalog sync, peer media, cross-peer dedup sweep
+- [AI: faces, NSFW and previews](https://github.com/botnick/telegram-media-downloader/blob/main/docs/AI.md): seekbar previews, NSFW (tgdl-nsfw) and face (tgdl-faces) sidecars
 - [API reference](https://github.com/botnick/telegram-media-downloader/blob/main/docs/API.md): HTTP and WebSocket endpoints
 - [Architecture](https://github.com/botnick/telegram-media-downloader/blob/main/docs/ARCHITECTURE.md): how the Go server is built
 
@@ -36,11 +36,11 @@ Key facts for 3.0: no Node.js runtime; Telegram via gotd; state in SQLite under 
 
 ## Code map
 
-- core-service/cmd/tgdl-server: the server plus `setup`, `backup-restore`, `backup-decrypt` and `version` commands
+- core-service/cmd/tgdl-server: the server plus `setup`, `backup-restore`, `backup-decrypt`, `backup-oauth` and `version` commands
 - core-service/internal/app: HTTP and WebSocket routes, authorization, settings, integration
 - core-service/internal/accounts, telegram, session: account ownership, gotd sessions, login, Telegram updates
 - core-service/internal/engine, download, filepublish: durable queue, ingestion, download-time dedup, streaming SHA-256, atomic publication and recovery
 - core-service/internal/store, dbread: SQLite schema, migrations and read projections
 - core-service/internal/backup, cluster, rescue: backups and restore, peer pairing and sync, rescue retention
 - core-service/internal/webassets/public: browser dashboard (ES modules) embedded in the binary
-- Build and test with `make build`, `make test`, `make check`. Historical HTTP/WS contract snapshots are in tests/contract; the removed Node backend is in Git at commit aa83eed. faces-service, nsfw-service and seekbar-service are separate projects not called by the 3.0 server.
+- Build and test with `make build`, `make test`, `make check`. Historical HTTP/WS contract snapshots are in tests/contract; the removed Node backend is in Git at commit aa83eed. faces-service (tgdl-faces) and nsfw-service (tgdl-nsfw) are separate sidecar projects the server calls over HTTP; seekbar-service is no longer used (sprites are built in the server).

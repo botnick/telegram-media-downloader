@@ -33,6 +33,9 @@ services:
       # generates the token in ./data/watchtower/; .env can override it.
       - WATCHTOWER_URL=${WATCHTOWER_URL:-http://watchtower:8080}
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
+      # Optional NSFW sidecar (tgdl-nsfw service below). Empty = not used.
+      - TGDL_NSFW_SIDECAR_URL=${TGDL_NSFW_SIDECAR_URL:-}
+      - TGDL_NSFW_API_TOKEN=${TGDL_NSFW_API_TOKEN:-}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       # The autoheal service restarts the container if it stops answering.
@@ -106,3 +109,31 @@ services:
       - WATCHTOWER_INCLUDE_RESTARTING=true
       - WATCHTOWER_NO_STARTUP_MESSAGE=true
       - TZ=${TZ:-UTC}
+
+  # Optional NSFW scanning (Maintenance → NSFW review). To enable it,
+  # uncomment this service and the volumes: block below, set
+  # TGDL_NSFW_SIDECAR_URL=http://tgdl-nsfw:8012 in .env, then
+  # `docker compose up -d`. The first start downloads the model (a few
+  # minutes). GPU hosts can use the :gpu-latest tag. See docs/AI.md.
+  # tgdl-nsfw:
+  #   image: ghcr.io/botnick/tgdl-nsfw:latest
+  #   container_name: telegram-downloader-nsfw
+  #   restart: unless-stopped
+  #   labels:
+  #     - "com.centurylinklabs.watchtower.enable=true"
+  #   environment:
+  #     # Same value as TGDL_NSFW_API_TOKEN above when set in .env.
+  #     - TGDL_NSFW_API_TOKEN=${TGDL_NSFW_API_TOKEN:-}
+  #     # Read files by path instead of receiving uploads (optional).
+  #     - TGDL_NSFW_ALLOW_ROOTS=/app/data/downloads
+  #   volumes:
+  #     - ./data/downloads:/app/data/downloads:ro
+  #     - tgdl-nsfw-models:/root/.cache/huggingface
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+# volumes:
+#   tgdl-nsfw-models:

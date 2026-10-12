@@ -1,6 +1,6 @@
 ---
 title: "Backup internals"
-description: "Engineering note on the native Go backup transports (local, S3, SFTP, FTP/FTPS, Google Drive, Dropbox), TGDB encrypted archives, publication checks and crash recovery."
+description: "Engineering note on the Go backup transports (local, S3, SFTP, FTP/FTPS, Google Drive, Dropbox), TGDB encrypted archives, publication checks, crash recovery."
 parent: "Developer notes"
 nav_order: 5
 ---

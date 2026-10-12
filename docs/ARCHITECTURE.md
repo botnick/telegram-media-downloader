@@ -1,6 +1,6 @@
 ---
 title: "Architecture"
-description: "How Telegram Media Downloader 3.0 works inside: one Go server with gotd MTProto accounts, a durable SQLite queue, verified downloads and an embedded dashboard."
+description: "How Telegram Media Downloader 3.x works inside: one Go server with gotd MTProto accounts, a durable SQLite queue, verified downloads and an embedded dashboard."
 nav_order: 7
 ---
 
@@ -11,8 +11,10 @@ browser assets, HTTP API, media and WebSocket connections, and owns SQLite and
 Telegram account lifetimes through [gotd](https://gotd.dev/). There is no
 JavaScript server or runtime fallback; the browser JavaScript is embedded in
 the binary and runs only in the browser. The build does not need npm, a bundler
-or generated source outside the Go module. ffmpeg is the only external program
-the server calls (thumbnails and MP4 faststart).
+or generated source outside the Go module. ffmpeg (with ffprobe) is the only
+external program the server runs: thumbnails, seekbar previews and MP4
+faststart. The optional `tgdl-faces` and `tgdl-nsfw` sidecars are called over
+HTTP.
 
 ```mermaid
 flowchart LR
@@ -40,10 +42,11 @@ flowchart LR
 | `auth` | Password hashes, web sessions and credential revocation |
 | `webassets/public` | Browser ES modules, prebuilt styles and static pages embedded in the binary |
 | `backup`, `cluster`, `rescue` | Backups and offline restore, peer pairing and catalog sync, rescue retention |
-| `thumbs`, `faststart`, `jobs` | Thumbnails, MP4 faststart rewrites and tracked background jobs |
+| `thumbs`, `faststart`, `seekbar`, `jobs` | Thumbnails, MP4 faststart rewrites, seekbar sprites and tracked background jobs |
+| `nsfw` | Client for the `tgdl-nsfw` sidecar (the faces client lives in `app`) |
 
-`cmd/tgdl-core` and packages such as `api`, `front`, `dbscan` and `seekbar`
-belong to the 2.x companion binary. They still compile and keep protocol and
+`cmd/tgdl-core` and packages such as `api`, `front` and `dbscan` belong to
+the 2.x companion binary. They still compile and keep protocol and
 filesystem helpers, but `tgdl-core` is not built for releases or images. The
 only application build and release target is `cmd/tgdl-server`.
 
@@ -91,9 +94,11 @@ Historical route snapshots, schema and media fixtures remain under
 at `aa83eed`. They document prior behavior rather than serving as a second
 runtime. New behavior and security regressions are tested in Go.
 
-The `faces-service`, `nsfw-service` and `seekbar-service` folders are separate
-projects with their own release workflows. The 3.0 server does not call them;
-see [AI](AI.md).
+The `faces-service` and `nsfw-service` folders are separate sidecar projects
+with their own release workflows (images `tgdl-faces` and `tgdl-nsfw`). The
+server calls them over HTTP when their URL is configured. `seekbar-service` is
+no longer used: seekbar sprites are built in the server with ffmpeg. See
+[AI](AI.md).
 
 Further details: [deployment](DEPLOY.md), [configuration](CONFIGURATION.md),
 and the engineering notes on [HTTP policy](GO-HTTP-SECURITY.md),

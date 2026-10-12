@@ -11,7 +11,7 @@ nav_order: 1
 > 3.0.0 was released, when the Go application was not yet a complete
 > replacement for the 2.x downloader and was not meant for production
 > libraries. 3.0.0 has since shipped; see [Install and deploy](DEPLOY.md),
-> [Upgrading from 2.x](UPGRADING.md) and [Features](FEATURES.md#not-in-30) for
+> [Upgrading from 2.x](UPGRADING.md) and [Features](FEATURES.md#not-in-3x) for
 > the released behaviour and its known gaps. The evidence below is kept as a
 > record.
 
