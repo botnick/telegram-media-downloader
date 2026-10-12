@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/binary"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -113,15 +113,9 @@ func (a *App) handleFilesVerifyStats(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"lastRun": last})
 }
 
-type verifyRow struct {
-	id   int64
-	path string
-	size sql.NullInt64
-}
-
 func (a *App) handleFilesVerify(w http.ResponseWriter, r *http.Request) {
 	a.maintenanceMu.Lock()
-	if a.filesVerifyStatus["running"] == true {
+	if a.filesVerifyStatus["running"] == true || a.filesSweeping.Load() {
 		a.maintenanceMu.Unlock()
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "A file verification is already running", "code": "ALREADY_RUNNING"})
 		return
@@ -140,55 +134,59 @@ func (a *App) handleFilesVerify(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"started": true, "success": true})
 }
 
+// runFilesVerify is the manual run of the integrity sweep: unlike the
+// periodic pass it prunes even when most of the library looks missing,
+// because an operator asked for it.
 func (a *App) runFilesVerify(status map[string]any, started time.Time, previousSuccesses int) {
-	rows, err := a.db.Reader.Query(`SELECT id,file_path,file_size FROM downloads WHERE file_path IS NOT NULL ORDER BY id`)
-	all := []verifyRow{}
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var row verifyRow
-			if rows.Scan(&row.id, &row.path, &row.size) == nil {
-				all = append(all, row)
-			}
-		}
-		err = rows.Err()
-	}
-	total, pruned, fixed := len(all), 0, 0
-	a.hub.Broadcast(ws.Event{Type: "files_verify_progress", Flat: true, Payload: map[string]any{"processed": 0, "total": total, "stage": "scanning"}})
-	if err == nil {
-		for i, row := range all {
-			path := filepath.Join(a.downloadsDir, filepath.FromSlash(strings.TrimPrefix(row.path, "data/downloads/")))
-			st, statErr := os.Stat(path)
-			if statErr != nil || !st.Mode().IsRegular() || st.Size() <= 0 {
-				if _, e := a.db.Writer.Exec(`DELETE FROM downloads WHERE id = ?`, row.id); e == nil {
-					pruned++
-				}
-			} else if !row.size.Valid || row.size.Int64 != st.Size() {
-				if _, e := a.db.Writer.Exec(`UPDATE downloads SET file_size = ? WHERE id = ?`, st.Size(), row.id); e == nil {
-					fixed++
-				}
-			}
-			status["progress"] = map[string]any{"processed": i + 1, "pruned": pruned, "scanned": total, "sizeFixed": fixed, "stage": "scanning", "total": total}
+	var lastPush time.Time
+	progress := func(processed, total int, stage string, r integrityResult) {
+		p := map[string]any{"processed": processed, "pruned": r.Pruned, "scanned": r.Scanned, "sizeFixed": r.SizeFixed, "stage": stage, "total": total}
+		a.maintenanceMu.Lock()
+		status["stage"], status["progress"] = stage, p
+		a.filesVerifyStatus = cloneConfigValue(status).(map[string]any)
+		a.maintenanceMu.Unlock()
+		if processed == 0 || processed == total || time.Since(lastPush) >= 250*time.Millisecond {
+			lastPush = time.Now()
+			a.hub.Broadcast(ws.Event{Type: "files_verify_progress", Flat: true, Payload: p})
 		}
 	}
-	a.hub.Broadcast(ws.Event{Type: "integrity_swept", Flat: true, Payload: map[string]any{"pruned": pruned, "scanned": total}})
-	result := map[string]any{"pruned": pruned, "scanned": total, "sizeFixed": fixed}
+	res, err := a.sweepIntegrity(a.ctx, false, progress)
+	if err == nil && res.Reason == "already_running" {
+		err = errors.New("a file verification is already running")
+	}
+	if res.Pruned == 0 {
+		// The sweep announces its prunes; the dashboard still expects the
+		// summary event after every manual run.
+		a.hub.Broadcast(ws.Event{Type: "integrity_swept", Flat: true, Payload: map[string]any{"pruned": 0, "scanned": res.Scanned}})
+	}
+	result := map[string]any{"pruned": res.Pruned, "scanned": res.Scanned, "sizeFixed": res.SizeFixed}
+	if res.Skipped {
+		result["skipped"], result["reason"] = true, res.Reason
+	}
 	finished := time.Now()
+	a.maintenanceMu.Lock()
 	status["running"], status["stage"], status["finishedAt"], status["durationMs"], status["successes"] = false, "done", finished.UnixMilli(), finished.Sub(started).Milliseconds(), previousSuccesses+1
-	status["progress"] = map[string]any{"processed": total, "pruned": pruned, "scanned": total, "sizeFixed": fixed, "stage": "done", "total": total}
+	status["progress"] = map[string]any{"processed": res.Scanned, "pruned": res.Pruned, "scanned": res.Scanned, "sizeFixed": res.SizeFixed, "stage": "done", "total": res.Scanned}
 	status["result"] = result
 	if err != nil {
 		status["error"] = err.Error()
 		status["failures"] = 1
+		status["successes"] = previousSuccesses
 	}
-	a.maintenanceMu.Lock()
 	a.filesVerifyStatus = cloneConfigValue(status).(map[string]any)
 	// The old dashboard summary intentionally reports removed from its
 	// persisted result, while the live status exposes pruned.
-	a.filesVerifyLastRun = map[string]any{"finishedAt": finished.UnixMilli(), "removed": 0, "scanned": total}
+	a.filesVerifyLastRun = map[string]any{"finishedAt": finished.UnixMilli(), "removed": 0, "scanned": res.Scanned}
 	a.maintenanceMu.Unlock()
 	a.hub.Broadcast(ws.Event{Type: "files_verify_progress", Flat: true, Payload: status["progress"]})
-	a.hub.Broadcast(ws.Event{Type: "files_verify_done", Flat: true, Payload: map[string]any{"durationMs": finished.Sub(started).Milliseconds(), "kind": "filesVerify", "pruned": pruned, "scanned": total, "sizeFixed": fixed}})
+	done := map[string]any{"durationMs": finished.Sub(started).Milliseconds(), "kind": "filesVerify", "pruned": res.Pruned, "scanned": res.Scanned, "sizeFixed": res.SizeFixed}
+	if err != nil {
+		done["error"] = err.Error()
+	}
+	if res.Skipped {
+		done["skipped"], done["reason"] = true, res.Reason
+	}
+	a.hub.Broadcast(ws.Event{Type: "files_verify_done", Flat: true, Payload: done})
 }
 
 func (a *App) handleReindexStatus(w http.ResponseWriter, _ *http.Request) {

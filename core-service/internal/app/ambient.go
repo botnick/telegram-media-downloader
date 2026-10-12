@@ -15,11 +15,12 @@ func (a *App) startAmbient() {
 	a.rescueWake = make(chan struct{}, 1)
 	a.clusterWake = make(chan struct{}, 1)
 	a.clusterSockets = &clusterSockets{app: a, sessions: make(map[*websocket.Conn]*clusterSocket)}
-	a.ambientWG.Add(8)
+	a.ambientWG.Add(9)
 	go func() { defer a.ambientWG.Done(); a.runMonitorWatchdog(a.ctx) }()
 	go func() { defer a.ambientWG.Done(); a.runPushes(a.ctx, 3*time.Second, a.pushMonitorStatus) }()
 	go func() { defer a.ambientWG.Done(); a.runPushes(a.ctx, 30*time.Second, a.pushStats) }()
 	go func() { defer a.ambientWG.Done(); a.runRescueSweeper(a.ctx) }()
+	go func() { defer a.ambientWG.Done(); a.runIntegritySweeper(a.ctx) }()
 	go func() { defer a.ambientWG.Done(); a.runClusterSync(a.ctx) }()
 	go func() { defer a.ambientWG.Done(); a.clusterSockets.run(a.ctx) }()
 	go func() { defer a.ambientWG.Done(); a.faces.run(a.ctx) }()

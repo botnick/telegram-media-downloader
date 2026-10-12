@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/accounts"
@@ -136,6 +137,7 @@ type App struct {
 	dbIntegrityStatus   map[string]any
 	filesVerifyStatus   map[string]any
 	filesVerifyLastRun  map[string]any
+	filesSweeping       atomic.Bool // one integrity pass at a time, manual or periodic
 	reindexStatus       map[string]any
 	reindexLastRun      map[string]any
 	vacuumStatus        map[string]any

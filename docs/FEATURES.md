@@ -88,6 +88,12 @@ This page lists what 3.0 does today. Detailed guides:
 - Database integrity check, VACUUM and on-demand database snapshot.
 - File verification, thumbnail rebuild, reindex, log viewer and download,
   and a recovery page for downloads that lost their chat or account.
+- **Integrity sweep**: 30 s after start and then every
+  `advanced.integrity.intervalMin` minutes (at least 60), rows whose file is
+  missing or empty are dropped and wrong file sizes corrected. It never
+  deletes files, and skips pruning when the downloads folder is unreadable or
+  more than half of the library looks missing (an unmounted disk); Verify
+  files still prunes on request.
 - Sign out every browser at once.
 
 ## Security
@@ -112,7 +118,5 @@ run them. Saved settings are kept, so nothing is lost if they return.
 - **New AI results**: face detection and clustering, NSFW scoring and seekbar
   preview generation do not run. People and previews made by 2.x can still be
   viewed and edited. See [AI](AI.md).
-- **Auto-forward**, **self-destructing (TTL) media capture**, **automatic disk
-  rotation** and the **periodic integrity sweep**: their settings are stored
-  but not acted on. File verification can still be run by hand from
-  Maintenance.
+- **Auto-forward**, **self-destructing (TTL) media capture** and **automatic
+  disk rotation**: their settings are stored but not acted on.
