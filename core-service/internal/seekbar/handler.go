@@ -1,9 +1,10 @@
-// Package seekbar runs the CPU-heavy video sprite encode outside Node.
+// Package seekbar renders video seekbar sprites with ffmpeg: it probes a
+// clip, plans the tile layout, samples frames and writes one tiled image.
 //
-// Node owns seekbar cache metadata and database rows. This package only
-// decodes a video, samples frames, tiles them, and writes the requested
-// sprite at the caller-provided temporary path. The Node caller publishes it
-// with an atomic rename after the request succeeds.
+// The server's app package owns the cache files and database rows and calls
+// PlanSprite, ProbeDuration and Encode directly. Handler keeps the
+// POST /v1/seekbar endpoint for callers that publish the temporary output
+// themselves with an atomic rename.
 package seekbar
 
 import (
@@ -273,7 +274,7 @@ func runFFmpeg(ctx context.Context, args []string, requested string) error {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	var stderr limitedBuffer
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := runLowPriority(cmd); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -317,11 +318,4 @@ func writeFileError(w http.ResponseWriter, err error) {
 
 func writeError(w http.ResponseWriter, status int, code, msg string) {
 	hash.WriteError(w, status, code, msg)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

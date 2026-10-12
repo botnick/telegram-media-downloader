@@ -10,7 +10,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 )
@@ -152,17 +151,9 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 		}
 		if _, changed := advancedPatch["seekbar"]; changed {
 			a.hub.Broadcast(ws.Event{Type: "seekbar_config_changed", Flat: true})
-			if advanced, ok := config["advanced"].(map[string]any); ok {
-				if seekbar, ok := advanced["seekbar"].(map[string]any); ok {
-					url := stringOr(seekbar["sidecarUrl"], "")
-					if url != "" {
-						a.hub.Broadcast(ws.Event{Type: "seekbar_sidecar_status", Flat: true, Payload: map[string]any{
-							"checkedAt": time.Now().UnixMilli(), "error": "fetch failed", "mode": "remote", "ok": false, "pid": nil,
-							"sources": map[string]any{"pathMap": nil, "token": "config", "url": "config"}, "url": url,
-						}})
-					}
-				}
-			}
+			// Sprites are encoded in-process; a configured sidecarUrl is
+			// ignored, so the status always describes the built-in encoder.
+			a.broadcastSeekbar("seekbar_sidecar_status", a.seekbarEncoderStatus())
 		}
 	}
 	a.hub.Broadcast(ws.Event{Type: "config_updated"})
