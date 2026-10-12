@@ -50,6 +50,7 @@ func (a *App) ingestTelegram(ctx context.Context, message *tg.Message, groupID, 
 		// History backfill yields to live downloads in the sprite queue.
 		a.enqueueSeekbar(record.ID, engine.Origin(ctx) != "history")
 	}
+	a.queueNSFW(record.ID, payload["key"].(string))
 	if a.backups != nil {
 		a.backups.Wake()
 	}

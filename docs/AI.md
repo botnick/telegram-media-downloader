@@ -9,8 +9,9 @@ nav_order: 3
 
 Version 3.0 replaced the Node backend with one Go server (`tgdl-server`). The
 port concentrated on downloading, the queue, files and the dashboard. The
-optional analysis features were **not** ported: 3.0 does not detect faces,
-classify NSFW content or generate seekbar sprites. Results that 2.x already
+optional analysis features were **not** ported: 3.0 does not detect faces or
+generate seekbar sprites, and it classifies NSFW content only through the
+`nsfw-service` sidecar (see below). Results that 2.x already
 produced stay in the database, and most of them still appear in the
 dashboard.
 
@@ -23,7 +24,7 @@ of 3.0 either.
 |---|---|---|---|
 | **People (face clusters)** | Yes: browse people, photos per person, face boxes in the viewer, avatars | No: no face scan, no re-cluster | Faces found by 2.x |
 | **People editing** | Rename, merge, split, move a face, delete a person | n/a | Admin login |
-| **NSFW review** | Scores stay in the database and sync to cluster peers | No: no classifier and no review/scan pages | Scores from 2.x |
+| **NSFW review** | Yes: review page, tiers, whitelist, delete, hash blocklist | Yes, through the `nsfw-service` sidecar (batch scan + new downloads) | `TGDL_NSFW_SIDECAR_URL` pointing at a running sidecar |
 | **Seekbar previews** | Yes: hover previews on the video scrub bar | No: no generation for new videos | Sprites from 2.x in `data/seekbar/` |
 | **Thumbnails** (for comparison) | Yes | Yes, in-process with ffmpeg on the CPU | `ffmpeg` (in the Docker image) |
 | Semantic search, auto tags | No | No | Removed in 2.16 |
@@ -35,13 +36,13 @@ Notes:
   blank tile.
 - The faces **Reindex** action on the AI maintenance page doesn't do anything
   in 3.0. It only tells open dashboards to refresh.
-- The AI, NSFW and seekbar maintenance panels still call status routes that 3.0
+- The AI and seekbar maintenance panels still call status routes that 3.0
   does not serve, so they show errors or stay empty. This is expected.
 - When a download is deleted or replaced, the server still removes its faces,
   NSFW score and seekbar sprite, so stale analysis never points at the wrong
   file.
 
-If you rely on face scanning, NSFW classification or sprite generation, stay
+If you rely on face scanning or sprite generation, stay
 on **2.32.1** for now. To roll back after updating, restore
 `data/backups/db-pre-update-*.sqlite` with 2.32.1 (see [Upgrading](UPGRADING.md)).
 
@@ -54,7 +55,7 @@ you go back to 2.x. **The 3.0 server doesn't use them to start any work.**
 | Block | Keys kept (selection) | Effect in 3.0 |
 |---|---|---|
 | `advanced.ai` | `enabled`, `faceClustering`, `autoScan`, `faces.*` (`sidecarUrl`, `sidecarToken`, `detectorModel`, `epsilon`, `minPoints`, `providers`, …) | Stored only |
-| `advanced.nsfw` | `enabled`, `threshold` (0.1–0.99, default 0.6), `fileTypes`, `sidecarUrl`, `apiToken`, `pathMap`, `blocklistEnabled` | Stored only |
+| `advanced.nsfw` | `enabled`, `threshold` (0.1–0.99, default 0.6), `fileTypes`, `concurrency`, `batchSize`, `videoMaxTiles`, `sidecarUrl`, `apiToken`, `pathMap`, `blocklistEnabled` | Used: see [NSFW review](#nsfw-review-with-the-sidecar) |
 | `advanced.seekbar` | `enabled`, `autoOnDownload`, `intervalSec`, `tileWidth`, `columns`, `maxTiles`, `format`, `quality`, `hwaccel`, `sidecarUrl`, `apiToken`, `pathMap` | Stored only. Existing sprites are served no matter what these say |
 | `advanced.thumbs` | `autoOnDownload`, `warnMisses`, `hwaccel` | `hwaccel` is stored but ignored: thumbnails always use the CPU |
 
@@ -63,8 +64,9 @@ Tokens (`advanced.ai.faces.sidecarToken`, `advanced.nsfw.apiToken`,
 configuration.
 
 **Environment variables.** The 3.0 server does not read `FACES_SERVICE_URL`,
-`TGDL_FACES_*`, `TGDL_NSFW_SIDECAR_URL`, `TGDL_NSFW_*`, `SEEKBAR_SIDECAR_URL`
-or `FFMPEG_HWACCEL`. Leftover values in `.env` do nothing; you can delete
+`TGDL_FACES_*`, `SEEKBAR_SIDECAR_URL` or `FFMPEG_HWACCEL`. It does read
+`TGDL_NSFW_SIDECAR_URL`, `TGDL_NSFW_API_TOKEN` and `TGDL_NSFW_PATH_MAP` (see
+below). Leftover values in `.env` do nothing; you can delete
 them. The bundled `docker-compose.yml` has no faces, NSFW or seekbar services
 or profiles. See [Configuration](CONFIGURATION.md) and [Deploy](DEPLOY.md) for
 the variables that 3.0 does read.
@@ -73,11 +75,37 @@ the variables that 3.0 does read.
 the accelerators your ffmpeg build was compiled with, but it always reports
 none as verified. 3.0 has no hardware-accelerated thumbnails or previews.
 
+## NSFW review with the sidecar
+
+The Go server has no built-in classifier. It sends images to `nsfw-service`
+over HTTP. Set the sidecar URL with `TGDL_NSFW_SIDECAR_URL`, or under
+Maintenance → NSFW review → External (`advanced.nsfw.sidecarUrl`). The
+environment variable wins. Without a URL, the review page still shows,
+whitelists and deletes rows that already have a score. Scan and preload answer
+`503` with code `NSFW_SIDECAR_REQUIRED`.
+
+- **Scan** scores every unscanned row whose type is in `fileTypes` (photos by
+  default). It runs `concurrency` requests at a time (1–4) and can be
+  cancelled. A missing or unreadable file is marked checked with no score. If
+  the sidecar is down or rejects the token, the scan stops and leaves the
+  remaining rows for the next run.
+- **Videos** are scored from tiles of their seekbar sprite (up to
+  `videoMaxTiles`). The score is the mean of the three highest tiles. A video
+  without a sprite is skipped and stays unscanned.
+- **New downloads** are scored in the background when `enabled` is on. With
+  `blocklistEnabled`, a download whose SHA-256 matches a file deleted from the
+  review page is deleted again. Downloads never wait for the sidecar. When it
+  can't keep up, the next scan catches up.
+- **Transfer:** the server first sends the file path (rewritten through
+  `TGDL_NSFW_PATH_MAP` / `pathMap`). If the sidecar can't read it, the server
+  uploads the image bytes. Path mode needs `TGDL_NSFW_ALLOW_ROOTS` on the
+  sidecar and the downloads folder mounted there.
+
 ## Sidecar projects
 
 The three sidecars are still in the repository as separate projects. 2.x used
-them; **the 3.0 server never calls them**, even if a URL is set. Run one only
-for 2.x or to test the service on its own.
+them. The 3.0 server calls only `nsfw-service`, as described above. Run the
+other two only for 2.x or to test them on their own.
 
 | Folder | What it is | Default port | Start from source |
 |---|---|---|---|
@@ -117,10 +145,15 @@ sprites. Videos that already had previews in 2.x keep them, as long as
 **Some face avatars are blank.** The face comes from a video or a WebP image,
 and 3.0 can only crop faces from JPEG or PNG files.
 
-**The AI / NSFW / seekbar maintenance cards show errors.** Their status routes
+**The AI / seekbar maintenance cards show errors.** Their status routes
 don't exist in 3.0. This doesn't affect downloads.
 
-**I set a sidecar URL and nothing happens.** 3.0 ignores sidecar URLs. Saving
-a seekbar URL can show a "fetch failed" status; no request is actually sent.
+**I set a sidecar URL and nothing happens.** 3.0 ignores the faces and
+seekbar sidecar URLs. Saving a seekbar URL can show a "fetch failed" status; no
+request is actually sent.
+
+**NSFW scan says "Configure the NSFW sidecar first".** Start `nsfw-service` and
+set `TGDL_NSFW_SIDECAR_URL` (or the URL on the NSFW review page), then use the
+**Test** button there.
 
 For other problems see [Troubleshooting](TROUBLESHOOTING.md).
