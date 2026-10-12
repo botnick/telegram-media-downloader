@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.2.1] — 2026-10-13
+
+### Fixed
+- **A channel gap no longer stops all monitoring.** When Telegram reports that a channel's missed updates are too old to replay ("requires history recovery"), the server records the gap durably and repairs that channel's history in the background while every other chat keeps downloading. Before, the whole monitor stopped and restarted once per affected channel, which after a restart could cycle through many channels.
+
+### Service worker
+- `VERSION = 'v3210'`
+
 ## [3.2.0] — 2026-10-12
 
 ### Added

@@ -422,3 +422,47 @@ func TestScalerGrowsWorkersForALongQueueAndDropsOnFloodWait(t *testing.T) {
 	status, _ := c.Status(ctx)
 	t.Fatalf("flood did not drop workers: %v", status)
 }
+
+type repairingAccount struct {
+	readyAccount
+	repairs atomic.Int64
+}
+
+func (a *repairingAccount) RecoverPendingHistory(context.Context) error {
+	a.repairs.Add(1)
+	return nil
+}
+
+func TestChannelGapIsRepairedWithoutStoppingTheMonitor(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	account := &repairingAccount{}
+	var gap func(int64)
+	factory := func(_ AccountConfig, _ *telegram.UpdateState, _ func(context.Context, tg.UpdatesClass) error, onGap func(int64)) (Account, error) {
+		gap = onGap
+		return account, nil
+	}
+	filter := func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error) {
+		return Target{}, true, nil
+	}
+	sink := func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error { return nil }
+	c := New(s.writer, s.reader, t.TempDir(), factory, filter, sink, nil)
+	if err := c.Start(ctx, ctx, []AccountConfig{{ID: "one"}}, 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Stop(ctx)
+	gap(42)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && account.repairs.Load() == 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	status, _ := c.Status(ctx)
+	if account.repairs.Load() == 0 || status["state"] != "running" {
+		t.Fatalf("repairs=%d status=%v", account.repairs.Load(), status)
+	}
+	var markers int
+	if err := s.reader.QueryRow(`SELECT count(*) FROM tgdl_update_recovery WHERE channel_id=42`).Scan(&markers); err != nil || markers != 1 {
+		t.Fatalf("durable marker=%d err=%v", markers, err)
+	}
+}

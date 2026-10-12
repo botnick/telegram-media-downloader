@@ -24,6 +24,11 @@ type Account interface {
 }
 type historyRecoverable interface{ SupportsHistoryRecovery() bool }
 
+// historyRepairer repairs recovery markers while the account keeps running.
+type historyRepairer interface {
+	RecoverPendingHistory(context.Context) error
+}
+
 type jobsAccount interface {
 	RunJobs(context.Context, func()) error
 	StartObserving(context.Context) error
@@ -550,22 +555,49 @@ func (c *Controller) start(request, parent context.Context, accounts []AccountCo
 		recoveryPending = recoveryPending || pendingRecovery
 		state := &telegram.UpdateState{Writer: c.writer, Reader: c.reader, AccountID: config.ID, OnFailure: func(err error) { cancel(fmt.Errorf("account %s update persistence: %w", config.ID, err)) }}
 		handler := func(ctx context.Context, u tg.UpdatesClass) error { return c.accept(ctx, run, config.ID, u) }
+		var gapAccount atomic.Value // Account, set once the factory returns
+		var repairing, again atomic.Bool
 		gap := func(channelID int64) {
 			gapCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
 			defer stop()
 			err := state.RecordRecovery(gapCtx, 0, channelID, 0)
 			if err != nil {
 				cancel(fmt.Errorf("account %s recovery marker: %w", config.ID, err))
-			} else {
-				recoveryErr := fmt.Errorf("account %s channel %d requires history recovery", config.ID, channelID)
-				_ = state.Latch(gapCtx, recoveryErr)
-				cancel(recoveryErr)
+				return
 			}
+			// The durable marker is written: repair this channel's missed
+			// history in the background while every other chat keeps
+			// downloading. Without that ability, stop and repair on restart.
+			if repairer, ok := gapAccount.Load().(historyRepairer); ok {
+				again.Store(true)
+				if repairing.CompareAndSwap(false, true) {
+					go func() {
+						for again.Swap(false) {
+							if err := repairer.RecoverPendingHistory(ctx); err != nil {
+								if ctx.Err() == nil {
+									cancel(fmt.Errorf("account %s history repair: %w", config.ID, err))
+								}
+								break
+							}
+						}
+						repairing.Store(false)
+						// A gap reported while finishing must not be stranded.
+						if again.Load() && repairing.CompareAndSwap(false, true) {
+							go func() { defer repairing.Store(false); _ = repairer.RecoverPendingHistory(ctx) }()
+						}
+					}()
+				}
+				return
+			}
+			recoveryErr := fmt.Errorf("account %s channel %d requires history recovery", config.ID, channelID)
+			_ = state.Latch(gapCtx, recoveryErr)
+			cancel(recoveryErr)
 		}
 		account, err := c.factory(config, state, handler, gap)
 		if err != nil {
 			return fmt.Errorf("account %s: %w", config.ID, err)
 		}
+		gapAccount.Store(account)
 		if pendingRecovery {
 			recoverable, ok := account.(historyRecoverable)
 			if !ok || !recoverable.SupportsHistoryRecovery() {

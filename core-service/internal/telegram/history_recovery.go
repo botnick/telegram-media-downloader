@@ -35,6 +35,24 @@ func IsHistoryRecovery(ctx context.Context) bool { return ctx.Value(recoveryCont
 
 func (a *Account) SupportsHistoryRecovery() bool { return true }
 
+// RecoverPendingHistory repairs every channel with a recovery marker while
+// the account keeps running, until no marker is left.
+func (a *Account) RecoverPendingHistory(ctx context.Context) error {
+	userID := a.self.Load()
+	if userID == 0 {
+		return errors.New("Telegram account is not signed in yet")
+	}
+	for {
+		records, err := a.state.PendingRecovery(ctx)
+		if err != nil || len(records) == 0 {
+			return err
+		}
+		if err := a.recoverPending(ctx, userID); err != nil {
+			return err
+		}
+	}
+}
+
 func (a *Account) recoverPending(ctx context.Context, userID int64) error {
 	return recoverPendingHistory(ctx, a.API(), a.state, userID, a.handle)
 }

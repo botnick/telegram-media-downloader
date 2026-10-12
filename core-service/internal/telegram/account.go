@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	sessionconv "github.com/botnick/telegram-media-downloader/core-service/internal/session"
@@ -128,6 +129,7 @@ type Account struct {
 	handle      func(context.Context, tg.UpdatesClass) error
 	onGap       func(int64)
 	selfID      int64
+	self        atomic.Int64 // selfID for other goroutines (background recovery)
 	observation *accountObservation
 }
 
@@ -179,6 +181,7 @@ func (a *Account) run(ctx context.Context, ready func(), jobsOnly bool) error {
 			return errors.New("Telegram session expired; sign in again in Accounts")
 		}
 		a.selfID = status.User.ID
+		a.self.Store(status.User.ID)
 		return a.observation.run(ctx, ready, jobsOnly, func(ctx context.Context, observingReady func()) error {
 			if err := a.recoverPending(ctx, status.User.ID); err != nil {
 				return err
