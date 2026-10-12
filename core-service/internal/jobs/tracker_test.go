@@ -12,8 +12,8 @@ func TestTrackerSingleFlightProgressAndCancellation(t *testing.T) {
 	started := make(chan struct{})
 	finished := make(chan error, 1)
 	job, err := tracker.Start(context.Background(), "dedup", 10, func(ctx context.Context, update func(int, string)) error {
-		close(started)
 		update(3, "hashing")
+		close(started)
 		<-ctx.Done()
 		return ctx.Err()
 	})
