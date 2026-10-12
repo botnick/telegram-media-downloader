@@ -77,6 +77,10 @@ func nativeProvider(_ context.Context, name string, cfg map[string]any) (Provide
 		p, err = newSFTP(cfg, nil)
 	case "ftp":
 		p, err = newFTP(cfg)
+	case "gdrive":
+		p, err = newGDrive(cfg)
+	case "dropbox":
+		p, err = newDropbox(cfg)
 	default:
 		return nil, fmt.Errorf("native backup provider %q is not available yet", name)
 	}

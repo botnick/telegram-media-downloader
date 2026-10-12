@@ -418,7 +418,7 @@ function _renderProviderHelp(providerName) {
                         <li>${escapeHtml(i18nT('maintenance.backup.help.gdrive.step1', 'Open Google Cloud Console → "New project" (any name).'))}</li>
                         <li>${escapeHtml(i18nT('maintenance.backup.help.gdrive.step2', 'APIs & Services → Library → search "Google Drive API" → click Enable.'))}</li>
                         <li>${escapeHtml(i18nT('maintenance.backup.help.gdrive.step3', 'APIs & Services → Credentials → Create Credentials → OAuth client ID → application type "Desktop app". Save the client ID + client secret into the fields above.'))}</li>
-                        <li>${escapeHtml(i18nT('maintenance.backup.help.gdrive.step4', 'Open the OAuth Playground → gear icon → "Use your own OAuth credentials" → paste client ID + secret. Pick scope https://www.googleapis.com/auth/drive.file → Authorize → Exchange authorization code for tokens → copy the refresh_token into the field above.'))}</li>
+                        <li>${escapeHtml(i18nT('maintenance.backup.help.gdrive.step4', 'Open the OAuth Playground → gear icon → "Use your own OAuth credentials" → paste client ID + secret. Pick scope https://www.googleapis.com/auth/drive.file → Authorize → Exchange authorization code for tokens → copy the refresh_token into the field above. Alternatively run tgdl-server backup-oauth gdrive on the server.'))}</li>
                     </ol>
                     <div class="flex flex-wrap gap-2 pt-1">
                         <a href="${consoleUrl}" target="_blank" rel="noopener" class="tg-btn-secondary text-[11px] px-2 py-1"><i class="ri-external-link-line mr-1"></i>${consoleLabel}</a>
@@ -447,7 +447,7 @@ function _renderProviderHelp(providerName) {
                     <ol class="list-decimal pl-4 space-y-1.5">
                         <li>${escapeHtml(i18nT('maintenance.backup.help.dropbox.step1', 'Open the Dropbox developer console → Create app → "Scoped access" → "App folder" (recommended) or "Full Dropbox" → name your app.'))}</li>
                         <li>${escapeHtml(i18nT('maintenance.backup.help.dropbox.step2', 'Permissions tab → enable files.content.write, files.content.read, account_info.read → click Submit.'))}</li>
-                        <li>${escapeHtml(i18nT('maintenance.backup.help.dropbox.step3', 'Settings tab → copy App key + App secret into the fields above. Generate a refresh token via the OAuth flow documented at dropbox.com/developers/documentation/http/documentation#authorization, or run scripts/setup-dropbox.js for a guided CLI walkthrough.'))}</li>
+                        <li>${escapeHtml(i18nT('maintenance.backup.help.dropbox.step3', 'Settings tab → copy App key + App secret into the fields above. Generate a refresh token via the OAuth flow documented at dropbox.com/developers/documentation/http/documentation#authorization, or run tgdl-server backup-oauth dropbox on the server for a guided walkthrough.'))}</li>
                     </ol>
                     <div class="flex flex-wrap gap-2 pt-1">
                         <a href="${consoleUrl}" target="_blank" rel="noopener" class="tg-btn-secondary text-[11px] px-2 py-1"><i class="ri-external-link-line mr-1"></i>${consoleLabel}</a>
