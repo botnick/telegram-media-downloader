@@ -132,6 +132,7 @@ type Account struct {
 	selfID      int64
 	self        atomic.Int64 // selfID for other goroutines (background recovery)
 	repairs     atomic.Bool  // the engine repairs channel gaps in the background
+	repairMu    sync.Mutex   // one history repair at a time
 	observation *accountObservation
 	senderOnce  sync.Once
 	sender      *fileSender
@@ -187,7 +188,15 @@ func (a *Account) run(ctx context.Context, ready func(), jobsOnly bool) error {
 		a.selfID = status.User.ID
 		a.self.Store(status.User.ID)
 		return a.observation.run(ctx, ready, jobsOnly, func(ctx context.Context, observingReady func()) error {
-			if err := a.recoverPending(ctx, status.User.ID); err != nil {
+			if a.repairs.Load() {
+				// Start downloading at once; earlier gaps are repaired in the
+				// background (serialized with gap-triggered repairs).
+				go func() {
+					if err := a.RecoverPendingHistory(ctx); err != nil && ctx.Err() == nil && a.state.OnFailure != nil {
+						a.state.OnFailure(fmt.Errorf("history repair: %w", err))
+					}
+				}()
+			} else if err := a.recoverPending(ctx, status.User.ID); err != nil {
 				return err
 			}
 			api := durableUpdateAPI{API: a.API(), state: a.state, handle: a.handle, onGap: a.onGap, userID: status.User.ID, backgroundRepair: a.repairs.Load}

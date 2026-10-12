@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.2] — 2026-10-13
+
+### Fixed
+- **The monitor could sit in "starting" for a long time after a restart.** Channels with recorded gaps were all repaired before any download began. They are now repaired in the background (one repair at a time) while monitoring and downloads start immediately.
+
+### Service worker
+- `VERSION = 'v3420'`
+
 ## [3.4.1] — 2026-10-13
 
 ### Fixed

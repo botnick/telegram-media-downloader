@@ -46,6 +46,8 @@ func (a *Account) RecoverPendingHistory(ctx context.Context) error {
 	if userID == 0 {
 		return errors.New("Telegram account is not signed in yet")
 	}
+	a.repairMu.Lock()
+	defer a.repairMu.Unlock()
 	for {
 		records, err := a.state.PendingRecovery(ctx)
 		if err != nil || len(records) == 0 {
