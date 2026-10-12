@@ -39,6 +39,28 @@ func (a *Account) SupportsHistoryRecovery() bool { return true }
 // by RecoverPendingHistory while it runs, instead of stopping it.
 func (a *Account) EnableBackgroundRepair() { a.repairs.Store(true) }
 
+// Delays between attempts of a background history repair that failed (a
+// dropped connection, a flood wait). The markers are durable, so it retries
+// instead of stopping the account.
+var historyRepairBackoff = []time.Duration{30 * time.Second, 2 * time.Minute, 5 * time.Minute}
+
+// RepairHistoryUntilDone runs RecoverPendingHistory until it succeeds or ctx
+// ends, backing off between failures.
+func (a *Account) RepairHistoryUntilDone(ctx context.Context) {
+	for attempt := 0; ctx.Err() == nil; attempt++ {
+		if err := a.RecoverPendingHistory(ctx); err == nil {
+			return
+		}
+		timer := time.NewTimer(historyRepairBackoff[min(attempt, len(historyRepairBackoff)-1)])
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
 // RecoverPendingHistory repairs every channel with a recovery marker while
 // the account keeps running, until no marker is left.
 func (a *Account) RecoverPendingHistory(ctx context.Context) error {

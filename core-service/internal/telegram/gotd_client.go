@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	sessionconv "github.com/botnick/telegram-media-downloader/core-service/internal/session"
@@ -31,6 +32,8 @@ type GotdConfig struct {
 type GotdClient struct {
 	client *gotd.Client
 	guard  *floodGuard
+	// unverified holds media identities Telegram has no chunk hashes for.
+	unverified sync.Map
 }
 
 // FloodWaitUntil reports when Telegram allows this account's requests again

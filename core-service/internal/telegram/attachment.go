@@ -12,6 +12,7 @@ import (
 	gotd "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 )
 
 // Attachment is derived directly from fresh MTProto message metadata. Access
@@ -264,7 +265,16 @@ func (c *GotdClient) DownloadMedia(ctx context.Context, a Attachment, w io.Write
 	if c == nil || c.client == nil || a.Location == nil || a.DC <= 0 {
 		return errors.New("invalid Telegram download request")
 	}
-	return downloadMedia(ctx, guardedClient{c.client, c.guard}, a, w)
+	// Telegram keeps no chunk hashes for some files and can refuse them in the
+	// middle of a transfer. Remember such a file so its next attempt streams
+	// without per-chunk verification (the library still checks the SHA-256).
+	key := a.Identity.Key()
+	_, plain := c.unverified.Load(key)
+	err := downloadMedia(ctx, guardedClient{c.client, c.guard}, a, w, !plain)
+	if err != nil && hashesUnavailable(err) {
+		c.unverified.Store(key, struct{}{})
+	}
+	return err
 }
 
 // guardedClient puts download pools behind the account's flood guard.
@@ -289,13 +299,15 @@ func (c guardedClient) DC(ctx context.Context, dc int, max int64) (gotd.CloseInv
 	return guardedInvoker{pool, c.guard}, nil
 }
 
+const downloadPartSize = 1024 * 1024
+
 type downloadClient interface {
 	Config() tg.Config
 	Pool(int64) (gotd.CloseInvoker, error)
 	DC(context.Context, int, int64) (gotd.CloseInvoker, error)
 }
 
-func downloadMedia(ctx context.Context, client downloadClient, a Attachment, w io.Writer) error {
+func downloadMedia(ctx context.Context, client downloadClient, a Attachment, w io.Writer, verify bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -313,6 +325,31 @@ func downloadMedia(ctx context.Context, client downloadClient, a Attachment, w i
 		return err
 	}
 	defer pool.Close()
-	_, err = downloader.NewDownloader().Download(tg.NewClient(pool), a.Location).WithVerify(true).Stream(ctx, w)
+	if !verify {
+		_, err = downloader.NewDownloader().WithPartSize(downloadPartSize).Download(tg.NewClient(pool), a.Location).Stream(ctx, w)
+		return err
+	}
+	// When the refusal comes before any byte was written, fall back at once;
+	// otherwise the caller's retry uses the unverified path from the start.
+	counted := &countingWriter{w: w}
+	_, err = downloader.NewDownloader().WithPartSize(downloadPartSize).Download(tg.NewClient(pool), a.Location).WithVerify(true).Stream(ctx, counted)
+	if err != nil && counted.n == 0 && hashesUnavailable(err) && ctx.Err() == nil {
+		_, err = downloader.NewDownloader().WithPartSize(downloadPartSize).Download(tg.NewClient(pool), a.Location).Stream(ctx, w)
+	}
 	return err
+}
+
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+func hashesUnavailable(err error) bool {
+	return tgerr.Is(err, "VOLUME_LOC_NOT_FOUND") && strings.Contains(err.Error(), "get hashes")
 }

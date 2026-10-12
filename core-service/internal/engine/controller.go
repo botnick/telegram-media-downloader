@@ -26,7 +26,7 @@ type historyRecoverable interface{ SupportsHistoryRecovery() bool }
 
 // historyRepairer repairs recovery markers while the account keeps running.
 type historyRepairer interface {
-	RecoverPendingHistory(context.Context) error
+	RepairHistoryUntilDone(context.Context)
 }
 
 type jobsAccount interface {
@@ -572,18 +572,13 @@ func (c *Controller) start(request, parent context.Context, accounts []AccountCo
 				again.Store(true)
 				if repairing.CompareAndSwap(false, true) {
 					go func() {
-						for again.Swap(false) {
-							if err := repairer.RecoverPendingHistory(ctx); err != nil {
-								if ctx.Err() == nil {
-									cancel(fmt.Errorf("account %s history repair: %w", config.ID, err))
-								}
-								break
-							}
+						for again.Swap(false) && ctx.Err() == nil {
+							repairer.RepairHistoryUntilDone(ctx)
 						}
 						repairing.Store(false)
 						// A gap reported while finishing must not be stranded.
-						if again.Load() && repairing.CompareAndSwap(false, true) {
-							go func() { defer repairing.Store(false); _ = repairer.RecoverPendingHistory(ctx) }()
+						if again.Load() && ctx.Err() == nil && repairing.CompareAndSwap(false, true) {
+							go func() { defer repairing.Store(false); repairer.RepairHistoryUntilDone(ctx) }()
 						}
 					}()
 				}

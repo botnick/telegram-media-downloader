@@ -428,10 +428,7 @@ type repairingAccount struct {
 	repairs atomic.Int64
 }
 
-func (a *repairingAccount) RecoverPendingHistory(context.Context) error {
-	a.repairs.Add(1)
-	return nil
-}
+func (a *repairingAccount) RepairHistoryUntilDone(context.Context) { a.repairs.Add(1) }
 
 func TestChannelGapIsRepairedWithoutStoppingTheMonitor(t *testing.T) {
 	ctx := context.Background()

@@ -191,11 +191,7 @@ func (a *Account) run(ctx context.Context, ready func(), jobsOnly bool) error {
 			if a.repairs.Load() {
 				// Start downloading at once; earlier gaps are repaired in the
 				// background (serialized with gap-triggered repairs).
-				go func() {
-					if err := a.RecoverPendingHistory(ctx); err != nil && ctx.Err() == nil && a.state.OnFailure != nil {
-						a.state.OnFailure(fmt.Errorf("history repair: %w", err))
-					}
-				}()
+				go a.RepairHistoryUntilDone(ctx)
 			} else if err := a.recoverPending(ctx, status.User.ID); err != nil {
 				return err
 			}

@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.3] — 2026-10-13
+
+### Fixed
+- **Some videos always failed with `VOLUME_LOC_NOT_FOUND`.** Telegram keeps no per-chunk hashes for certain files and refuses them partway through a transfer. Such a file is now remembered and its next attempt downloads without per-chunk verification; the whole file's SHA-256 is still checked afterwards. Press **Retry all** on the Queue page for items that already failed.
+- **A dropped connection during a background channel repair restarted the whole monitor.** The repair now retries on its own (after 30 s, 2 min, then every 5 min).
+
+### Changed
+- Downloads request 1 MiB parts (Telegram's maximum) instead of 512 KiB, halving the round trips per file.
+
+### Service worker
+- `VERSION = 'v3430'`
+
 ## [3.4.2] — 2026-10-13
 
 ### Fixed
