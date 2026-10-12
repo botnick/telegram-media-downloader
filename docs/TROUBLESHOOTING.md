@@ -357,8 +357,6 @@ current compose file.
   `TGDL_GO_FEATURES`, `TGDL_CORE_BIN`, `TGDL_CORE_RELEASE_URL` and
   `FFMPEG_HWACCEL` are ignored; leaving them in `.env` does no harm. See
   [Configuration](CONFIGURATION.md) for the current list.
-- Google Drive and Dropbox backup destinations aren't available in 3.0 yet.
-  Use local, S3, SFTP or FTP/FTPS destinations ([Backup](BACKUP.md)).
 
 ### Going back to 2.32.1
 

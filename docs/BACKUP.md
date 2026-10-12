@@ -1,6 +1,6 @@
 ---
 title: "Backup"
-description: "Back up your Telegram library to S3, SFTP, FTP/FTPS or a local disk, with encrypted archives and offline restore."
+description: "Back up your Telegram library to S3, SFTP, FTP/FTPS, Google Drive, Dropbox or a local disk, with encrypted archives and offline restore."
 parent: Features
 nav_order: 1
 ---
@@ -12,15 +12,17 @@ disk or host, so a failed drive, a deleted Docker volume or a lost machine
 does not take the archive with it. Backups run inside the `tgdl-server`
 process: there is nothing extra to install.
 
-**In 3.0 you can back up to:**
+**You can back up to:**
 
 - **S3-compatible storage**: AWS S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO and other S3 gateways.
 - **SFTP**: any SSH server, with a password or a private key.
 - **FTP / FTPS**: plain FTP, explicit FTPS (AUTH TLS) or implicit FTPS.
+- **Google Drive**: My Drive or a shared drive, through your own OAuth client.
+- **Dropbox**: an app folder or your whole Dropbox, through your own Dropbox app.
 - **Local folder**: a second disk, USB drive or NAS share mounted on the host.
 
-**Google Drive and Dropbox are not available in 3.0.** See
-[Limits and what's not in 3.0](#limits-and-whats-not-in-30).
+Google Drive and Dropbox destinations created in 2.x keep working after the
+upgrade with their saved settings and tokens; there is nothing to re-enter.
 
 Every destination can encrypt on this host before anything is uploaded, and
 encrypted backups can be decrypted and restored offline with the server
@@ -62,8 +64,7 @@ A few details about mirror mode:
 ## Providers
 
 The dashboard offers these forms. `GET /api/backup/providers` returns the same
-list, and it still includes Google Drive and Dropbox even though they can't
-upload in 3.0.
+list.
 
 | Provider | ID | Required fields | Optional fields |
 |---|---|---|---|
@@ -71,8 +72,8 @@ upload in 3.0.
 | S3-compatible (AWS / R2 / B2 / MinIO / Wasabi) | `s3` | Region, Bucket, Access key ID, Secret access key | Endpoint URL, Prefix, Force path-style |
 | SFTP (SSH file transfer) | `sftp` | Host, Username, Remote root, plus a Password **or** a Private key | Port (22), Key passphrase, SSH host key fingerprint |
 | FTP / FTPS | `ftp` | Host, Remote root | Port, Username, Password, TLS mode, Passive mode, Custom TLS CA |
-| Google Drive | `gdrive` | (not available in 3.0) | |
-| Dropbox | `dropbox` | (not available in 3.0) | |
+| Google Drive | `gdrive` | OAuth client ID, OAuth client secret, OAuth refresh token | Backup folder name (`tgdl-backup`), Folder ID |
+| Dropbox | `dropbox` | App key, App secret, Refresh token, Remote root path | none |
 
 How uploads are checked:
 
@@ -83,7 +84,9 @@ How uploads are checked:
 - After a crash or restart, unfinished uploads are put back in the queue. Any
   leftovers this server created (S3 multipart uploads, SFTP temporary files,
   FTP staging folders) are cleaned up from the original destination. Files the
-  server did not create are never touched.
+  server did not create are never touched. Unfinished Google Drive and Dropbox
+  uploads never become visible files, and the services discard them on their
+  own.
 - Each destination has one upload worker. Different destinations upload in
   parallel.
 
@@ -201,6 +204,90 @@ region.
 **Upgrading a 2.x FTP destination saved as "Implicit FTPS".** In 2.x that
 option actually connected with explicit TLS. 3.0 does what the label says. If
 such a destination now fails to connect, edit it and pick **Explicit FTPS**.
+
+### Google Drive
+
+You need your own Google OAuth client and a refresh token for it. The token
+is stored encrypted with the destination and only sent to Google.
+
+1. **New project.** In the [Google Cloud Console](https://console.cloud.google.com/),
+   create a project (any name).
+2. **Enable the API.** APIs & Services → Library → **Google Drive API** →
+   Enable.
+3. **OAuth client.** APIs & Services → Credentials → Create credentials →
+   OAuth client ID, application type **Desktop app**. If asked to configure
+   the consent screen, choose "External", add your own address as a test user
+   and add the scope `https://www.googleapis.com/auth/drive.file`. Copy the
+   client ID and client secret.
+4. **Refresh token.** On the server, run:
+
+   ```sh
+   tgdl-server backup-oauth gdrive
+   # Docker: docker compose exec -it telegram-downloader tgdl-server backup-oauth gdrive
+   ```
+
+   Enter the client ID and secret, open the printed address in any browser
+   and allow access. The browser then fails to open a `127.0.0.1` page; that
+   is expected. Copy the whole address from the address bar, paste it back,
+   and the command prints the refresh token. The
+   [OAuth Playground](https://developers.google.com/oauthplayground/) still
+   works too if you already use it.
+5. Paste client ID, client secret and refresh token into the form.
+
+- **Folder**: with **Folder ID** blank, a folder named after **Backup folder
+  name** (default `tgdl-backup`) is found or created at the top of My Drive,
+  the same one 2.x used. To use another folder, paste its ID (the part of its
+  Drive address after `folders/`); shared-drive folders work. With the
+  `drive.file` scope the server only sees folders and files it created
+  itself, so a hand-made folder must have been created by this app.
+- **Scope**: `drive.file` is enough and is recommended. The server never
+  reads files it did not create.
+- **Uploads** are resumable, in 8 MiB pieces. If the connection drops, the
+  upload continues from the last piece Google confirmed. The file appears in
+  Drive only once it is complete; an existing backup is replaced as a new
+  version of the same file, never duplicated.
+- **Checking**: Google's own SHA-256 checksum of the uploaded file must match
+  the local file. A file with the same size and checksum is skipped.
+- **Limits**: Google's rate limits are retried with backoff. A daily upload
+  quota (about 750 GB per account) or a full Drive fails the job, which then
+  retries later.
+- **"Testing" consent screens** issue refresh tokens that expire after seven
+  days. Set the app's publishing status to "In production" to keep the token
+  valid; `drive.file` is a non-sensitive scope.
+
+### Dropbox
+
+You need your own Dropbox app and a refresh token for it.
+
+1. **Create an app** in the [Dropbox developer console](https://www.dropbox.com/developers/apps):
+   "Scoped access", then **App folder** (recommended, uploads stay under
+   `Apps/<app name>/`) or **Full Dropbox**.
+2. **Permissions** tab: enable `files.content.write`, `files.content.read`
+   and `account_info.read`, then **Submit**.
+3. **Refresh token.** Copy the App key and App secret from the Settings tab,
+   then run on the server:
+
+   ```sh
+   tgdl-server backup-oauth dropbox
+   ```
+
+   Open the printed address, allow access, and paste the code Dropbox shows.
+   The command prints the refresh token.
+4. Paste app key, app secret, refresh token and the **Remote root path**
+   (default `/tgdl-backup`) into the form.
+
+- **Remote root** is inside the app folder for app-folder apps:
+  `/tgdl-backup` appears as `Apps/<app name>/tgdl-backup`. `/` uses the app
+  folder (or Dropbox root) itself. **Test** creates the folder if needed.
+- **Uploads**: files up to 8 MiB use one request; larger files use an upload
+  session in 8 MiB pieces, committed at the end so the file appears only
+  when it is complete. `BACKUP_DROPBOX_CHUNK_BYTES` from 2.x still sets the
+  piece size (4 MiB to 148 MiB, rounded down to a multiple of 4 MiB).
+- **Checking**: every request carries Dropbox's content hash of its bytes,
+  and the committed file's content hash must match the local file. A file
+  with the same size and content hash is skipped.
+- **Limits**: rate limits (`429`, `too_many_write_operations`) are retried
+  with backoff. Files over 350 GB can't be uploaded to Dropbox.
 
 ### Local filesystem / NAS mount
 
@@ -402,7 +489,8 @@ the Docker image, and it is included in each release archive.
 ### 1. Download the backup
 
 Use any client for your storage, such as the S3 console, `aws s3 cp`,
-`rclone`, `sftp`, an FTP client or a file manager. Snapshots are under
+`rclone`, `sftp`, an FTP client, the Google Drive or Dropbox website, or a
+file manager. Snapshots are under
 `snapshots/` inside the prefix or root folder. Mirrored media keeps the same
 folder layout as your downloads folder.
 
@@ -534,7 +622,9 @@ never completed. Once you're sure no restore is still running, delete it.
 
 | Message or symptom | What to do |
 |---|---|
-| `native backup provider "gdrive" is not available yet` (or `"dropbox"`) | Google Drive and Dropbox can't upload in 3.0. Add an S3, SFTP, FTP or local destination instead. |
+| Google Drive or Dropbox `invalid_grant` | The refresh token expired or was revoked (Google "Testing" apps expire tokens after seven days). Run `tgdl-server backup-oauth gdrive` or `dropbox` again and paste the new token into the destination. |
+| Google Drive `folder "…" not found or not accessible` | The folder ID is wrong, in the trash, or wasn't created by this OAuth client (the `drive.file` scope only sees its own files). Leave **Folder ID** blank to use **Backup folder name**. |
+| Google Drive `storageQuotaExceeded`, Dropbox `insufficient_space` | The account is full. Free space; queued jobs retry automatically. |
 | `backup encryption is locked; unlock this destination` | The server restarted. Click **Unlock** and enter the passphrase. Queued uploads then continue. |
 | `incorrect backup passphrase` | This isn't the passphrase that was set for this destination. Passphrases can't be changed; create a new destination to use a different one. |
 | `credentials no longer decryptable, please re-enter` | Edit the destination and enter its password, keys or secret again. |
@@ -557,25 +647,21 @@ For other problems, see [Troubleshooting](TROUBLESHOOTING.md).
 
 ## Limits and what's not in 3.0
 
-- **Google Drive and Dropbox are not available.** They still appear in the
-  provider list, and destinations created in 2.x are kept with their saved
-  settings, but nothing uploads. Their queued jobs wait with an error
-  instead of failing or using up retries. Support may return in a later
-  release, with no date announced. The 2.x OAuth helpers
-  (`scripts/setup-gdrive.js`, `scripts/setup-dropbox.js`) and the
-  `npm install googleapis` / `dropbox` / `basic-ftp` steps are no longer
+- **The 2.x OAuth helper scripts are gone.** `scripts/setup-gdrive.js` and
+  `scripts/setup-dropbox.js` are replaced by `tgdl-server backup-oauth`, and
+  the `npm install googleapis` / `dropbox` / `basic-ftp` steps are no longer
   part of the setup.
 - **Restore is offline only.** It uses `tgdl-server backup-restore` and
   `backup-decrypt`, with no in-dashboard restore.
 - **One upload at a time per destination.** The 2.x
-  `BACKUP_WORKERS_PER_DEST` and `BACKUP_DROPBOX_CHUNK_BYTES` variables are
-  ignored.
+  `BACKUP_WORKERS_PER_DEST` variable is ignored.
 - **Passphrases can't be rotated**, and turning encryption on doesn't
   re-encrypt files that were already uploaded.
 - **Mirror never deletes remote files**, and changing a destination's
   bucket, prefix or root doesn't upload already-finished files again.
-- **Tested against protocol test servers, not live accounts.** S3, SFTP and
-  FTP support was tested against protocol-level test servers. It has not
+- **Tested against protocol test servers, not live accounts.** S3, SFTP,
+  FTP, Google Drive and Dropbox support was tested against protocol-level
+  test servers. It has not
   been tested against every commercial provider or NAS. Test a destination,
   then try a restore, before relying on it.
 

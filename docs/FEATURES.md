@@ -109,8 +109,6 @@ for how to report a vulnerability.
 These existed in 2.x or appear in old settings, but the 3.0 Go server does not
 run them. Saved settings are kept, so nothing is lost if they return.
 
-- **Google Drive and Dropbox** backup destinations (local, S3, SFTP and
-  FTP/FTPS work).
 - **Hardware-accelerated thumbnails**: `FFMPEG_HWACCEL` is ignored and
   thumbnails are made on the CPU.
 - **New AI results**: face detection and clustering, NSFW scoring and seekbar

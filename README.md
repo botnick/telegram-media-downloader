@@ -129,7 +129,7 @@ examples: [Install and deploy](docs/DEPLOY.md).
 - Read-only guest password; Telegram sessions encrypted at rest
 - CSP and security headers; `TRUST_PROXY` for reverse proxies
 
-**Not in 3.0 yet:** Google Drive and Dropbox backups, hardware-accelerated
+**Not in 3.0 yet:** hardware-accelerated
 thumbnails (`FFMPEG_HWACCEL` is ignored), new face/NSFW/seekbar AI results,
 auto-forward, self-destructing media capture and automatic disk rotation. See
 [Features](docs/FEATURES.md#not-in-30).
@@ -280,8 +280,8 @@ for old setups; they only call the launcher, which downloads that binary.
 
 Under `data/downloads/<chat>/`, or `TGDL_DOWNLOADS_DIR` on another disk.
 Backups go to a local folder, S3-compatible storage (AWS, R2, B2, Wasabi,
-MinIO), SFTP or FTP/FTPS, with optional encryption and an offline restore
-command. Google Drive and Dropbox are not available in 3.0. See
+MinIO), SFTP, FTP/FTPS, Google Drive or Dropbox, with optional encryption and
+an offline restore command. See
 [Backup](docs/BACKUP.md).
 
 ## Documentation

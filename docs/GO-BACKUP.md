@@ -1,6 +1,6 @@
 ---
 title: "Backup internals"
-description: "Engineering note on the native Go backup transports, TGDB encrypted archives, publication checks and crash recovery."
+description: "Engineering note on the native Go backup transports (local, S3, SFTP, FTP/FTPS, Google Drive, Dropbox), TGDB encrypted archives, publication checks and crash recovery."
 parent: "Developer notes"
 nav_order: 5
 ---
@@ -9,12 +9,14 @@ nav_order: 5
 
 > **Engineering note** from the Go migration. The user guide is [Backup](BACKUP.md).
 
-The Go application now implements destination management and local, S3, SFTP and
-FTP/FTPS mirror/snapshot transports. **Backup migration is incomplete.**
-Google Drive and Dropbox still need native implementations. TGDB v1 encrypted
+The Go application now implements destination management and local, S3, SFTP,
+FTP/FTPS, Google Drive and Dropbox mirror/snapshot transports. All six released
+providers have native transports. TGDB v1 encrypted
 uploads, offline decryption and snapshot restore now run in Go. Existing configuration forms and stored credentials remain
-readable. Unsupported transports report unavailable; their queued uploads and
-locked encrypted jobs remain pending with an explicit destination error.
+readable, including 2.x Google Drive and Dropbox OAuth refresh tokens. A
+destination whose provider cannot be opened (for example invalid configuration)
+keeps its queued uploads and locked encrypted jobs pending with an explicit
+destination error.
 Those blocked jobs do not consume retry attempts, send plaintext, or invoke
 another runtime. Supported transports use the durable queue's actual retries.
 The frozen backup contracts do not exercise successful remote or encrypted
@@ -31,8 +33,7 @@ retry time. It never returns credentials or multipart upload IDs. Backup
 WebSocket events and logs are flat and administrator-only.
 Provider metadata retains the released form fields and adds an optional SSH
 host fingerprint for SFTP, plus passive-mode and private-CA settings for FTP.
-The presence of a form does not establish that all
-six transports are ready.
+The Google Drive and Dropbox forms are unchanged from 2.x.
 
 Provider credentials retain the existing TGDC v1 layout:
 `TGDC | version=1 | IV[12] | AES-256-GCM ciphertext | tag[16]`.
@@ -218,6 +219,111 @@ reservation after cleanup has observed absence. No payload is sent before that
 reply, but this narrow empty-directory cleanup boundary remains open. Real
 NAS deployment and every server's TLS-session-reuse policy remain unverified.
 
+## Native Google Drive and Dropbox transports
+
+Both providers use plain `net/http` against the official REST APIs (Drive v3,
+Dropbox API v2); no Google or Dropbox SDK is linked. Configuration keys are the
+released ones: `clientId`, `clientSecret`, `refreshToken`, `folderName`,
+`folderId` for `gdrive`, and `appKey`, `appSecret`, `refreshToken`,
+`remoteRoot` for `dropbox`. Secrets are flagged in the provider schema, so they
+are TGDC-encrypted, redacted from config reads and preserved on empty edits
+like every other credential. A 2.x destination therefore opens unchanged.
+
+**Tokens.** Each provider instance exchanges the stored refresh token at the
+provider's token endpoint (RFC 6749 `refresh_token` grant, form-encoded client
+credentials) and caches the access token until one minute before `expires_in`.
+A 401 from the API discards that token and retries the request once with a
+fresh one. `invalid_grant`/`invalid_client` responses surface as explicit
+"refresh token rejected" errors. Neither provider is expected to rotate refresh
+tokens on this grant; a returned replacement is ignored, so the stored token
+remains authoritative. `tgdl-server backup-oauth gdrive|dropbox` replaces the
+2.x `scripts/setup-*.js` helpers: it builds a PKCE (S256) authorization URL,
+accepts the pasted code (or, for Google's loopback redirect, the whole
+redirected address), exchanges it and prints the refresh token. It opens no
+listener and needs no data directory, so it works on headless servers.
+
+**HTTP behaviour.** Requests share the S3 transport conventions: connection
+write deadlines, a 90-second response-header deadline, per-read body deadlines,
+the destination's shared upload pacer and progress accounting on upload bodies
+only. Redirects are refused, so a bearer token is never forwarded to another
+origin. Responses are bounded to 8 MiB. Errors report only the operation, HTTP
+status and a charset-restricted protocol code (Drive `errors[].reason`, Dropbox
+`error_summary` without its random suffix, OAuth `error`); service messages,
+URLs (Drive session URIs are capabilities) and credentials never reach logs or
+the dashboard. Each request is retried at most five times on transport errors,
+5xx, 429, Drive `rateLimitExceeded`/`userRateLimitExceeded` 403s and Dropbox
+`too_many_write_operations`/`too_many_requests`, with jittered exponential
+backoff (1 s doubling, 30 s cap) or the server's `Retry-After`. A Retry-After
+above two minutes returns the error to the durable queue instead of holding the
+worker. Close cancels and joins in-flight requests.
+
+**Google Drive.** Paths map onto folders below the root folder: `folderId`
+when configured (validated as a non-trashed folder), otherwise `folderName`
+found or created under My Drive, which is the folder 2.x created. Lookups use
+`files.list` queries with quoted, backslash/quote-escaped names; folder IDs are
+validated as `[A-Za-z0-9_-]` before entering a query. When duplicate folders
+exist, the oldest is used consistently. Folder creation is not retried
+blindly: a lookup precedes every attempt, so a lost create reply does not
+produce a second folder. Resolved IDs are cached per provider instance. Created
+files and folders carry the released `appProperties` `tgdl-backup=1` stamp.
+`supportsAllDrives` is set so shared-drive folders work.
+
+Uploads hash the source once (SHA-256 and MD5) before remote IO. A same-named
+file is skipped only when its size and Drive's server-computed
+`sha256Checksum` match. Otherwise a resumable session is started: POST for a
+new file, PATCH on the existing file ID for a replacement, so updates become a
+new revision rather than a duplicate name. The session URI must share the
+configured upload origin. Content is sent in 8 MiB chunks (a multiple of the
+256 KiB unit) with `Content-Range`; `308 Resume Incomplete` and its `Range`
+header drive the next offset. After a transport error, 5xx or 429 on a chunk,
+the client waits and asks the session for its committed range
+(`bytes */size`) and resumes from there, so a stored chunk whose reply was lost
+is not resent. Five consecutive failures without progress fail the job. An
+expired session (404/410) starts a new one, at most twice. Drive publishes the
+file only when the last byte is accepted. The final metadata must report the
+exact size and the source SHA-256 (or MD5 when Drive omits SHA-256); a
+mismatching new file is deleted and the job fails. Failed sessions are
+cancelled best-effort; abandoned sessions never publish and expire on Google's
+side, so no transfer journal is needed. Listing walks folders with paginated
+queries (page tokens must advance, 100,000 entries at most) and skips names
+that cannot form a backup path. Delete removes every same-named file in the
+folder and treats absence as success. Test reports the authorized account and
+root folder ID.
+
+**Dropbox.** The remote root is normalized as in 2.x (`/a/b`, `/` meaning the
+app folder or account root) and rejects `..`. `Dropbox-API-Arg` headers are
+ASCII-escaped JSON (`\uXXXX`, surrogate pairs for astral characters), which
+the API requires for non-ASCII paths. One inspection pass computes the source
+SHA-256 and Dropbox's content hash (SHA-256 over 4 MiB block digests),
+retaining block digests so every call can send the `content_hash` of exactly
+its own bytes; Dropbox rejects altered bytes per call. An existing file is
+skipped when size and server-computed `content_hash` match.
+
+Files up to the chunk size (8 MiB, or the released
+`BACKUP_DROPBOX_CHUNK_BYTES` clamped to 4–148 MiB and 4 MiB aligned) use
+`files/upload` in overwrite mode. Larger files use
+`upload_session/start`, `append_v2` and `finish`; the commit publishes the
+file atomically and parents are created implicitly. A retried append whose
+first attempt was stored receives `incorrect_offset` with `correct_offset`;
+the client resumes there only when that offset lies on its own chunk
+boundary. A lost `finish` reply followed by `lookup_failed` is accepted only
+when the committed file's metadata matches the full content hash. The committed
+metadata must match size and content hash. Uncommitted sessions expire after
+seven days without creating a file, so no transfer journal is needed. Listing
+uses recursive `list_folder` with cursors (cursors must advance, 100,000
+entries at most); entries must lie inside the root (compared
+case-insensitively, as Dropbox paths are). `path/not_found` lists empty and
+`path_lookup/not_found` deletes succeed. Test reports the account and creates
+the root folder when missing.
+
+**Limits.** Drive uploads are sequential per file; Dropbox sessions are
+sequential by protocol. Drive's equality check relies on Google computing
+`sha256Checksum`; when it is absent the file is re-uploaded rather than
+skipped. Dropbox's displayed path casing is guaranteed only for the last
+component, so a parent folder renamed only by case lists under its stored
+casing. Neither transport has been run against a live Google or Dropbox
+account in this migration; evidence is the protocol fixtures below.
+
 ## Durable remote transfer cleanup
 
 `native_backup_transfers` records ownership before S3 part data, SFTP temporary
@@ -236,8 +342,10 @@ undecryptable; the error remains visible and the record is retained. SFTP uses
 the same host-key checks as uploads. Cleanup validates the configured root or
 prefix and removes only the recorded random temporary name or exact multipart
 ID. It does not sweep unowned files, abort unrelated uploads or delete completed
-S3 objects. This journal covers native S3/SFTP/FTP transfers; local mirror temporary
-files and interrupted snapshot construction still need startup staging cleanup.
+S3 objects. This journal covers native S3/SFTP/FTP transfers; Google Drive and Dropbox
+upload sessions cannot publish partial files and expire remotely, so they are
+not journaled. Local mirror temporary files and interrupted snapshot
+construction still need startup staging cleanup.
 
 ## Snapshots and restart recovery
 
@@ -390,6 +498,27 @@ connection reuse, cancellation/reconnect/cleanup, symlink rejection, missing
 atomic-rename support and automatic queued mirror recovery. These are protocol
 integration tests; they are not live provider or browser E2E results.
 
+Google Drive and Dropbox fixtures are `httptest` servers implementing the
+REST surface each transport uses, plus an RFC 6749 refresh-token endpoint.
+The Drive fixture parses the emitted `files.list` query grammar and models
+folders, pagination, resumable sessions with `308`/`Range`, status queries,
+session expiry and cancellation. Tests cover a chunk stored with a lost reply
+(resumed via status query, not resent), Unicode/quote-escaped names, dedup by
+server SHA-256, same-size replacement as a revision of the same file ID, empty
+files, snapshot-prefix listing, idempotent delete, a configured or trashed
+folder ID, checksum mismatch deleting the new file, cancellation, 401 token
+refresh, 429/403/500 backoff, non-retriable quota errors, oversized
+Retry-After, and `invalid_grant` without leaking descriptions or tokens. The
+Dropbox fixture validates ASCII-only API arguments, per-call content hashes
+with an independent hash implementation, case-insensitive paths and
+`incorrect_offset`. Tests cover a lost append reply, a lost finish reply
+verified by content hash, dedup, same-size changes, cursor pagination,
+root-relative listing, idempotent delete, 401 refresh, 429 and
+`too_many_write_operations` backoff, non-retriable errors and `invalid_grant`.
+Both run through the manager's create/test/redaction/automatic-mirror path.
+The OAuth helper tests check PKCE parameters and code exchange. These are
+protocol fixtures, not live accounts.
+
 FTP fixtures exercise plain, explicit and implicit TLS with PASV/EPSV, Unicode
 and empty files, equal-size corruption, source changes, readback mismatch,
 rename failure, permission errors, connection reuse, cancellation, shutdown,
@@ -443,7 +572,7 @@ the added fields and the earlier VACUUM finding are documented rather than
 hidden by changing frozen expectations. See
 [the current migration totals and release gates](GO-MIGRATION-STATUS.md).
 
-Further work includes the two remaining remote transports, independent crypto
+Further work includes live Google Drive/Dropbox account verification, independent crypto
 review, bounded concurrency tuning, cleanup of interrupted
 local/snapshot staging files, the empty S3/FTP reservation boundaries described above,
 rebasing completed jobs after changing a destination's root/bucket, and real
@@ -564,6 +693,14 @@ verification.
   concurrent file requests and advertised extensions.
 - [Go rate limiter](https://pkg.go.dev/golang.org/x/time/rate#Limiter.WaitN):
   a shared, cancellable token bucket controls actual upload reads.
+- [Drive resumable uploads](https://developers.google.com/drive/api/guides/manage-uploads#resumable),
+  [files.list search queries](https://developers.google.com/drive/api/guides/search-files)
+  and [Drive usage limits](https://developers.google.com/drive/api/guides/limits).
+- [Dropbox HTTP API](https://www.dropbox.com/developers/documentation/http/documentation)
+  (upload sessions, `Dropbox-API-Arg` encoding, error format) and the
+  [content hash](https://www.dropbox.com/developers/reference/content-hash).
+- [RFC 6749](https://www.rfc-editor.org/rfc/rfc6749.html) refresh-token grant and
+  [RFC 7636](https://www.rfc-editor.org/rfc/rfc7636.html) PKCE.
 - [HTTP Transport](https://pkg.go.dev/net/http#Transport): response-header
   timeout starts after the request body has been written.
 - [SSH OpenChannel](https://pkg.go.dev/golang.org/x/crypto/ssh#Client.OpenChannel)

@@ -139,8 +139,8 @@ remains unverified. No other room's accounts or data were inspected.
   buffers, private staging and authentication before publication. Native tests
   restore database/config/sessions and reject corrupt or unsafe archives; this
   is not an independent crypto audit or live recovery E2E. Drive and
-  Dropbox remain incomplete even when frozen contracts pass; unsupported or
-  locked pending jobs display an explicit error without sending plaintext.
+  Dropbox transports use protocol fixtures only, not live accounts; locked
+  pending jobs display an explicit error without sending plaintext.
   See [scope and independent native tests](GO-BACKUP.md).
 
 - Authentication, first-time setup, password changes/reset, guest access,
@@ -433,9 +433,9 @@ item; the scope and verification sections above take precedence.
   and full browser interaction. Durable Go pause/resume/cancel/retry controls
   and the queue snapshot are implemented, but the complete queue workflow still
   needs browser and performance coverage.
-- Complete Drive, Dropbox, local/snapshot staging cleanup and empty S3/FTP
+- Complete local/snapshot staging cleanup and empty S3/FTP
   reservation boundaries. Validate encrypted backup and restore with real
-  providers; S3/SFTP/FTP wire fixtures and loopback interoperability checks do
+  providers; S3/SFTP/FTP/Drive/Dropbox wire fixtures and loopback interoperability checks do
   not establish live provider or full migration E2E coverage.
 - Resolve the 14 remaining contract files: cluster/peer/cluster-WebSocket,
   AI jobs, NSFW, seekbar, backup provider metadata, recovery, purge, security,

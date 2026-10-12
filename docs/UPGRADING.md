@@ -57,8 +57,6 @@ Database migrations are idempotent and run before `/health` reports ready.
 
 Check this list before you upgrade an install that relies on one of them:
 
-- Google Drive and Dropbox backup destinations. Local, S3, SFTP and
-  FTP/FTPS destinations work. See [Backup](BACKUP.md).
 - Hardware-accelerated thumbnails. Thumbnails use the CPU.
 - New face detection, NSFW scoring and seekbar previews. Results made by 2.x
   stay visible. See [AI](AI.md).

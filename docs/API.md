@@ -272,7 +272,7 @@ Long tasks start with a `POST` and report progress through their `…/status` ro
 
 ## Backup
 
-Destinations and modes are covered in [Backup](BACKUP.md). Google Drive and Dropbox are not available in 3.0.
+Destinations and modes are covered in [Backup](BACKUP.md).
 
 | Method | Path | Access | Notes |
 |---|---|---|---|
