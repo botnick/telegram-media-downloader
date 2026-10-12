@@ -377,7 +377,9 @@ func TestScalerGrowsWorkersForALongQueueAndDropsOnFloodWait(t *testing.T) {
 	factory := func(AccountConfig, *telegram.UpdateState, func(context.Context, tg.UpdatesClass) error, func(int64)) (Account, error) {
 		return account, nil
 	}
-	filter := func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error) { return Target{}, true, nil }
+	filter := func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error) {
+		return Target{}, true, nil
+	}
 	var inFlight, peak atomic.Int64
 	release := make(chan struct{})
 	sink := func(ctx context.Context, _ *Work, _ *tg.Message, _ telegram.MediaDownloader) error {
