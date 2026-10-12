@@ -228,6 +228,7 @@ Long tasks start with a `POST` and report progress through their `…/status` ro
 | `GET` | `/api/maintenance/files/verify/status` | Admin | |
 | `GET` | `/api/maintenance/files/verify/stats` | Admin | |
 | `POST` | `/api/maintenance/reindex` | Admin | Rebuild the library index from files on disk. |
+| `GET` | `/api/maintenance/disk-rotator/status` | Admin | Disk rotation settings, current library size and the last sweep. |
 | `GET` | `/api/maintenance/reindex/status` | Admin | |
 | `GET` | `/api/maintenance/reindex/stats` | Admin | |
 | `GET` | `/api/maintenance/dedup/stats` | Admin | Duplicate-file summary. |
@@ -389,7 +390,7 @@ Connect to `ws://<host>:3000/ws` (or `wss://` behind TLS). An upgrade on `/` is 
 | Monitor | `monitor_state`, `monitor_status_push`, `resync_dialogs_progress`/`_done`, `restart_monitor_progress`/`_done` |
 | Chats | `groups_refreshed`, `groups_refresh_info_progress`/`_done`, `groups_refresh_photos_progress`/`_done`, `chat_access_changed`, `chat_access_recheck_progress`/`_done`, `chat_leave_batch_progress`/`_done`, `group_files_deleted`, `group_purged`, `group_purge_progress`/`_done` |
 | History backfill | `history_progress`, `history_done`, `history_error`, `history_cancelled`, `history_cancelling`, `history_deleted`, `history_cleared` |
-| Maintenance | `db_integrity_progress`/`_done`, `db_vacuum_progress`/`_done`, `files_verify_progress`/`_done`, `reindex_progress`/`_done`, `dedup_progress`/`_done`, `dedup_delete_progress`/`_done`, `thumbs_progress`/`_done`, `thumbs_rebuild_progress`/`_done`, `faststart_progress`/`_done`, `recovery_bulk_progress`/`_done`, `integrity_swept`, `purge_all_progress`/`_done`, `purge_all` |
+| Maintenance | `db_integrity_progress`/`_done`, `db_vacuum_progress`/`_done`, `files_verify_progress`/`_done`, `reindex_progress`/`_done`, `dedup_progress`/`_done`, `dedup_delete_progress`/`_done`, `thumbs_progress`/`_done`, `thumbs_rebuild_progress`/`_done`, `faststart_progress`/`_done`, `recovery_bulk_progress`/`_done`, `integrity_swept`, `disk_rotator_swept` (admin), `purge_all_progress`/`_done`, `purge_all` |
 | Rescue | `rescued`, `rescue_sweep_done` |
 | Backup (admin sockets only) | `backup_progress`, `backup_done`, `backup_error`, `backup_queue_drained`, `backup_destination_added`, `backup_destination_updated`, `backup_destination_removed`, `log` |
 | Cluster | `peer_catalog_update` |

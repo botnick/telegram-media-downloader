@@ -138,6 +138,9 @@ type App struct {
 	filesVerifyStatus   map[string]any
 	filesVerifyLastRun  map[string]any
 	filesSweeping       atomic.Bool // one integrity pass at a time, manual or periodic
+	diskRotatorMu       sync.Mutex  // one rotation pass at a time
+	diskRotatorWake     chan struct{}
+	diskRotatorStatus   map[string]any // guarded by maintenanceMu
 	reindexStatus       map[string]any
 	reindexLastRun      map[string]any
 	vacuumStatus        map[string]any

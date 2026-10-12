@@ -129,8 +129,7 @@ examples: [Install and deploy](docs/DEPLOY.md).
 - Read-only guest password; Telegram sessions encrypted at rest
 - CSP and security headers; `TRUST_PROXY` for reverse proxies
 
-**Not in 3.0 yet:** new face/NSFW/seekbar AI results,
-auto-forward, self-destructing media capture and automatic disk rotation. See
+**Companion containers:** face recognition and NSFW scanning run in the optional `tgdl-faces` and `tgdl-nsfw` containers. See
 [Features](docs/FEATURES.md#not-in-30).
 
 ## Dashboard

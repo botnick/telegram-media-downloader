@@ -31,6 +31,7 @@ func registerMaintenanceRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("GET /api/maintenance/reindex/stats", admin(a.handleReindexStats))
 	mux.Handle("POST /api/maintenance/db/vacuum", admin(a.handleDBVacuum))
 	mux.Handle("GET /api/maintenance/db/vacuum/status", admin(a.handleDBVacuumStatus))
+	mux.Handle("GET /api/maintenance/disk-rotator/status", admin(a.handleDiskRotatorStatus))
 }
 
 func maintenanceIdleStatus(kind string) map[string]any {

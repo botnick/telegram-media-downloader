@@ -24,7 +24,7 @@ port to listen on and how to sit behind a proxy.
 | **Backup** | Destinations and schedules, see [Backup](BACKUP.md) |
 
 Settings that 3.0 does not act on (for example `rateLimits`,
-`pollingInterval`, auto-forward and disk rotation) are kept as they are but
+`pollingInterval` and auto-forward) are kept as they are but
 have no effect.
 
 ## Environment variables

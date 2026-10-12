@@ -10,5 +10,6 @@ import (
 // catalog; tests that exercise them call the sweep directly.
 func TestMain(m *testing.M) {
 	integrityBootDelay = 24 * time.Hour
+	diskRotatorStartDelay = 24 * time.Hour
 	os.Exit(m.Run())
 }

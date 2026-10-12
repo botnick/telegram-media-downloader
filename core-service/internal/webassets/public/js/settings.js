@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { showToast, escapeHtml } from './utils.js';
+import { showToast, escapeHtml, formatBytes } from './utils.js';
 import * as Notifications from './notifications.js';
 import * as Fonts from './fonts.js';
 import { ws } from './ws.js';
@@ -13,6 +13,56 @@ let _fontPickerWired = false;
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { openSheet, confirmSheet, promptSheet } from './sheet.js';
 import { fileTokenQuery } from './media-url.js';
+
+// Disk rotation status line under the auto-rotate toggle: current usage
+// against the cap and the last sweep that removed files. Refreshed on open
+// and after every server-side sweep (disk_rotator_swept).
+let _diskRotatorWsWired = false;
+function renderDiskRotatorStatus(s) {
+    const el = document.getElementById('setting-disk-rotate-status');
+    if (!el) return;
+    if (!s?.enabled || !(s.capBytes > 0)) {
+        el.classList.add('hidden');
+        return;
+    }
+    const parts = [
+        i18nTf(
+            'settings.disk.rotate_status',
+            { used: formatBytes(s.totalBytes || 0), cap: formatBytes(s.capBytes) },
+            `Using ${formatBytes(s.totalBytes || 0)} of ${formatBytes(s.capBytes)}.`,
+        ),
+    ];
+    const last = s.last?.lastRotation;
+    if (last?.deleted > 0) {
+        const when = new Date(last.at).toLocaleString();
+        parts.push(
+            i18nTf(
+                'settings.disk.rotate_last',
+                { when, count: last.deleted },
+                `Last rotation ${when}: removed ${last.deleted} oldest files.`,
+            ),
+        );
+    }
+    if (s.last?.error) {
+        parts.push(
+            i18nTf('settings.disk.rotate_error', { msg: s.last.error }, `Last sweep failed: ${s.last.error}`),
+        );
+    }
+    el.textContent = parts.join(' ');
+    el.classList.remove('hidden');
+}
+
+async function refreshDiskRotatorStatus() {
+    if (!_diskRotatorWsWired) {
+        _diskRotatorWsWired = true;
+        ws.on('disk_rotator_swept', () => refreshDiskRotatorStatus());
+    }
+    try {
+        renderDiskRotatorStatus(await api.get('/api/maintenance/disk-rotator/status'));
+    } catch {
+        renderDiskRotatorStatus(null);
+    }
+}
 
 export async function loadSettings() {
     try {
@@ -138,6 +188,7 @@ export async function loadSettings() {
                 );
             };
         }
+        if (!isGuest) refreshDiskRotatorStatus();
 
         // Rescue Mode (global default). Per-group rescueMode='auto' inherits
         // from this toggle; 'on'/'off' override locally. Sweep interval is

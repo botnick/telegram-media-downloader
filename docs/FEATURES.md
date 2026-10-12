@@ -88,6 +88,13 @@ This page lists what 3.0 does today. Detailed guides:
 - Database integrity check, VACUUM and on-demand database snapshot.
 - File verification, thumbnail rebuild, reindex, log viewer and download,
   and a recovery page for downloads that lost their chat or account.
+- **Disk rotation**: with **Settings → Auto-rotate when full** on, every
+  `diskManagement.sweepIntervalMin` minutes (default 10) the oldest downloads
+  are deleted until the library is back under `maxTotalSize`, at most
+  `advanced.diskRotator.maxDeletesPerSweep` per sweep. Pinned and rescued
+  items, files still being downloaded and files outside the downloads folder
+  are never deleted; a file shared by several downloads stays until its last
+  one goes.
 - **Integrity sweep**: 30 s after start and then every
   `advanced.integrity.intervalMin` minutes (at least 60), rows whose file is
   missing or empty are dropped and wrong file sizes corrected. It never
@@ -118,5 +125,5 @@ run them. Saved settings are kept, so nothing is lost if they return.
 - **New AI results**: face detection and clustering, NSFW scoring and seekbar
   preview generation do not run. People and previews made by 2.x can still be
   viewed and edited. See [AI](AI.md).
-- **Auto-forward**, **self-destructing (TTL) media capture** and **automatic
-  disk rotation**: their settings are stored but not acted on.
+- **Auto-forward** and **self-destructing (TTL) media capture**: their
+  settings are stored but not acted on.

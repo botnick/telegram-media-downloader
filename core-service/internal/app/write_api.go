@@ -145,7 +145,13 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 		default:
 		}
 	}
+	if _, changed := patch["diskManagement"]; changed {
+		a.wakeDiskRotator()
+	}
 	if advancedPatch, ok := patch["advanced"].(map[string]any); ok {
+		if _, changed := advancedPatch["diskRotator"]; changed {
+			a.wakeDiskRotator()
+		}
 		if _, changed := advancedPatch["ai"]; changed {
 			a.hub.Broadcast(ws.Event{Type: "ai_config_changed", Flat: true})
 			a.faces.configChanged()
