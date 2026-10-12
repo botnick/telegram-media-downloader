@@ -163,6 +163,10 @@ func (a *App) seekbarJobProgress(j *seekbarJob, p map[string]any) {
 func (a *App) finishSeekbarJob(j *seekbarJob, started time.Time, result map[string]any, err error) {
 	finished := time.Now()
 	duration := finished.Sub(started).Milliseconds()
+	if errors.Is(err, context.Canceled) {
+		// Cancel can land inside any step; it is a finished run, not a failure.
+		err, result = nil, map[string]any{"cancelled": true, "durationMs": duration}
+	}
 	j.mu.Lock()
 	progress, _ := j.state["progress"].(map[string]any)
 	delete(progress, "running")
