@@ -159,11 +159,14 @@ func TestAutoForwardUploadsAndDeletesOnlyTheLocalCopy(t *testing.T) {
 		_, err := w.Write([]byte("other"))
 		return err
 	})
-	if _, err := a.ingestTelegram(ctx, docMessage(11, 123, 78, ""), "", "Source", "acct1", unique); err != nil {
+	// The forward worker may already have removed the row; take the path from
+	// the ingest result instead of reading it back.
+	record, err := a.ingestTelegram(ctx, docMessage(11, 123, 78, ""), "", "Source", "acct1", unique)
+	if err != nil {
 		t.Fatal(err)
 	}
-	own, ok := rowPath(t, a, "-1000000000123", 11)
-	if !ok {
+	own := record.Path
+	if own == "" {
 		t.Fatal("download missing")
 	}
 	eventually(t, "local file removal", func() bool {
