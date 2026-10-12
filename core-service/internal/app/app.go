@@ -87,6 +87,7 @@ type App struct {
 	clusterSyncMu       sync.Mutex
 	clusterWake         chan struct{}
 	clusterSockets      *clusterSockets
+	clusterSweep        clusterSweepState
 	loginRL             *rateLimiter
 	handler             http.Handler
 	configMu            sync.Mutex

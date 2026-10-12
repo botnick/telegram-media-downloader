@@ -193,9 +193,35 @@ buffer, ten-second connection/header limits and a rolling 30-second inactivity
 deadline, with no ten-second whole-file timeout. Peer streaming uses HTTP/1
 so socket deadlines belong to one active response. Shutdown cancels blocked
 transfers. A truncated upstream body aborts the downstream response rather than
-producing a clean, incomplete chunked response. Direct signed-share streaming,
-peer thumbnails and cross-peer delete are still absent. A peer configured for
-direct mode receives an explicit 501 instead of silently selecting proxy mode.
+producing a clean, incomplete chunked response. Direct signed-share streaming
+is still absent. A peer configured for direct mode receives an explicit 501
+instead of silently selecting proxy mode.
+
+Federated gallery thumbnails use the released split: the admin-only
+`/api/cluster/thumbs/{peer}/{id}` proxy signs a request to the peer's
+`/api/cluster/peer-thumbs/{id}`, passes on only real WebP/PNG/JPEG bytes and
+answers an offline, unknown or older peer with a 1x1 PNG cached for 60 seconds.
+
+## Dedup sweep and conflicts
+
+`POST /api/cluster/sweep/run` starts a single-flight background pass (409
+`ALREADY_RUNNING` otherwise) that groups own downloads and every peer's cached
+catalog by `(file_hash, file_size)` (default `minSize` 1024, at most 500
+groups). Groups with more than one copy are stored as conflicts in the
+`cluster_sweep_conflicts` / `cluster_sweep_stats` keys shared with 2.x, so a
+migrated database keeps its pending list. Progress and completion use the
+released `cluster_sweep_progress` / `cluster_sweep_done` events; `GET
+/api/cluster/sweep/status` and `POST /api/cluster/sweep/cancel` mirror the old
+job tracker. A cancelled pass keeps the previous list.
+
+`POST /api/cluster/conflicts/{id}/resolve` keeps one copy and removes the rest.
+Local copies are deleted only when the row still has the conflict's hash and
+size; the file is unlinked once no other row references it. Peer copies are
+deleted through the signed `POST /api/cluster/files/delete` (audited as
+`cross_delete` on the peer); an unreachable or older peer gets a pending
+`peer_delete_jobs` row instead. Unlike 2.x, a keeper that is not one of the
+group's copies is rejected rather than deleting every copy. Pending delete jobs
+are recorded but, as in 2.x, nothing drains them yet.
 
 ## Verification and measurements
 
@@ -258,8 +284,7 @@ are still counted as failing frozen cases, not silently waived. See the current
 ## Remaining cluster work
 
 Full released peer event/dashboard compatibility; metadata ingestion; discovery; federated search controls and cluster statistics;
-thumbnail proxies; signed direct-stream URLs; relay and cross-peer delete;
-dedup sweep/conflict resolution; failover and ownership/config replication;
+signed direct-stream URLs; relay; draining queued peer delete jobs; failover and ownership/config replication;
 in-flight peer revocation; audit pruning; live TLS/network interoperability;
 mixed-version migration and complete browser E2E remain unverified or unfinished.
 

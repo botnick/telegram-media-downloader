@@ -33,6 +33,12 @@ func registerClusterRoutes(mux *http.ServeMux, a *App) {
 	admin("GET /api/cluster/audit", a.handleClusterAudit)
 	admin("GET /api/cluster/sync/state", a.handleClusterSyncState)
 	admin("POST /api/cluster/sync/run", a.handleClusterSync)
+	admin("POST /api/cluster/sweep/run", a.handleClusterSweepRun)
+	admin("GET /api/cluster/sweep/status", a.handleClusterSweepStatus)
+	admin("POST /api/cluster/sweep/cancel", a.handleClusterSweepCancel)
+	admin("GET /api/cluster/conflicts", a.handleClusterConflicts)
+	admin("POST /api/cluster/conflicts/{id}/resolve", a.handleClusterResolve)
+	admin("GET /api/cluster/thumbs/{peerID}/{remoteID}", a.handleClusterThumb)
 	mux.HandleFunc("POST /api/cluster/handshake", a.handleClusterHandshake)
 	mux.HandleFunc("GET /api/cluster/health", a.handleClusterHealth)
 	mux.HandleFunc("GET /api/cluster/downloads/since", a.handlePeerCatalog)
@@ -41,6 +47,8 @@ func registerClusterRoutes(mux *http.ServeMux, a *App) {
 	mux.HandleFunc("GET /api/cluster/groups/snapshot", a.handlePeerSnapshot)
 	mux.HandleFunc("GET /api/cluster/accounts/snapshot", a.handlePeerSnapshot)
 	mux.HandleFunc("GET /api/cluster/files/{path...}", a.handlePeerFile)
+	mux.HandleFunc("POST /api/cluster/files/delete", a.handlePeerFileDelete)
+	mux.HandleFunc("GET /api/cluster/peer-thumbs/{id}", a.handleThumb)
 }
 
 func isClusterPeerPath(path string) bool {
@@ -64,7 +72,7 @@ func (a *App) beginClusterRequest(r *http.Request) (*http.Request, func(), bool)
 	if r.URL.Path != "/ws/cluster" && !((r.Method == "GET" || r.Method == "HEAD") && (strings.HasPrefix(r.URL.Path, "/api/cluster/files/") || strings.HasPrefix(r.URL.Path, "/files/"))) {
 		cancel()
 		limit := 10 * time.Second
-		if r.URL.Path == "/api/cluster/sync/run" {
+		if r.URL.Path == "/api/cluster/sync/run" || strings.HasPrefix(r.URL.Path, "/api/cluster/conflicts/") {
 			limit = time.Minute
 		}
 		ctx, cancel = context.WithTimeout(r.Context(), limit)
