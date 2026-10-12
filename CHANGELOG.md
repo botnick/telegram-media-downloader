@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.0] — 2026-10-13
+
+Everything 2.x did in the background is back.
+
+### Added
+- **Auto-forward** (`autoForward` per chat) re-uploads each newly downloaded file to its destination (`me`, an id, `@username`, a t.me link, or the "Telegram Downloader Storage" channel), paced through the flood guard; destinations that refuse posts pause and retry after 1 h, 6 h and 24 h. `deleteAfterForward` removes only the local copy, never anything on Telegram.
+- **Self-destructing media** jumps to the front of the queue and its timer is stored, as in 2.x.
+- **Disk rotation** (`diskManagement.enabled` + `maxTotalSize`): when the library is over the cap, the oldest downloads are deleted until it fits — never pinned or rescued files, files still downloading, or files shared with another chat. Status under Settings and `GET /api/maintenance/disk-rotator/status`.
+- **Periodic integrity sweep** (`advanced.integrity.intervalMin`, minimum 60 min) removes catalog rows whose files are gone, and refuses to prune when more than half the library looks missing.
+- **Google Drive and Dropbox backup destinations**, reusing destinations configured in 2.x; resumable uploads and checksum verification. `tgdl-server backup-oauth gdrive|dropbox` prints a refresh token on a headless server.
+- **Cluster dedup sweep and conflict resolution** (Maintenance → Cluster), peer-side delete and peer thumbnails.
+- **Backfill date window**: optional From/To dates on the backfill sheet (`offsetDate` / `minDate` on `POST /api/history`).
+
+### Fixed
+- `FFMPEG_HWACCEL` (vaapi/qsv/cuda) is honoured again for thumbnails and seekbars, falling back to the CPU when hardware decoding fails.
+- `/metrics` reports the real accounts, active downloads, queue size and workers instead of zeros.
+
+### Service worker
+- `VERSION = 'v3400'`
+
 ## [3.3.0] — 2026-10-13
 
 ### Added
