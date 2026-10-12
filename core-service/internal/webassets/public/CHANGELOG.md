@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.3.0] — 2026-10-13
+
+### Added
+- **Face recognition works again** with an external `tgdl-faces` sidecar (`FACES_SERVICE_URL`, `TGDL_FACES_SIDECAR_URL` or the dashboard's External URL): sidecar status and doctor, Scan / Cancel, background detection of new downloads, auto-scan, re-clustering (names carry over), health/provider/detect tests, model preload and quality backfill. Faces and people from 2.x are reused as they are. Local mode (auto-downloading a sidecar binary) is not available in 3.x; run the `tgdl-faces` container instead.
+
+### Service worker
+- `VERSION = 'v3300'`
+
 ## [3.2.1] — 2026-10-13
 
 ### Fixed
