@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.5] — 2026-10-13
+
+### Fixed
+- **Downloads failed in bursts with "engine forcibly closed".** Every file opened and closed its own Telegram connection pool (a new connection, and for other datacenters a new authorization export, per file). Downloads now share one long-lived pool per datacenter, which removes the bursts and the per-file connection setup.
+- **Chats whose files have no chunk hashes no longer download twice.** After the first `VOLUME_LOC_NOT_FOUND`, later files of that chat skip per-chunk verification straight away.
+
+### Added
+- `TGDL_TELEGRAM_DEBUG=1` (or `debug`) writes the MTProto client's own log to stderr for troubleshooting.
+
+### Service worker
+- `VERSION = 'v3450'`
+
 ## [3.4.4] — 2026-10-13
 
 Same changes as 3.4.3, which had no release archives (a timing-sensitive test failed in the release build).

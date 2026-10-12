@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gotd/td/bin"
 	gotd "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/tg"
@@ -268,36 +269,74 @@ func (c *GotdClient) DownloadMedia(ctx context.Context, a Attachment, w io.Write
 	// Telegram keeps no chunk hashes for some files and can refuse them in the
 	// middle of a transfer. Remember such a file so its next attempt streams
 	// without per-chunk verification (the library still checks the SHA-256).
-	key := a.Identity.Key()
-	_, plain := c.unverified.Load(key)
-	err := downloadMedia(ctx, guardedClient{c.client, c.guard}, a, w, !plain)
+	// The refusal is a property of the chat (seen on whole channels), so the
+	// chat is remembered too and its later files skip the wasted first try.
+	key, chat := a.Identity.Key(), "chat:"+a.GroupID
+	_, plainFile := c.unverified.Load(key)
+	_, plainChat := c.unverified.Load(chat)
+	err := downloadMedia(ctx, guardedClient{c.client, c}, a, w, !plainFile && !plainChat)
 	if err != nil && hashesUnavailable(err) {
 		c.unverified.Store(key, struct{}{})
+		if a.GroupID != "" {
+			c.unverified.Store(chat, struct{}{})
+		}
 	}
 	return err
 }
 
-// guardedClient puts download pools behind the account's flood guard.
+// guardedClient serves downloads from long-lived connection pools, one per
+// datacenter and shared by every worker of the account, behind the account's
+// flood guard. Opening a pool per file meant a new MTProto connection (and,
+// for other datacenters, a new authorization export) for every download and
+// let pools tear each other's requests down ("engine forcibly closed").
 type guardedClient struct {
 	*gotd.Client
+	owner *GotdClient
+}
+
+// Connections a datacenter pool may open; each carries one request at a time.
+const downloadPoolConnections = 12
+
+func (c guardedClient) Pool(int64) (gotd.CloseInvoker, error) {
+	return c.owner.sharedPool(0, func() (gotd.CloseInvoker, error) { return c.Client.Pool(downloadPoolConnections) })
+}
+
+func (c guardedClient) DC(ctx context.Context, dc int, _ int64) (gotd.CloseInvoker, error) {
+	return c.owner.sharedPool(dc, func() (gotd.CloseInvoker, error) { return c.Client.DC(ctx, dc, downloadPoolConnections) })
+}
+
+func (c *GotdClient) sharedPool(dc int, open func() (gotd.CloseInvoker, error)) (gotd.CloseInvoker, error) {
+	c.poolMu.Lock()
+	defer c.poolMu.Unlock()
+	if pool := c.pools[dc]; pool != nil {
+		return sharedInvoker{pool, c.guard}, nil
+	}
+	pool, err := open()
+	if err != nil {
+		return nil, err
+	}
+	if c.pools == nil {
+		c.pools = map[int]gotd.CloseInvoker{}
+	}
+	c.pools[dc] = pool
+	return sharedInvoker{pool, c.guard}, nil
+}
+
+// sharedInvoker is one download's view of a shared pool: guarded, and Close
+// leaves the pool open for the other downloads.
+type sharedInvoker struct {
+	pool  gotd.CloseInvoker
 	guard *floodGuard
 }
 
-func (c guardedClient) Pool(max int64) (gotd.CloseInvoker, error) {
-	pool, err := c.Client.Pool(max)
-	if err != nil || c.guard == nil {
-		return pool, err
+func (i sharedInvoker) Invoke(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
+	if i.guard == nil {
+		return i.pool.Invoke(ctx, input, output)
 	}
-	return guardedInvoker{pool, c.guard}, nil
+	return i.guard.invoke(ctx, i.pool, input, output)
 }
 
-func (c guardedClient) DC(ctx context.Context, dc int, max int64) (gotd.CloseInvoker, error) {
-	pool, err := c.Client.DC(ctx, dc, max)
-	if err != nil || c.guard == nil {
-		return pool, err
-	}
-	return guardedInvoker{pool, c.guard}, nil
-}
+func (sharedInvoker) Close() error { return nil }
 
 const downloadPartSize = 1024 * 1024
 

@@ -101,13 +101,3 @@ func (g *floodGuard) Middleware() gotd.Middleware {
 		}
 	})
 }
-
-// guardedInvoker applies the same guard to a download pool connection.
-type guardedInvoker struct {
-	gotd.CloseInvoker
-	guard *floodGuard
-}
-
-func (i guardedInvoker) Invoke(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
-	return i.guard.invoke(ctx, i.CloseInvoker, input, output)
-}

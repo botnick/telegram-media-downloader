@@ -13,6 +13,7 @@ import (
 	"github.com/gotd/td/session"
 	gotd "github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
+	"go.uber.org/zap"
 )
 
 type GotdConfig struct {
@@ -34,6 +35,9 @@ type GotdClient struct {
 	guard  *floodGuard
 	// unverified holds media identities Telegram has no chunk hashes for.
 	unverified sync.Map
+	// Shared download pools by datacenter (0 = the account's home DC).
+	poolMu sync.Mutex
+	pools  map[int]gotd.CloseInvoker
 }
 
 // FloodWaitUntil reports when Telegram allows this account's requests again
@@ -70,7 +74,22 @@ func NewGotdClient(cfg GotdConfig) (*GotdClient, error) {
 		return nil, err
 	}
 	guard := newFloodGuard()
-	return &GotdClient{guard: guard, client: gotd.NewClient(cfg.AppID, cfg.AppHash, gotd.Options{SessionStorage: storage, UpdateHandler: cfg.UpdateHandler, Resolver: resolver, Middlewares: []gotd.Middleware{guard.Middleware()}})}, nil
+	options := gotd.Options{SessionStorage: storage, UpdateHandler: cfg.UpdateHandler, Resolver: resolver, Middlewares: []gotd.Middleware{guard.Middleware()}}
+	// TGDL_TELEGRAM_DEBUG=1 writes the MTProto client's own log (connection
+	// drops, reconnects, RPC errors) to stderr for troubleshooting.
+	if level := os.Getenv("TGDL_TELEGRAM_DEBUG"); level != "" {
+		zapLevel := zap.InfoLevel
+		if level == "debug" {
+			zapLevel = zap.DebugLevel
+		}
+		config := zap.NewProductionConfig()
+		config.Level = zap.NewAtomicLevelAt(zapLevel)
+		config.Sampling = nil
+		if logger, err := config.Build(); err == nil {
+			options.Logger = logger
+		}
+	}
+	return &GotdClient{guard: guard, client: gotd.NewClient(cfg.AppID, cfg.AppHash, options)}, nil
 }
 
 func ensureConvertedSession(cfg GotdConfig, storage session.Storage) error {
