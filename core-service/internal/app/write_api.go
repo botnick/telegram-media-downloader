@@ -148,6 +148,7 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 	if advancedPatch, ok := patch["advanced"].(map[string]any); ok {
 		if _, changed := advancedPatch["ai"]; changed {
 			a.hub.Broadcast(ws.Event{Type: "ai_config_changed", Flat: true})
+			a.faces.configChanged()
 		}
 		if _, changed := advancedPatch["seekbar"]; changed {
 			a.hub.Broadcast(ws.Event{Type: "seekbar_config_changed", Flat: true})

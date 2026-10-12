@@ -17,8 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 )
 
 func registerAIRoutes(mux *http.ServeMux, a *App) {
@@ -35,6 +33,7 @@ func registerAIRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("POST /api/ai/faces/{id}/reassign", admin)
 	mux.Handle("POST /api/ai/faces/reindex", admin)
 	mux.Handle("DELETE /api/ai/people/{id}", admin)
+	registerFacesRoutes(mux, a)
 }
 
 func (a *App) handleAIRead(w http.ResponseWriter, r *http.Request) {
@@ -134,8 +133,7 @@ func queryInt(r *http.Request, key string, fallback int) int {
 
 func (a *App) handleAIMutation(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/ai/faces/reindex" {
-		a.hub.Broadcast(ws.Event{Type: "ai_faces_reindexed", Flat: true, Payload: map[string]any{"ts": nowMillis()}})
-		writeJSON(w, http.StatusOK, map[string]any{"success": true})
+		a.handleFacesReindex(w, r)
 		return
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
