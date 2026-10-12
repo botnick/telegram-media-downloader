@@ -144,6 +144,9 @@ export function openBackfillSheet(groupId, opts = {}) {
     const initial = Number.isFinite(Number(opts.limit)) ? Number(opts.limit) : 100;
     let limit = SHEET_PRESETS.some((p) => p.value === initial) ? initial : 100;
     let custom = SHEET_PRESETS.some((p) => p.value === initial) ? '' : String(initial);
+    // Optional date window (YYYY-MM-DD, local days, both inclusive).
+    let fromDate = '';
+    let toDate = '';
     let jobId = null;
     let job = null; // { processed, downloaded, limit, state, error, startedAt }
     let timer = null;
@@ -200,6 +203,17 @@ export function openBackfillSheet(groupId, opts = {}) {
                     data-bf-custom value="${escapeHtml(custom)}"
                     placeholder="${escapeHtml(i18nT('backfill.sheet.custom_placeholder', 'Or type a number of messages (1–50,000)'))}">
             </label>
+            <div class="bf-label" id="bf-dates-label">${escapeHtml(i18nT('backfill.sheet.dates', 'Sent between (optional)'))}</div>
+            <div class="grid grid-cols-2 gap-2" role="group" aria-labelledby="bf-dates-label">
+                <label>
+                    <span class="bf-help">${escapeHtml(i18nT('backfill.sheet.date_from', 'From'))}</span>
+                    <input type="date" class="tg-input bf-custom-input w-full" data-bf-from value="${escapeHtml(fromDate)}">
+                </label>
+                <label>
+                    <span class="bf-help">${escapeHtml(i18nT('backfill.sheet.date_to', 'To'))}</span>
+                    <input type="date" class="tg-input bf-custom-input w-full" data-bf-to value="${escapeHtml(toDate)}">
+                </label>
+            </div>
             <p class="bf-warn ${lim === 0 ? '' : 'hidden'}" data-bf-warn>
                 <i class="ri-error-warning-line" aria-hidden="true"></i>
                 <span>${escapeHtml(i18nT('backfill.start.warn_all', 'Pulling all history may download tens of thousands of files and take hours.'))}</span>
@@ -320,6 +334,20 @@ export function openBackfillSheet(groupId, opts = {}) {
             renderForm(i18nT('backfill.start.warn_limit', 'Enter a valid limit.'));
             return;
         }
+        // Local-day window → unix seconds: minDate is the start of the
+        // first day, offsetDate (Telegram's "sent before") the start of
+        // the day after the last one.
+        const dayStart = (ymd, plusDays = 0) => {
+            const [y, m, d] = ymd.split('-').map(Number);
+            return Math.floor(new Date(y, m - 1, d + plusDays).getTime() / 1000);
+        };
+        const body = { groupId: gid, limit: lim };
+        if (fromDate) body.minDate = dayStart(fromDate);
+        if (toDate) body.offsetDate = dayStart(toDate, 1);
+        if (body.minDate && body.offsetDate && body.minDate >= body.offsetDate) {
+            renderForm(i18nT('backfill.sheet.dates_invalid', 'The start date must not be after the end date.'));
+            return;
+        }
         const btn = root.querySelector('[data-bf-start]');
         if (btn) {
             btn.disabled = true;
@@ -327,7 +355,7 @@ export function openBackfillSheet(groupId, opts = {}) {
             if (span) span.textContent = i18nT('backfill.start.button_running', 'Starting…');
         }
         try {
-            const r = await api.post('/api/history', { groupId: gid, limit: lim });
+            const r = await api.post('/api/history', body);
             jobId = r?.jobId || null;
             job = {
                 processed: 0,
@@ -481,6 +509,8 @@ export function openBackfillSheet(groupId, opts = {}) {
         }
     });
     root.addEventListener('input', (e) => {
+        if (e.target.matches('[data-bf-from]')) fromDate = e.target.value;
+        if (e.target.matches('[data-bf-to]')) toDate = e.target.value;
         if (!e.target.matches('[data-bf-custom]')) return;
         custom = e.target.value;
         const lim = effective();

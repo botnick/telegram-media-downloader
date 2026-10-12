@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -32,6 +33,8 @@ type historyJob struct {
 	FinishedAt  *int64  `json:"finishedAt"`
 	Cancelled   bool    `json:"cancelled"`
 	Mode        string  `json:"mode,omitempty"`
+	OffsetDate  int64   `json:"offsetDate,omitempty"` // unix seconds: only messages sent before
+	MinDate     int64   `json:"minDate,omitempty"`    // unix seconds: stop at messages sent before
 	accountID   string
 	query       string
 	cursor      int
@@ -114,6 +117,11 @@ func (a *App) handleHistoryStart(w http.ResponseWriter, r *http.Request) {
 		Limit    any    `json:"limit"`
 		OffsetID any    `json:"offsetId"`
 		Mode     string `json:"mode"`
+		// Date bounds: unix seconds (milliseconds are recognised),
+		// YYYY-MM-DD (UTC midnight) or RFC 3339. offsetDate is Telegram's
+		// offset_date (messages sent before it); minDate ends the walk.
+		OffsetDate any `json:"offsetDate"`
+		MinDate    any `json:"minDate"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		writeJSONError(w, 400, "Invalid JSON body")
@@ -122,6 +130,20 @@ func (a *App) handleHistoryStart(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(toString(body.GroupID))
 	if id == "" {
 		writeJSONError(w, 400, "groupId required")
+		return
+	}
+	offsetDate, err := historyDateBound(body.OffsetDate)
+	if err != nil {
+		writeJSONError(w, 400, "offsetDate: "+err.Error())
+		return
+	}
+	minDate, err := historyDateBound(body.MinDate)
+	if err != nil {
+		writeJSONError(w, 400, "minDate: "+err.Error())
+		return
+	}
+	if offsetDate > 0 && minDate >= offsetDate {
+		writeJSONError(w, 400, "minDate must be earlier than offsetDate")
 		return
 	}
 	a.historyMu.Lock()
@@ -187,7 +209,7 @@ func (a *App) handleHistoryStart(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 500, err.Error())
 		return
 	}
-	j := &historyJob{ID: hex.EncodeToString(buf), State: "running", Group: id, GroupID: id, StartedAt: time.Now().UnixMilli(), Mode: mode, query: id, cursor: offset}
+	j := &historyJob{ID: hex.EncodeToString(buf), State: "running", Group: id, GroupID: id, StartedAt: time.Now().UnixMilli(), Mode: mode, OffsetDate: offsetDate, MinDate: minDate, query: id, cursor: offset}
 	if limit != 0 {
 		j.Limit = &limit
 	}
@@ -225,9 +247,54 @@ func (a *App) handleHistoryStart(w http.ResponseWriter, r *http.Request) {
 	a.historyJobs[j.ID] = j
 	jobID := j.ID
 	response := map[string]any{"success": true, "jobId": jobID, "group": j.Group, "limit": j.Limit, "mode": j.Mode}
+	if j.OffsetDate > 0 {
+		response["offsetDate"] = j.OffsetDate
+	}
+	if j.MinDate > 0 {
+		response["minDate"] = j.MinDate
+	}
 	a.historyMu.Unlock()
 	a.startHistoryWorker(jobID)
 	writeJSON(w, 200, response)
+}
+
+// historyDateBound reads a backfill date bound as unix seconds; absent or
+// empty is 0 (no bound).
+func historyDateBound(value any) (int64, error) {
+	var seconds float64
+	switch v := value.(type) {
+	case nil:
+		return 0, nil
+	case float64:
+		seconds = v
+	case string:
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return 0, nil
+		}
+		if n, err := strconv.ParseFloat(v, 64); err == nil {
+			seconds = n
+			break
+		}
+		var at time.Time
+		var err error
+		if at, err = time.Parse(time.DateOnly, v); err != nil {
+			if at, err = time.Parse(time.RFC3339, v); err != nil {
+				return 0, errors.New("use unix seconds, YYYY-MM-DD or an RFC 3339 time")
+			}
+		}
+		seconds = float64(at.Unix())
+	default:
+		return 0, errors.New("use unix seconds, YYYY-MM-DD or an RFC 3339 time")
+	}
+	if seconds > 1e11 { // a JavaScript millisecond timestamp
+		seconds /= 1000
+	}
+	// Telegram dates are 32-bit unix seconds.
+	if seconds < 0 || seconds > math.MaxInt32 || seconds != seconds {
+		return 0, errors.New("date out of range")
+	}
+	return int64(seconds), nil
 }
 
 func (a *App) historyLiveLocked() []historyJob {

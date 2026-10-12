@@ -125,7 +125,7 @@ func (a *App) runHistory(ctx context.Context, id string) error {
 		if j.Limit != nil {
 			limit = min(limit, *j.Limit-j.Processed)
 		}
-		page, err := session.Page(dialog, telegram.HistoryRequest{OffsetID: j.cursor, MinID: j.minID, Limit: limit})
+		page, err := session.Page(dialog, telegram.HistoryRequest{OffsetID: j.cursor, MinID: j.minID, Limit: limit, OffsetDate: int(j.OffsetDate), MinDate: int(j.MinDate)})
 		if err != nil {
 			return err
 		}
@@ -233,10 +233,13 @@ func (a *App) initializeHistory(ctx context.Context, id, accountID string, dialo
 	j.Group = toString(group["name"])
 	j.query = dialog.ID
 	if !j.initialized {
-		switch j.Mode {
-		case "pull-older":
+		switch {
+		case j.Mode == "pull-older" && (j.OffsetDate > 0 || j.MinDate > 0):
+			// A date window is walked whole; files already downloaded in
+			// it are recognised by the library and not fetched again.
+		case j.Mode == "pull-older":
 			err = a.db.Reader.QueryRowContext(ctx, `SELECT COALESCE(MIN(message_id),0) FROM downloads WHERE group_id=? AND message_id BETWEEN 1 AND 2147483647 AND file_type IS NOT 'stories'`, j.GroupID).Scan(&j.cursor)
-		case "catch-up":
+		case j.Mode == "catch-up":
 			err = a.db.Reader.QueryRowContext(ctx, `SELECT COALESCE(MAX(message_id),0) FROM downloads WHERE group_id=? AND message_id BETWEEN 1 AND 2147483647 AND file_type IS NOT 'stories'`, j.GroupID).Scan(&j.minID)
 		}
 		if err != nil {

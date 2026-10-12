@@ -31,7 +31,8 @@ This page lists what 3.0 does today. Detailed guides:
   topics.
 - **History backfill**: pull older messages, catch up from the newest, or
   rescan, with a message limit (default 100, up to 50,000, or 0 for
-  unlimited). Jobs are saved in the database, survive restarts and can be
+  unlimited) and an optional date window (messages sent between two days).
+  Jobs are saved in the database, survive restarts and can be
   cancelled. Backfill also works while the live monitor is off.
 - **Telegram links**: paste `t.me/...` message links (channel, group, forum
   topic and private links) to download single messages.

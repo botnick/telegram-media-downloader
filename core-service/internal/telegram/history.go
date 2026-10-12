@@ -10,7 +10,14 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-type HistoryRequest struct{ OffsetID, MinID, Limit int }
+// HistoryRequest pages a chat's history newest-first. OffsetID and MinID are
+// exclusive message-ID bounds. OffsetDate (unix seconds) starts the walk at
+// messages sent before that moment, Telegram's offset_date; MinDate ends it
+// at the first message sent before that moment.
+type HistoryRequest struct {
+	OffsetID, MinID, Limit int
+	OffsetDate, MinDate    int
+}
 type HistoryPage struct {
 	Messages   []tg.MessageClass
 	Entities   *tg.Updates
@@ -30,14 +37,20 @@ func fetchHistoryPage(ctx context.Context, api historyAPI, dialog Dialog, reques
 	if dialog.peer == nil {
 		return page, errors.New("history dialog has no account-specific peer")
 	}
-	if request.OffsetID < 0 || request.MinID < 0 {
+	if request.OffsetID < 0 || request.MinID < 0 || request.OffsetDate < 0 || request.MinDate < 0 {
 		return page, errors.New("invalid history bounds")
 	}
 	limit := request.Limit
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	result, err := api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{Peer: dialog.peer, OffsetID: request.OffsetID, MinID: request.MinID, Limit: limit})
+	call := &tg.MessagesGetHistoryRequest{Peer: dialog.peer, OffsetID: request.OffsetID, MinID: request.MinID, Limit: limit}
+	if request.OffsetDate > 0 {
+		// The date anchors every page; the cursor becomes the max_id filter
+		// (ids strictly below it), as 2.x's gramJS iteration did.
+		call.OffsetDate, call.OffsetID, call.MaxID = request.OffsetDate, 0, request.OffsetID
+	}
+	result, err := api.MessagesGetHistory(ctx, call)
 	if err != nil {
 		return page, err
 	}
@@ -85,6 +98,15 @@ func fetchHistoryPage(ctx context.Context, api historyAPI, dialog Dialog, reques
 			page.Done = true
 			continue
 		}
+		if date := historyDate(message); date > 0 {
+			if request.MinDate > 0 && date < request.MinDate {
+				page.Done = true // newest-first: everything after is older still
+				continue
+			}
+			if request.OffsetDate > 0 && date >= request.OffsetDate {
+				continue
+			}
+		}
 		if (request.OffsetID > 0 && id >= request.OffsetID) || seen[id] {
 			continue
 		}
@@ -99,6 +121,16 @@ func fetchHistoryPage(ctx context.Context, api historyAPI, dialog Dialog, reques
 	}
 	sort.SliceStable(page.Messages, func(i, j int) bool { return page.Messages[i].GetID() > page.Messages[j].GetID() })
 	return page, nil
+}
+
+func historyDate(message tg.MessageClass) int {
+	switch message := message.(type) {
+	case *tg.Message:
+		return message.Date
+	case *tg.MessageService:
+		return message.Date
+	}
+	return 0
 }
 
 func markedHistoryPeer(peer tg.PeerClass) string {

@@ -183,7 +183,7 @@ Deleted, restricted and unreachable chats.
 
 | Method | Path | Access | Notes |
 |---|---|---|---|
-| `POST` | `/api/history` | Admin | Start a backfill of a chat's older messages. Returns `409` with code `CHAT_UNREACHABLE` if the chat can't be read. |
+| `POST` | `/api/history` | Admin | Start a backfill of a chat's older messages: `{groupId, limit, mode, offsetId, offsetDate, minDate}`. `offsetDate` takes only messages sent before it (Telegram's `offset_date`), `minDate` stops at messages sent before it; both are unix seconds, `YYYY-MM-DD` (UTC) or RFC 3339. Returns `409` with code `CHAT_UNREACHABLE` if the chat can't be read. |
 | `GET` | `/api/history` | Admin | Running backfills. |
 | `GET` | `/api/history/jobs` | Admin | Recent backfill jobs. |
 | `GET` | `/api/history/{jobId}` | Admin | One backfill job. |
