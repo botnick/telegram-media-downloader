@@ -781,6 +781,37 @@ func (c *Controller) Status(ctx context.Context) (map[string]any, error) {
 	return map[string]any{"state": state, "error": errorValue, "startedAt": startedAt, "uptimeMs": uptime, "workers": workers, "accounts": accounts, "queue": counts["pending"], "active": counts["processing"], "stats": nil}, nil
 }
 
+// Gauges are the downloader figures /metrics exports, as 2.x reported
+// them: accounts and workers of the engine run in progress (monitoring or a
+// backfill-only run), transfers in flight right now, and queued work.
+type Gauges struct {
+	Accounts, Workers, Active, Queue int
+}
+
+func (c *Controller) Gauges(ctx context.Context) (Gauges, error) {
+	c.mu.Lock()
+	run := c.run
+	c.mu.Unlock()
+	var g Gauges
+	if run != nil {
+		select {
+		case <-run.done:
+		default:
+			g.Accounts = len(run.accounts)
+			g.Workers = int(run.target.Load())
+			run.mu.Lock()
+			g.Active = len(run.active)
+			run.mu.Unlock()
+		}
+	}
+	counts, err := c.work.Counts(ctx)
+	if err != nil {
+		return Gauges{}, err
+	}
+	g.Queue = counts["pending"]
+	return g, nil
+}
+
 func (c *Controller) accept(ctx context.Context, run *running, accountID string, u tg.UpdatesClass) error {
 	observe := run.observing.Load() || telegram.IsHistoryRecovery(ctx)
 	c.mu.Lock()

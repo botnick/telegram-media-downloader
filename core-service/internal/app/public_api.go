@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
 )
 
@@ -171,25 +172,41 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	uptime := int64(time.Since(processStartedAt).Seconds())
-	body := "# HELP tgdl_accounts_loaded Telegram accounts currently loaded.\n" +
-		"# TYPE tgdl_accounts_loaded gauge\n" +
-		"tgdl_accounts_loaded 0\n" +
-		"# HELP tgdl_active_downloads Downloads currently in flight.\n" +
-		"# TYPE tgdl_active_downloads gauge\n" +
-		"tgdl_active_downloads 0\n" +
-		"# HELP tgdl_queue_size Current downloader queue depth (high + normal lanes).\n" +
-		"# TYPE tgdl_queue_size gauge\n" +
-		"tgdl_queue_size 0\n" +
-		"# HELP tgdl_workers Active downloader worker count.\n" +
-		"# TYPE tgdl_workers gauge\n" +
-		"tgdl_workers 0\n" +
+	var body strings.Builder
+	gauges, err := a.engineGauges(r.Context())
+	for _, m := range []struct {
+		name, help string
+		value      int
+	}{
+		{"tgdl_accounts_loaded", "Telegram accounts currently loaded.", gauges.Accounts},
+		{"tgdl_active_downloads", "Downloads currently in flight.", gauges.Active},
+		{"tgdl_queue_size", "Current downloader queue depth (high + normal lanes).", gauges.Queue},
+		{"tgdl_workers", "Active downloader worker count.", gauges.Workers},
+	} {
+		body.WriteString("# HELP " + m.name + " " + m.help + "\n# TYPE " + m.name + " gauge\n")
+		// An unreadable queue leaves the series absent rather than reporting
+		// an invented zero.
+		if err == nil {
+			body.WriteString(m.name + " " + strconv.Itoa(m.value) + "\n")
+		}
+	}
+	body.WriteString(
 		"# TYPE process_resident_memory_bytes gauge\n" +
-		"process_resident_memory_bytes " + strconv.FormatUint(uint64(mem.Sys), 10) + "\n" +
-		"# TYPE process_heap_bytes gauge\n" +
-		"process_heap_bytes " + strconv.FormatUint(uint64(mem.HeapAlloc), 10) + "\n" +
-		"# TYPE process_uptime_seconds counter\n" +
-		"process_uptime_seconds " + strconv.FormatInt(uptime, 10) + "\n"
-	writePlainText(w, http.StatusOK, "text/plain; charset=utf-8; version=0.0.4", body)
+			"process_resident_memory_bytes " + strconv.FormatUint(uint64(mem.Sys), 10) + "\n" +
+			"# TYPE process_heap_bytes gauge\n" +
+			"process_heap_bytes " + strconv.FormatUint(uint64(mem.HeapAlloc), 10) + "\n" +
+			"# TYPE process_uptime_seconds counter\n" +
+			"process_uptime_seconds " + strconv.FormatInt(uptime, 10) + "\n")
+	writePlainText(w, http.StatusOK, "text/plain; charset=utf-8; version=0.0.4", body.String())
+}
+
+func (a *App) engineGauges(ctx context.Context) (engine.Gauges, error) {
+	if a.monitor == nil {
+		return engine.Gauges{}, errors.New("engine is not initialised")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return a.monitor.Gauges(ctx)
 }
 
 func writePlainText(w http.ResponseWriter, status int, contentType, body string) {
