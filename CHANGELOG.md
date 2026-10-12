@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.2.0] — 2026-10-12
+
+### Added
+- **Video seekbar previews are generated again**, now with ffmpeg inside the server (no sidecar needed): automatically after each video download when `advanced.seekbar.enabled`/`autoOnDownload` are on, plus a backlog builder, rebuild, per-video regenerate, stats and health under Maintenance → Seekbar. Sprites use the same files and rows as 2.x, so existing previews keep working.
+- **NSFW scanning and review work again** through the `nsfw-service` sidecar (`ghcr.io/botnick/tgdl-nsfw`): set `TGDL_NSFW_SIDECAR_URL` (or `advanced.nsfw.sidecarUrl`). Scan/cancel, auto-check of new downloads, model preload, the hash blocklist, and the review tiers with bulk delete/whitelist are all back. Without a sidecar the NSFW tab says so instead of failing; 2.x scores stay reviewable.
+
+### Fixed
+- A cancelled seekbar build reports "done (cancelled)" instead of an error.
+
+### Service worker
+- `VERSION = 'v3200'`
+
 ## [3.1.0] — 2026-10-12
 
 ### Changed
