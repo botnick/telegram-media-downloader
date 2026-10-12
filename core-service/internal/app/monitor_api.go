@@ -83,6 +83,14 @@ func (a *App) startTelegramEngine(ctx context.Context, observe bool) error {
 		specs = append(specs, engine.AccountConfig{ID: saved.ID, Name: names[saved.ID], Telegram: telegram.GotdConfig{AppID: appID, AppHash: appHash, Proxy: proxy, SessionPath: saved.NativePath, EncryptedSessionPath: saved.ImportPath, SessionSecret: strings.TrimSpace(string(secret))}})
 	}
 	download, _ := cfg["download"].(map[string]any)
+	// 2.x's adaptive downloader: start at "concurrent", grow to maxConcurrency
+	// while the queue is long, shrink to minConcurrency when idle or flooded.
+	scaler := objectAt(cfg, "advanced", "downloader")
+	a.monitor.SetScaling(engine.Scaling{
+		Min:      int(number(scaler["minConcurrency"], 3)),
+		Max:      int(number(scaler["maxConcurrency"], 20)),
+		Interval: time.Duration(number(scaler["scalerIntervalSec"], 5) * float64(time.Second)),
+	})
 	if !observe {
 		return a.monitor.StartJobs(ctx, a.ctx, specs, int(number(download["concurrent"], 10)), int(number(download["retries"], 5)))
 	}

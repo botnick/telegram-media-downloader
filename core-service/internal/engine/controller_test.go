@@ -352,3 +352,71 @@ func TestFloodWaitReschedulesWithoutSpendingAttempts(t *testing.T) {
 		t.Fatalf("status=%s attempts=%d wait=%s calls=%d", status, attempts, wait, calls.Load())
 	}
 }
+
+type floodGatedAccount struct {
+	readyAccount
+	gated atomic.Bool
+}
+
+func (a *floodGatedAccount) FloodWaitUntil() time.Time {
+	if a.gated.Load() {
+		return time.Now().Add(time.Minute)
+	}
+	return time.Time{}
+}
+
+func TestScalerGrowsWorkersForALongQueueAndDropsOnFloodWait(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	for i := 1; i <= 30; i++ {
+		if _, _, err := s.Enqueue(ctx, "one", Target{}, testMessage(i, 1, int64(i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	account := &floodGatedAccount{}
+	factory := func(AccountConfig, *telegram.UpdateState, func(context.Context, tg.UpdatesClass) error, func(int64)) (Account, error) {
+		return account, nil
+	}
+	filter := func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error) { return Target{}, true, nil }
+	var inFlight, peak atomic.Int64
+	release := make(chan struct{})
+	sink := func(ctx context.Context, _ *Work, _ *tg.Message, _ telegram.MediaDownloader) error {
+		n := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		for {
+			p := peak.Load()
+			if n <= p || peak.CompareAndSwap(p, n) {
+				break
+			}
+		}
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return ctx.Err()
+	}
+	c := New(s.writer, s.reader, t.TempDir(), factory, filter, sink, nil)
+	c.SetScaling(Scaling{Min: 1, Max: 8, Interval: 20 * time.Millisecond})
+	if err := c.Start(ctx, ctx, []AccountConfig{{ID: "one"}}, 2, 1); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Stop(ctx)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && peak.Load() < 8 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if peak.Load() != 8 {
+		t.Fatalf("scaler peak=%d, want 8", peak.Load())
+	}
+	account.gated.Store(true)
+	for time.Now().Before(deadline) {
+		if status, _ := c.Status(ctx); status["workers"] == 1 {
+			close(release)
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	close(release)
+	status, _ := c.Status(ctx)
+	t.Fatalf("flood did not drop workers: %v", status)
+}

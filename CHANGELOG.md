@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.1.0] — 2026-10-12
+
+### Changed
+- **Downloads scale up again, as in 2.x.** The number of files downloading at once starts at **Concurrent Downloads** and, while the queue is long, grows by up to 3 every few seconds to `advanced.downloader.maxConcurrency` (default 20); when the queue empties it shrinks back toward `minConcurrency` (default 3), and a Telegram FloodWait drops it to the minimum at once. The status bar's worker count shows the current number. Set `maxConcurrency` to the same value as Concurrent Downloads to keep a fixed number.
+
+### Service worker
+- `VERSION = 'v3100'`
+
 ## [3.0.10] — 2026-10-10
 
 ### Fixed

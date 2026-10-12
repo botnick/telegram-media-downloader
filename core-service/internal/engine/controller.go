@@ -74,6 +74,23 @@ type Controller struct {
 	attemptLimit   func(int64) time.Duration
 	bandwidth      bandwidthLimiter
 	received       atomic.Int64 // media bytes received by all workers
+	scaling        Scaling
+}
+
+// Scaling adapts how many workers download at once, as 2.x did: a long
+// queue adds up to 3 workers per tick until Max, an idle queue shrinks back
+// toward Min, and a Telegram FloodWait drops straight to Min. Max <= the
+// configured worker count disables scaling.
+type Scaling struct {
+	Min, Max int
+	Interval time.Duration
+}
+
+// SetScaling applies to the next Start.
+func (c *Controller) SetScaling(s Scaling) {
+	c.mu.Lock()
+	c.scaling = s
+	c.mu.Unlock()
 }
 
 // BytesReceived grows while any download is transferring; history
@@ -98,6 +115,7 @@ type running struct {
 	accounts        map[string]Account
 	ids             []string
 	workers         int
+	target          atomic.Int32 // workers allowed to claim work; <= workers
 	maxAttempts     int
 	mu              sync.Mutex
 	active          map[int64]context.CancelFunc
@@ -597,11 +615,24 @@ func (c *Controller) start(request, parent context.Context, accounts []AccountCo
 	// never races Wait against Add, and the lock remains held until every user
 	// of the account/database has left.
 	startWorkers := make(chan bool, 1)
+	c.mu.Lock()
+	scaling := c.scaling
+	c.mu.Unlock()
+	run.target.Store(int32(workers))
+	if scaling.Max > workers {
+		scaling.Min = max(1, min(scaling.Min, workers))
+		scaling.Max = min(scaling.Max, 64)
+		run.workers = scaling.Max
+	}
 	go func() {
 		if <-startWorkers {
-			wg.Add(workers)
-			for i := 0; i < workers; i++ {
-				go func() { defer wg.Done(); c.worker(run) }()
+			wg.Add(run.workers)
+			for i := 0; i < run.workers; i++ {
+				go func() { defer wg.Done(); c.worker(run, i) }()
+			}
+			if run.workers > workers {
+				wg.Add(1)
+				go func() { defer wg.Done(); c.scale(run, scaling) }()
 			}
 		}
 		wg.Wait()
@@ -708,7 +739,7 @@ func (c *Controller) Status(ctx context.Context) (map[string]any, error) {
 	}
 	workers, accounts := 0, 0
 	if run != nil && (state == "running" || state == "starting" || state == "stopping") {
-		workers = run.workers
+		workers = int(run.target.Load())
 		accounts = len(run.accounts)
 	}
 	counts, err := c.work.Counts(ctx)
@@ -801,10 +832,19 @@ func (c *Controller) accept(ctx context.Context, run *running, accountID string,
 	}
 	return nil
 }
-func (c *Controller) worker(run *running) {
+func (c *Controller) worker(run *running, index int) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for run.ctx.Err() == nil {
+		if index >= int(run.target.Load()) {
+			// Parked by the scaler: claim nothing until the target grows.
+			select {
+			case <-run.ctx.Done():
+				return
+			case <-tick.C:
+			}
+			continue
+		}
 		work, err := c.work.Claim(run.ctx, run.unthrottled(), time.Now(), !run.observing.Load())
 		if err != nil {
 			if run.ctx.Err() == nil {
@@ -932,4 +972,39 @@ func (r *running) unthrottled() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+func (c *Controller) scale(run *running, s Scaling) {
+	interval := s.Interval
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-run.ctx.Done():
+			return
+		case <-tick.C:
+		}
+		target := int(run.target.Load())
+		if len(run.unthrottled()) < len(run.ids) {
+			run.target.Store(int32(s.Min))
+			continue
+		}
+		var pending int
+		if err := c.reader.QueryRowContext(run.ctx, `SELECT count(*) FROM tgdl_work WHERE status='pending' AND paused=0`).Scan(&pending); err != nil {
+			continue
+		}
+		run.mu.Lock()
+		active := len(run.active)
+		run.mu.Unlock()
+		switch {
+		case pending > target*2 && target < s.Max:
+			run.target.Store(int32(min(s.Max, target+3)))
+			c.wake(run)
+		case pending == 0 && active < s.Min && target > s.Min:
+			run.target.Store(int32(max(s.Min, active+1)))
+		}
+	}
 }
