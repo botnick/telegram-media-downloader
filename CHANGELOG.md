@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.6] — 2026-10-13
+
+### Fixed
+- **Photo thumbnails were blank in the gallery.** The thumbnail renderer seeked to 1 s before grabbing a frame, as it does for videos; on a still image ffmpeg exits successfully with an 8-byte non-WebP file, which was cached and served. Stills are no longer seeked, and a cached thumbnail that is not a real WebP is rendered again on its next request — no maintenance step is needed.
+
+### Service worker
+- `VERSION = 'v3460'`
+
 ## [3.4.5] — 2026-10-13
 
 ### Fixed

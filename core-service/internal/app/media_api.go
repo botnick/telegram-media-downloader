@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -186,11 +187,17 @@ func (a *App) autoPruneMissingFile(r *http.Request, rel string) {
 	}
 }
 
-// renderGalleryThumb tries each decoder in turn, seeking to 1 s first and
-// then the first frame (clips shorter than a second have nothing at 1 s).
-func renderGalleryThumb(ctx context.Context, source, tmp string, accels []string) bool {
+// renderGalleryThumb tries each decoder in turn. Videos seek to 1 s first and
+// then the first frame (clips shorter than a second have nothing at 1 s);
+// stills never seek: ffmpeg "succeeds" past the end of a single image and
+// writes an 8-byte non-WebP stub.
+func renderGalleryThumb(ctx context.Context, source, tmp string, accels []string, video bool) bool {
+	seeks := [][]string{nil}
+	if video {
+		seeks = [][]string{{"-ss", "1"}, nil}
+	}
 	for _, hw := range accels {
-		for _, seek := range [][]string{{"-ss", "1"}, nil} {
+		for _, seek := range seeks {
 			_ = os.Remove(tmp)
 			args := []string{"-hide_banner", "-loglevel", "error"}
 			if hw != "" {
@@ -235,7 +242,7 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 	thumbDir := filepath.Join(a.dataDir, "thumbs")
 	name := hex.EncodeToString(key[:])[:32] + ".webp"
 	thumbPath := filepath.Join(thumbDir, name)
-	if st, statErr := os.Stat(thumbPath); statErr != nil || !st.Mode().IsRegular() || st.Size() == 0 {
+	if !thumbFileNonEmpty(thumbPath) {
 		f, openErr := openMedia(a.downloadsDir, stored)
 		if openErr != nil {
 			writeText(w, r, http.StatusNotFound, "No thumb")
@@ -256,11 +263,11 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 				accels = []string{hw, ""}
 			}
 		}
-		if !renderGalleryThumb(r.Context(), source, tmp, accels) {
+		if !renderGalleryThumb(r.Context(), source, tmp, accels, kind == "video") {
 			writeText(w, r, http.StatusNotFound, "No thumb")
 			return
 		}
-		if st, statErr := os.Stat(tmp); statErr != nil || st.Size() == 0 {
+		if !thumbFileNonEmpty(tmp) {
 			_ = os.Remove(tmp)
 			writeText(w, r, http.StatusNotFound, "No thumb")
 			return
@@ -328,9 +335,22 @@ func thumbnailKind(kind string) bool {
 	}
 }
 
+// thumbFileNonEmpty reports whether name holds a real WebP (RIFF....WEBP).
+// Older releases cached 8-byte stubs for photos; those are regenerated.
 func thumbFileNonEmpty(name string) bool {
-	st, err := os.Stat(name)
-	return err == nil && st.Mode().IsRegular() && st.Size() > 0
+	f, err := os.Open(name)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() || st.Size() < 12 {
+		return false
+	}
+	var head [12]byte
+	if _, err := io.ReadFull(f, head[:]); err != nil {
+		return false
+	}
+	return string(head[:4]) == "RIFF" && string(head[8:12]) == "WEBP"
 }
 
 func (a *App) handlePhoto(w http.ResponseWriter, r *http.Request) {

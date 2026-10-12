@@ -390,6 +390,13 @@ func (s *Server) fastThumbs(w http.ResponseWriter, r *http.Request, rawID string
 	if res != opened {
 		return false
 	}
+	// A stub that is not a WebP (older releases cached 8-byte files for
+	// photos) goes to the app handler, which renders it again.
+	var head [12]byte
+	if _, err := f.ReadAt(head[:], 0); err != nil || string(head[:4]) != "RIFF" || string(head[8:12]) != "WEBP" {
+		_ = f.Close()
+		return false
+	}
 	// The route's own headers on top of what Node pushed.
 	mtimeMs := statMtimeMs(fi.ModTime())
 	etag := `"thumb-` + strconv.FormatInt(id, 10) + "-" + strconv.Itoa(thumbWidth) + "-" +

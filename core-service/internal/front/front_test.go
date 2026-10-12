@@ -77,7 +77,7 @@ func newHarness(t *testing.T) *harness {
 	h.put(h.downloads, "G1/docs/.hidden", []byte("x"))
 	h.put(h.photos, "-100123.jpg", []byte("jpegbytes"))
 	h.put(h.downloads, "G1/x.heic", []byte("heic"))
-	h.put(h.thumbs, thumbName(1), []byte("RIFFwebpbytes"))
+	h.put(h.thumbs, thumbName(1), []byte("RIFF\x00\x00\x00\x00WEBPVP8 "))
 	h.put(h.outside, "secret.txt", []byte("secret"))
 
 	db := filepath.Join(root, "db.sqlite")
@@ -516,7 +516,7 @@ func TestPhotosAndThumbs(t *testing.T) {
 	res, body = h.do("GET", "/api/thumbs/1", map[string]string{"Cookie": c})
 	ms := statMtimeMs(testMtime)
 	etag := fmt.Sprintf(`"thumb-1-320-%d"`, int64(ms))
-	if res.StatusCode != 200 || string(body) != "RIFFwebpbytes" || res.Header.Get("ETag") != etag ||
+	if res.StatusCode != 200 || string(body) != "RIFF\x00\x00\x00\x00WEBPVP8 " || res.Header.Get("ETag") != etag ||
 		res.Header.Get("Content-Type") != "image/webp" || res.Header.Get("Cache-Control") != testThumbCC ||
 		res.Header.Get("Pragma") != "no-cache" || res.Header.Get("Vary") != "Cookie" ||
 		res.Header.Get("Last-Modified") != utcString(int64(ms)) {
@@ -530,13 +530,20 @@ func TestPhotosAndThumbs(t *testing.T) {
 	if h.upstreamCalls() != 0 {
 		t.Fatal("request reached Node")
 	}
+	// An 8-byte stub from older releases is not served: the app re-renders it.
+	h.put(h.thumbs, thumbName(3), []byte("\x00\x00\x00\x00\xf8\xff\xff\xff"))
+	before := h.upstreamCalls()
+	h.do("GET", "/api/thumbs/3", map[string]string{"Cookie": c})
+	if h.upstreamCalls() != before+1 {
+		t.Fatal("stub thumbnail was served")
+	}
 	h.do("GET", "/photos/nope.jpg", map[string]string{"Cookie": c})
 	h.do("GET", "/api/thumbs/2", map[string]string{"Cookie": c})
 	h.do("GET", "/api/thumbs/abc", map[string]string{"Cookie": c})
 	h.setState(State{AuthReady: true, RateLimit: true, ShareSecret: secretHex})
 	h.do("GET", "/api/thumbs/1", map[string]string{"Cookie": c})
-	if h.upstreamCalls() != 4 {
-		t.Fatalf("misses / bad id / rate limit: %d upstream calls, want 4", h.upstreamCalls())
+	if h.upstreamCalls() != 5 {
+		t.Fatalf("misses / bad id / rate limit: %d upstream calls, want 5 (stub included)", h.upstreamCalls())
 	}
 }
 
