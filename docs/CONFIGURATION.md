@@ -47,6 +47,7 @@ ignored.
 | `COMPRESSION_LEVEL` | `6` | gzip/deflate response compression level, 0–9. |
 | `TGDL_METRICS_TOKEN` | unset | When set, `GET /metrics` requires `?token=<value>`. |
 | `FFMPEG_PATH` | `ffmpeg` | ffmpeg used for thumbnails and video operations. |
+| `FFMPEG_HWACCEL` | unset | Hardware video decoding for thumbnails and seekbar previews: `vaapi`, `qsv`, `cuda`, `videotoolbox`, `d3d11va` or `dxva2`. Overrides **Settings → Advanced**; a backend that fails on the host falls back to the CPU. |
 | `FASTSTART_CONCURRENCY` | `2` | Parallel MP4 faststart rewrites (max 8). |
 | `WATCHTOWER_URL` | unset (`http://watchtower:8080` in Compose) | Enables **Install update** through the watchtower sidecar. |
 | `WATCHTOWER_HTTP_API_TOKEN` | generated | Token shared with watchtower. When unset, it is generated once in `data/watchtower/api-token`. |
@@ -89,7 +90,7 @@ the `telegram-downloader` service.
 
 `NODE_ENV`, `NODE_OPTIONS`, `TGDL_HEAP_MB`, `TGDL_GO_CORE`,
 `TGDL_GO_FEATURES`, `TGDL_CORE_BIN`, `TGDL_CORE_RELEASE_URL`,
-`FFMPEG_HWACCEL`, `TGDL_UID`, `TGDL_GID`, `FACES_SERVICE_URL`,
+`TGDL_UID`, `TGDL_GID`, `FACES_SERVICE_URL`,
 `TGDL_NSFW_SIDECAR_URL` and `SEEKBAR_SIDECAR_URL` have no effect on the 3.0
 server. Leaving them in `.env` is harmless.
 

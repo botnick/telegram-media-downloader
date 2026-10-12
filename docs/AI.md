@@ -64,7 +64,7 @@ Tokens (`advanced.ai.faces.sidecarToken`, `advanced.nsfw.apiToken`,
 configuration.
 
 **Environment variables.** The 3.0 server does not read `FACES_SERVICE_URL`,
-`TGDL_FACES_*`, `SEEKBAR_SIDECAR_URL` or `FFMPEG_HWACCEL`. It does read
+`TGDL_FACES_*` or `SEEKBAR_SIDECAR_URL`. It does read
 `TGDL_NSFW_SIDECAR_URL`, `TGDL_NSFW_API_TOKEN` and `TGDL_NSFW_PATH_MAP` (see
 below). Leftover values in `.env` do nothing; you can delete
 them. The bundled `docker-compose.yml` has no faces, NSFW or seekbar services

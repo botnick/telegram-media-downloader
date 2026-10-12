@@ -67,10 +67,7 @@ func (a *App) seekbarSettings(ctx context.Context) seekbarSettings {
 	raw, _ := a.config.Load(ctx)
 	advanced, _ := raw["advanced"].(map[string]any)
 	sk, _ := advanced["seekbar"].(map[string]any)
-	hw := strings.ToLower(strings.TrimSpace(stringOr(sk["hwaccel"], "")))
-	if hw == "auto" || hw == "none" {
-		hw = ""
-	}
+	hw := seekbarHWAccelFor(raw)
 	return seekbarSettings{
 		enabled:        sk["enabled"] != false,
 		autoOnDownload: sk["autoOnDownload"] != false,

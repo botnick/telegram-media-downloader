@@ -186,6 +186,7 @@ func (a *App) runThumbBuild(ctx context.Context, kind string) {
 		"video": {Roots: roots, Kind: "video"},
 		"audio": {Roots: roots, Kind: "audio"},
 	}
+	hw := a.thumbHWAccel(ctx)
 	built, skipped, errored, processed := 0, 0, 0, 0
 	for _, row := range rows {
 		if ctx.Err() != nil {
@@ -208,7 +209,7 @@ func (a *App) runThumbBuild(ctx context.Context, kind string) {
 			continue
 		}
 		tmp := cache + ".tmp-" + strconv.FormatInt(time.Now().UnixNano(), 10)
-		body, _ := json.Marshal(map[string]any{"path": filepath.Join(a.downloadsDir, filepath.FromSlash(row.path)), "output": tmp, "width": thumbWidth})
+		body, _ := json.Marshal(map[string]any{"path": filepath.Join(a.downloadsDir, filepath.FromSlash(row.path)), "output": tmp, "width": thumbWidth, "hwaccel": hw})
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/v1/thumb/"+kindName, bytes.NewReader(body))
 		rec := &responseCapture{header: make(http.Header), body: bytes.NewBuffer(nil), status: http.StatusOK}
 		handlers[kindName].ServeHTTP(rec, req)
@@ -380,7 +381,7 @@ func (a *App) buildOneThumb(ctx context.Context, row thumbRow) {
 	_ = os.MkdirAll(filepath.Dir(cache), 0o700)
 	roots, _ := hash.NewRoots([]string{a.downloadsDir, filepath.Join(a.dataDir, "thumbs")})
 	tmp := cache + ".tmp-one"
-	body, _ := json.Marshal(map[string]any{"path": filepath.Join(a.downloadsDir, filepath.FromSlash(row.path)), "output": tmp, "width": thumbWidth})
+	body, _ := json.Marshal(map[string]any{"path": filepath.Join(a.downloadsDir, filepath.FromSlash(row.path)), "output": tmp, "width": thumbWidth, "hwaccel": a.thumbHWAccel(ctx)})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost/v1/thumb/"+kind, bytes.NewReader(body))
 	rec := &responseCapture{header: make(http.Header), body: bytes.NewBuffer(nil), status: http.StatusOK}
 	(&thumbs.Handler{Roots: roots, Kind: kind}).ServeHTTP(rec, req)

@@ -201,12 +201,26 @@ func render(ctx context.Context, input, output string, width int, requested, hw,
 	if kind == "image" || kind == "audio" {
 		return renderStill(ctx, input, output, width, requested, kind)
 	}
+	hw = strings.ToLower(strings.TrimSpace(hw))
+	if !hwaccelAllow[hw] {
+		hw = ""
+	}
+	err := renderVideo(ctx, input, output, width, requested, hw)
+	if err != nil && hw != "" && ctx.Err() == nil {
+		// A backend that cannot initialise on this host (no device, driver,
+		// or codec profile) must not cost the thumbnail: decode on the CPU.
+		err = renderVideo(ctx, input, output, width, requested, "")
+	}
+	return err
+}
+
+func renderVideo(ctx context.Context, input, output string, width int, requested, hw string) error {
 	_ = os.Remove(output)
 	args := func(sec int) []string {
 		filter := fmt.Sprintf("scale='min(%d,iw)':-2:flags=fast_bilinear", width)
 		out := []string{"-hide_banner", "-loglevel", "error"}
-		if hwaccelAllow[strings.ToLower(strings.TrimSpace(hw))] {
-			out = append(out, "-hwaccel", strings.ToLower(strings.TrimSpace(hw)))
+		if hw != "" {
+			out = append(out, "-hwaccel", hw)
 		}
 		out = append(out, "-ss", strconv.Itoa(sec), "-i", input, "-frames:v", "1", "-an", "-vf", filter, "-pix_fmt", "yuv420p", "-c:v", "libwebp", "-quality", "62", "-compression_level", "6", "-f", "webp", "-y", output)
 		return out

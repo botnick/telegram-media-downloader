@@ -186,6 +186,31 @@ func (a *App) autoPruneMissingFile(r *http.Request, rel string) {
 	}
 }
 
+// renderGalleryThumb tries each decoder in turn, seeking to 1 s first and
+// then the first frame (clips shorter than a second have nothing at 1 s).
+func renderGalleryThumb(ctx context.Context, source, tmp string, accels []string) bool {
+	for _, hw := range accels {
+		for _, seek := range [][]string{{"-ss", "1"}, nil} {
+			_ = os.Remove(tmp)
+			args := []string{"-hide_banner", "-loglevel", "error"}
+			if hw != "" {
+				args = append(args, "-hwaccel", hw)
+			}
+			args = append(args, seek...)
+			args = append(args, "-i", source, "-frames:v", "1", "-an", "-vf", "scale='min(320,iw)':-1:flags=fast_bilinear", "-pix_fmt", "yuv420p", "-c:v", "libwebp", "-quality", "62", "-compression_level", "6", "-f", "webp", "-y", tmp)
+			if _, err := exec.CommandContext(ctx, "ffmpeg", args...).CombinedOutput(); err == nil && thumbFileNonEmpty(tmp) {
+				return true
+			}
+			if ctx.Err() != nil {
+				_ = os.Remove(tmp)
+				return false
+			}
+		}
+	}
+	_ = os.Remove(tmp)
+	return false
+}
+
 func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 	a.mediaMu.RLock()
 	defer a.mediaMu.RUnlock()
@@ -224,16 +249,16 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 		}
 		tmp := thumbPath + fmt.Sprintf(".tmp-%d", os.Getpid())
 		_ = os.Remove(tmp)
-		cmd := exec.CommandContext(r.Context(), "ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", "1", "-i", source, "-frames:v", "1", "-an", "-vf", "scale='min(320,iw)':-1:flags=fast_bilinear", "-pix_fmt", "yuv420p", "-c:v", "libwebp", "-quality", "62", "-compression_level", "6", "-f", "webp", "-y", tmp)
-		_, runErr := cmd.CombinedOutput()
-		if runErr != nil || !thumbFileNonEmpty(tmp) {
-			_ = os.Remove(tmp)
-			cmd = exec.CommandContext(r.Context(), "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", source, "-frames:v", "1", "-an", "-vf", "scale='min(320,iw)':-1:flags=fast_bilinear", "-pix_fmt", "yuv420p", "-c:v", "libwebp", "-quality", "62", "-compression_level", "6", "-f", "webp", "-y", tmp)
-			if _, runErr = cmd.CombinedOutput(); runErr != nil {
-				_ = os.Remove(tmp)
-				writeText(w, r, http.StatusNotFound, "No thumb")
-				return
+		accels := []string{""}
+		if kind == "video" {
+			if hw := a.thumbHWAccel(r.Context()); hw != "" {
+				// A backend that fails on this host falls back to the CPU.
+				accels = []string{hw, ""}
 			}
+		}
+		if !renderGalleryThumb(r.Context(), source, tmp, accels) {
+			writeText(w, r, http.StatusNotFound, "No thumb")
+			return
 		}
 		if st, statErr := os.Stat(tmp); statErr != nil || st.Size() == 0 {
 			_ = os.Remove(tmp)

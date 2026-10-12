@@ -97,9 +97,9 @@ mirror that holds the same release archive and `SHA256SUMS`. More in
 
 Video thumbnails and faststart need `ffmpeg`. The Docker image includes it.
 On bare metal install it (`apt install ffmpeg` or your platform's package),
-or set `FFMPEG_PATH` to the executable. In 3.0 thumbnails are always made on
-the CPU: `FFMPEG_HWACCEL` is ignored, and passing `/dev/dri` through won't
-speed them up.
+or set `FFMPEG_PATH` to the executable. For hardware decoding set
+`FFMPEG_HWACCEL` (for example `vaapi` with `/dev/dri` passed through); when
+the backend can't start on the host, thumbnails are made on the CPU instead.
 
 ## Sign-in & dashboard
 
@@ -354,8 +354,8 @@ current compose file.
   `tgdl-server setup` for the first password, and the reset flow for a
   forgotten one.
 - `NODE_ENV`, `NODE_OPTIONS`, `TGDL_HEAP_MB`, `TGDL_GO_CORE`,
-  `TGDL_GO_FEATURES`, `TGDL_CORE_BIN`, `TGDL_CORE_RELEASE_URL` and
-  `FFMPEG_HWACCEL` are ignored; leaving them in `.env` does no harm. See
+  `TGDL_GO_FEATURES`, `TGDL_CORE_BIN` and `TGDL_CORE_RELEASE_URL` are
+  ignored; leaving them in `.env` does no harm. See
   [Configuration](CONFIGURATION.md) for the current list.
 
 ### Going back to 2.32.1

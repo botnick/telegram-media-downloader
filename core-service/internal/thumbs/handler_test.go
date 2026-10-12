@@ -155,3 +155,38 @@ func mustRead(t *testing.T, p string) []byte {
 	}
 	return b
 }
+
+func TestVideoThumbFallsBackToCPUWhenHWAccelFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell worker fixture is POSIX-only")
+	}
+	dir := t.TempDir()
+	input := filepath.Join(dir, "clip.mp4")
+	output := filepath.Join(dir, "thumb.webp.tmp")
+	calls := filepath.Join(dir, "calls.log")
+	if err := os.WriteFile(input, []byte("video"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	// Any run asking for a hardware decoder fails like a host without the
+	// device; CPU runs write the thumbnail.
+	script := "#!/bin/sh\necho \"$*\" >> \"" + calls + "\"\nout=\"\"\nfor arg; do\n  [ \"$arg\" = -hwaccel ] && { echo 'Device creation failed' >&2; exit 1; }\n  out=\"$arg\"\ndone\nprintf webp > \"$out\"\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FFMPEG_PATH", ffmpeg)
+	roots, _ := hash.NewRoots([]string{dir})
+	h := &Handler{Roots: roots, Workers: 1}
+	body, _ := json.Marshal(request{Path: input, Output: output, Width: 320, HW: "VAAPI"})
+	req := httptest.NewRequest(http.MethodPost, "/v1/thumb/video", bytes.NewReader(body))
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusOK || string(mustRead(t, output)) != "webp" {
+		t.Fatalf("status=%d body=%s", res.Code, res.Body.String())
+	}
+	log := string(mustRead(t, calls))
+	lines := bytes.Count([]byte(log), []byte("\n"))
+	if !bytes.Contains([]byte(log), []byte("-hwaccel vaapi -ss 1")) || lines != 3 {
+		t.Fatalf("expected two hardware attempts then one CPU run, got:\n%s", log)
+	}
+}
