@@ -206,6 +206,15 @@ func (a *App) handleAPIGroups(w http.ResponseWriter, r *http.Request) {
 		} else {
 			item["access"] = legacyDialogAccess(group)
 		}
+		// Its auto-forward destination refused our posts: forwarding is
+		// paused until the re-check (2.x forwardAccess).
+		if settings, ok := group["autoForward"].(map[string]any); ok {
+			if key := destinationKey(toString(settings["destination"])); key != "" {
+				if state := access[key]; state != nil && blockingChatState(toString(state["state"])) {
+					item["forwardAccess"] = map[string]any{"state": state["state"], "code": state["code"], "nextCheckAt": state["nextCheckAt"]}
+				}
+			}
+		}
 		if guest {
 			if state, ok := item["access"].(map[string]any); ok {
 				if _, exists := state["accounts"]; exists {

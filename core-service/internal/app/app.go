@@ -51,6 +51,8 @@ type App struct {
 	webPolicy        webPolicyCache
 	apiRL            *rateLimiter
 	monitor          *engine.Controller
+	forwarder        forwardSender
+	forwards         chan forwardJob
 	accounts         *accounts.Repository
 	accountWizard    *accounts.Wizard
 	monitorOp        sync.Mutex
@@ -239,6 +241,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	}
 	a.monitor = engine.New(db.Writer, db.Reader, cfg.DataDir, cfg.AccountFactory, a.monitorFilter, a.ingestWork, a.monitorEvent)
 	a.monitor.SetUpdateObserver(a.observeRescueUpdate)
+	a.forwarder, a.forwards = a.monitor, make(chan forwardJob, forwardQueueSize)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

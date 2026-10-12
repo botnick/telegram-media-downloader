@@ -99,13 +99,14 @@ func enqueueWork(ctx context.Context, db queueWriter, accountID string, target T
 	now := time.Now().UnixMilli()
 	verifyExisting := len(repair) > 0 && repair[0] && origin != "live"
 	var id int64
-	err = db.QueryRowContext(ctx, `INSERT INTO tgdl_work(account_id,group_id,group_name,message_id,version,source_pts,identity,media_type,file_name,file_size,body,created_at,updated_at,origin)
- VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	err = db.QueryRowContext(ctx, `INSERT INTO tgdl_work(account_id,group_id,group_name,message_id,version,source_pts,identity,media_type,file_name,file_size,body,created_at,updated_at,origin,ttl_seconds)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(group_id,message_id) DO UPDATE SET
  account_id=excluded.account_id,group_name=excluded.group_name,version=excluded.version,
  source_pts=CASE WHEN excluded.version=tgdl_work.version AND excluded.identity=tgdl_work.identity AND (? OR excluded.account_id=tgdl_work.account_id)
  THEN MAX(tgdl_work.source_pts,excluded.source_pts) ELSE excluded.source_pts END,identity=excluded.identity,
  media_type=excluded.media_type,file_name=excluded.file_name,file_size=excluded.file_size,body=excluded.body,
+ ttl_seconds=MAX(tgdl_work.ttl_seconds,excluded.ttl_seconds),
  generation=tgdl_work.generation+1,attempts=0,retry_at=0,error=NULL,refresh_required=0,updated_at=excluded.updated_at,
  origin=CASE WHEN excluded.origin='url' THEN 'url' WHEN tgdl_work.origin<>'live' THEN tgdl_work.origin ELSE excluded.origin END,
  status=CASE WHEN tgdl_work.status='processing' THEN 'processing' ELSE 'pending' END
@@ -115,7 +116,7 @@ func enqueueWork(ctx context.Context, db queueWriter, accountID string, target T
  AND ((tgdl_work.origin='live' AND tgdl_work.status='pending')
  OR (excluded.origin='url' AND tgdl_work.origin<>'url' AND tgdl_work.status IN ('pending','processing'))))
  OR (? AND excluded.version=tgdl_work.version AND excluded.identity=tgdl_work.identity AND tgdl_work.status IN ('completed','skipped','failed'))
- RETURNING id`, accountID, target.ID, target.Name, media.MessageID, version, sourcePTS, media.Identity.Key(), media.Type, media.Name, media.Identity.Size, buffer.Buf, now, now, origin, comparable, comparable, verifyExisting).Scan(&id)
+ RETURNING id`, accountID, target.ID, target.Name, media.MessageID, version, sourcePTS, media.Identity.Key(), media.Type, media.Name, media.Identity.Size, buffer.Buf, now, now, origin, telegram.MessageTTL(message), comparable, comparable, verifyExisting).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A repeated identity can still carry a newer ordering watermark. Keep
 		// it without requeueing, otherwise an intermediate delayed edit could
@@ -126,6 +127,11 @@ func enqueueWork(ctx context.Context, db queueWriter, accountID string, target T
 	}
 	return id, err == nil, err
 }
+
+// claimPriority orders the queue as 2.x's lanes did: self-destructing media
+// first (it may vanish before its turn), then live and explicit requests,
+// then history backfill. It matches idx_tgdl_work_priority exactly.
+const claimPriority = `CASE WHEN ttl_seconds>0 THEN 0 WHEN origin='history' THEN 2 ELSE 1 END`
 
 // Claim changes pending -> processing in one SQLite statement. Only accounts
 // whose authenticated Run callback is active can claim their own work.
@@ -145,7 +151,7 @@ func (s *WorkStore) Claim(ctx context.Context, accounts []string, now time.Time,
 		originClause = " AND origin<>'live'"
 	}
 	row := s.writer.QueryRowContext(ctx, `UPDATE tgdl_work SET status='processing',claim_generation=generation,attempts=attempts+1,updated_at=?
-	 WHERE id=(SELECT id FROM tgdl_work WHERE status='pending' AND paused=0 AND (SELECT paused FROM tgdl_queue_state WHERE id=1)=0 AND account_id IN (`+strings.Join(marks, ",")+`) AND retry_at<=?`+originClause+` ORDER BY CASE origin WHEN 'history' THEN 1 ELSE 0 END,id LIMIT 1)
+	 WHERE id=(SELECT id FROM tgdl_work WHERE status='pending' AND paused=0 AND (SELECT paused FROM tgdl_queue_state WHERE id=1)=0 AND account_id IN (`+strings.Join(marks, ",")+`) AND retry_at<=?`+originClause+` ORDER BY `+claimPriority+`,id LIMIT 1)
  RETURNING id,account_id,group_id,group_name,message_id,generation,media_type,file_name,file_size,body,attempts,created_at,refresh_required,origin`, args...)
 	w := new(Work)
 	if err := row.Scan(&w.ID, &w.AccountID, &w.GroupID, &w.GroupName, &w.MessageID, &w.Generation, &w.MediaType, &w.FileName, &w.FileSize, &w.body, &w.Attempts, &w.CreatedAt, &w.ForceRefresh, &w.Origin); err != nil {

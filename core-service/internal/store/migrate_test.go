@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -183,5 +184,34 @@ INSERT INTO tgdl_work(account_id,group_id,group_name,message_id,version,identity
 	}
 	if account != "one" || refresh != 0 {
 		t.Fatalf("migration changed existing work: %q %d", account, refresh)
+	}
+}
+
+func TestTTLMigrationAddsQueueLaneAndRebuildsPriorityIndex(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Writer.Close()
+	defer db.Reader.Close()
+	if _, err = db.Writer.Exec(`DROP INDEX idx_tgdl_work_priority; ALTER TABLE tgdl_work DROP COLUMN ttl_seconds;
+CREATE INDEX idx_tgdl_work_priority ON tgdl_work(status,paused,CASE origin WHEN 'history' THEN 1 ELSE 0 END,id);
+INSERT INTO tgdl_work(account_id,group_id,group_name,message_id,version,identity,media_type,file_name,file_size,body,created_at,updated_at) VALUES('one','42','Media',1,1,'document:1','document','file',4,X'01',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = RunMigrations(ctx, db.Writer); err != nil {
+		t.Fatal(err)
+	}
+	var ttl int
+	var index string
+	if err = db.Reader.QueryRow(`SELECT ttl_seconds FROM tgdl_work WHERE message_id=1`).Scan(&ttl); err != nil || ttl != 0 {
+		t.Fatalf("ttl=%d %v", ttl, err)
+	}
+	if err = db.Reader.QueryRow(`SELECT sql FROM sqlite_master WHERE name='idx_tgdl_work_priority'`).Scan(&index); err != nil || !strings.Contains(index, "ttl_seconds>0") {
+		t.Fatalf("index=%s %v", index, err)
+	}
+	if _, err = RunMigrations(ctx, db.Writer); err != nil {
+		t.Fatal(err)
 	}
 }

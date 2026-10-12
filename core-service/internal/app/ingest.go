@@ -29,7 +29,8 @@ func (a *App) ingestTelegram(ctx context.Context, message *tg.Message, groupID, 
 	if groupID == "" {
 		groupID = attachment.GroupID
 	}
-	item := download.Item{GroupID: groupID, GroupName: groupName, MessageID: attachment.MessageID, Name: attachment.Name, Type: attachment.Type, Identity: attachment.Identity, Facts: attachment.Facts}
+	ttl := telegram.MessageTTL(message)
+	item := download.Item{GroupID: groupID, GroupName: groupName, MessageID: attachment.MessageID, Name: attachment.Name, Type: attachment.Type, Identity: attachment.Identity, Facts: attachment.Facts, TTLSeconds: ttl}
 	if engine.Origin(ctx) == "stories" {
 		item.MessageID, err = telegram.StoryKey(message.ID)
 		if err != nil {
@@ -40,9 +41,20 @@ func (a *App) ingestTelegram(ctx context.Context, message *tg.Message, groupID, 
 	if err := rescue.Observe(ctx, a.db.Writer, accountID, groupID, message, engine.Origin(ctx)); err != nil {
 		return download.Record{}, err
 	}
+	forward, err := a.forwardCandidate(ctx, item.GroupID, item.MessageID)
+	if err != nil {
+		return download.Record{}, err
+	}
 	record, err := a.library.Ingest(ctx, item, telegram.AttachmentClient{Source: transport, Media: attachment})
 	if err != nil {
 		return record, err
+	}
+	if ttl > 0 {
+		// 2.x announced captured self-destructing media to the dashboard.
+		a.hub.Broadcast(ws.Event{Type: "monitor_download", Payload: map[string]any{"group": groupName, "type": "ttl", "messageId": message.ID, "ttl": ttl}})
+	}
+	if forward {
+		a.queueForward(forwardJob{groupID: item.GroupID, groupName: groupName, messageID: message.ID, text: message.Message, recordID: record.ID, path: record.Path, facts: attachment.Facts})
 	}
 	payload := map[string]any{"key": item.GroupID + "_" + strconv.FormatInt(item.MessageID, 10), "groupId": item.GroupID, "groupName": item.GroupName, "messageId": item.MessageID, "fileName": item.Name, "filePath": record.Path, "fileSize": item.Identity.Size, "mediaType": item.Type, "deduped": record.Reused, "addedAt": nil, "accountId": accountID, "accountName": nil}
 	a.hub.Broadcast(ws.Event{Type: "download_complete", Payload: payload})

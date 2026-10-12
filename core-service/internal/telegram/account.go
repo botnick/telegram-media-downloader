@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -131,6 +132,8 @@ type Account struct {
 	selfID      int64
 	self        atomic.Int64 // selfID for other goroutines (background recovery)
 	observation *accountObservation
+	senderOnce  sync.Once
+	sender      *fileSender
 }
 
 func NewAccount(cfg GotdConfig, state *UpdateState, handle func(context.Context, tg.UpdatesClass) error, onGap func(int64)) (*Account, error) {

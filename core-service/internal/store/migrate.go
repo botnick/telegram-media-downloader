@@ -152,7 +152,27 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 			return 0, err
 		}
 	}
-	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tgdl_work_priority ON tgdl_work(status,paused,CASE origin WHEN 'history' THEN 1 ELSE 0 END,id)`); err != nil {
+	// Self-destructing media jumps the queue; the claim order (and so this
+	// index) gained a TTL lane. Rebuild an index from older releases once.
+	var ttlColumn int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('tgdl_work') WHERE name='ttl_seconds'`).Scan(&ttlColumn); err != nil {
+		return 0, err
+	}
+	if ttlColumn == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_work ADD COLUMN ttl_seconds INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return 0, err
+		}
+	}
+	var prioritySQL sql.NullString
+	if err := db.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_tgdl_work_priority'`).Scan(&prioritySQL); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	if prioritySQL.Valid && !strings.Contains(prioritySQL.String, "ttl_seconds") {
+		if _, err := db.ExecContext(ctx, `DROP INDEX idx_tgdl_work_priority`); err != nil {
+			return 0, err
+		}
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tgdl_work_priority ON tgdl_work(status,paused,CASE WHEN ttl_seconds>0 THEN 0 WHEN origin='history' THEN 2 ELSE 1 END,id)`); err != nil {
 		return 0, err
 	}
 	var refreshColumn int

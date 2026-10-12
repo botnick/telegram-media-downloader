@@ -33,6 +33,7 @@ type Item struct {
 	Type       string
 	Identity   telegram.MediaIdentity
 	Facts      telegram.MediaFacts
+	TTLSeconds int // self-destruct timer of the source media, 0 when none
 	generation int64
 }
 
@@ -453,15 +454,16 @@ func (l *Library) register(ctx context.Context, item Item, media candidate, reus
 	var id int64
 	facts := item.Facts
 	err = tx.QueryRowContext(ctx, `INSERT INTO downloads(group_id,group_name,message_id,file_name,file_size,file_type,file_path,file_hash,telegram_media_kind,telegram_media_id,telegram_media_size,
-		telegram_mime,media_width,media_height,media_duration_ms,forward_origin,telegram_thumb,status)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'completed') ON CONFLICT(group_id,message_id) DO UPDATE SET
+		telegram_mime,media_width,media_height,media_duration_ms,forward_origin,telegram_thumb,ttl_seconds,status)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'completed') ON CONFLICT(group_id,message_id) DO UPDATE SET
 		group_name=excluded.group_name,file_name=excluded.file_name,file_size=excluded.file_size,file_type=excluded.file_type,
 		file_path=excluded.file_path,file_hash=excluded.file_hash,telegram_media_kind=excluded.telegram_media_kind,
 		telegram_media_id=excluded.telegram_media_id,telegram_media_size=excluded.telegram_media_size,
 		telegram_mime=excluded.telegram_mime,media_width=excluded.media_width,media_height=excluded.media_height,
-		media_duration_ms=excluded.media_duration_ms,forward_origin=excluded.forward_origin,telegram_thumb=excluded.telegram_thumb,status='completed' RETURNING id`,
+		media_duration_ms=excluded.media_duration_ms,forward_origin=excluded.forward_origin,telegram_thumb=excluded.telegram_thumb,
+		ttl_seconds=COALESCE(excluded.ttl_seconds,ttl_seconds),status='completed' RETURNING id`,
 		item.GroupID, item.GroupName, item.MessageID, item.Name, item.Identity.Size, item.Type, filepath.ToSlash(media.path), media.sha256, item.Identity.Kind, item.Identity.ID, item.Identity.Size,
-		nullString(facts.Mime), nullInt(int64(facts.Width)), nullInt(int64(facts.Height)), nullInt(facts.DurationMs), nullString(facts.Origin), nullBytes(facts.Thumb)).Scan(&id)
+		nullString(facts.Mime), nullInt(int64(facts.Width)), nullInt(int64(facts.Height)), nullInt(facts.DurationMs), nullString(facts.Origin), nullBytes(facts.Thumb), nullInt(int64(item.TTLSeconds))).Scan(&id)
 	if err != nil {
 		return Record{}, err
 	}
