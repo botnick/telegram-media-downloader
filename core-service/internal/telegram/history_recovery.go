@@ -35,6 +35,10 @@ func IsHistoryRecovery(ctx context.Context) bool { return ctx.Value(recoveryCont
 
 func (a *Account) SupportsHistoryRecovery() bool { return true }
 
+// EnableBackgroundRepair tells the account that channel gaps will be repaired
+// by RecoverPendingHistory while it runs, instead of stopping it.
+func (a *Account) EnableBackgroundRepair() { a.repairs.Store(true) }
+
 // RecoverPendingHistory repairs every channel with a recovery marker while
 // the account keeps running, until no marker is left.
 func (a *Account) RecoverPendingHistory(ctx context.Context) error {

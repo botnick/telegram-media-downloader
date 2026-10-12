@@ -17,6 +17,9 @@ type durableUpdateAPI struct {
 	handle func(context.Context, tg.UpdatesClass) error
 	onGap  func(int64)
 	userID int64
+	// backgroundRepair reports that the engine repairs channel gaps while the
+	// account keeps running, so a recorded channel gap need not stop it.
+	backgroundRepair func() bool
 }
 
 func (a durableUpdateAPI) gap(ctx context.Context, channel int64, pts int) error {
@@ -29,6 +32,11 @@ func (a durableUpdateAPI) gap(ctx context.Context, channel int64, pts int) error
 	}
 	if a.onGap != nil {
 		a.onGap(channel)
+	}
+	if channel > 0 && a.backgroundRepair != nil && a.backgroundRepair() {
+		// The marker is durable and the repair is running: let gotd resync
+		// this channel and keep every other chat flowing.
+		return nil
 	}
 	return a.state.guard(ctx, func() error { return fmt.Errorf("Telegram history recovery required for channel %d", channel) })
 }

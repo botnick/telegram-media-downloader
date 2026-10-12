@@ -131,6 +131,7 @@ type Account struct {
 	onGap       func(int64)
 	selfID      int64
 	self        atomic.Int64 // selfID for other goroutines (background recovery)
+	repairs     atomic.Bool  // the engine repairs channel gaps in the background
 	observation *accountObservation
 	senderOnce  sync.Once
 	sender      *fileSender
@@ -189,7 +190,7 @@ func (a *Account) run(ctx context.Context, ready func(), jobsOnly bool) error {
 			if err := a.recoverPending(ctx, status.User.ID); err != nil {
 				return err
 			}
-			api := durableUpdateAPI{API: a.API(), state: a.state, handle: a.handle, onGap: a.onGap, userID: status.User.ID}
+			api := durableUpdateAPI{API: a.API(), state: a.state, handle: a.handle, onGap: a.onGap, userID: status.User.ID, backgroundRepair: a.repairs.Load}
 			return a.updates.Run(ctx, api, status.User.ID, updates.AuthOptions{IsBot: status.User.Bot, OnStart: func(context.Context) { observingReady() }})
 		})
 	})

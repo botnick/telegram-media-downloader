@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.1] — 2026-10-13
+
+### Fixed
+- **The monitor still stopped on channel gaps found while catching up.** 3.2.1 covered gaps reported by live updates; a gap found by the catch-up request itself ("Telegram history recovery required for channel …") still stopped the account. Both paths now record the gap, repair the channel in the background and keep downloading.
+
+### Service worker
+- `VERSION = 'v3410'`
+
 ## [3.4.0] — 2026-10-13
 
 Everything 2.x did in the background is back.

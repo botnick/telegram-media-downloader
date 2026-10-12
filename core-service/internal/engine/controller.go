@@ -598,6 +598,11 @@ func (c *Controller) start(request, parent context.Context, accounts []AccountCo
 			return fmt.Errorf("account %s: %w", config.ID, err)
 		}
 		gapAccount.Store(account)
+		if enabler, ok := account.(interface{ EnableBackgroundRepair() }); ok {
+			if _, repairs := account.(historyRepairer); repairs {
+				enabler.EnableBackgroundRepair()
+			}
+		}
 		if pendingRecovery {
 			recoverable, ok := account.(historyRecoverable)
 			if !ok || !recoverable.SupportsHistoryRecovery() {

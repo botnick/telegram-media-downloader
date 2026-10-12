@@ -133,3 +133,35 @@ func TestOversizedDifferencesNeverReachCursorManager(t *testing.T) {
 		})
 	}
 }
+
+type tooLongAPI struct{ updates.API }
+
+func (tooLongAPI) UpdatesGetChannelDifference(context.Context, *tg.UpdatesGetChannelDifferenceRequest) (tg.UpdatesChannelDifferenceClass, error) {
+	return &tg.UpdatesChannelDifferenceTooLong{Dialog: &tg.Dialog{Peer: &tg.PeerChannel{ChannelID: 42}, Pts: 77}}, nil
+}
+
+func TestChannelGapKeepsRunningWhenRepairedInBackground(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Reader.Close()
+	defer db.Writer.Close()
+	for _, repair := range []bool{true, false} {
+		state := &UpdateState{Writer: db.Writer, Reader: db.Reader, AccountID: fmt.Sprint("acct-", repair)}
+		gaps := 0
+		api := durableUpdateAPI{API: tooLongAPI{}, state: state, userID: 7, onGap: func(int64) { gaps++ }, backgroundRepair: func() bool { return repair }}
+		_, err := api.UpdatesGetChannelDifference(ctx, &tg.UpdatesGetChannelDifferenceRequest{Channel: &tg.InputChannel{ChannelID: 42, AccessHash: 1}})
+		records, perr := state.PendingRecovery(ctx)
+		if perr != nil || len(records) != 1 || records[0].ChannelID != 42 || gaps != 1 {
+			t.Fatalf("repair=%v marker=%v err=%v gaps=%d", repair, records, perr, gaps)
+		}
+		if repair && err != nil {
+			t.Fatalf("background repair still stopped the account: %v", err)
+		}
+		if !repair && err == nil {
+			t.Fatal("without background repair the gap must stop the account")
+		}
+	}
+}
