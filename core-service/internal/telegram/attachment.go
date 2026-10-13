@@ -345,16 +345,7 @@ func (i sharedInvoker) Invoke(ctx context.Context, input bin.Encoder, output bin
 	// Telegram drops download connections under load, failing every request
 	// in flight on them. Reads are idempotent: ask again on another pooled
 	// connection instead of failing the whole file.
-	for try := 0; try < connectionRetries && connectionLost(err) && ctx.Err() == nil; try++ {
-		timer := time.NewTimer(connectionRetryDelay << min(try, 4))
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
-		err = i.guard.invoke(ctx, i.pool, input, output)
-	}
+	err = retryLostConnection(ctx, err, func() error { return i.guard.invoke(ctx, i.pool, input, output) })
 	// A wait short enough to sleep through that is still refused after every
 	// inline retry is Telegram refusing this file, not the account: the
 	// library would retry it forever, closing the account's gate each time
@@ -371,6 +362,22 @@ var (
 	connectionRetries    = 6
 	connectionRetryDelay = 250 * time.Millisecond
 )
+
+// retryLostConnection repeats an idempotent request whose previous try (err)
+// died with its connection, backing off while the connection is replaced.
+func retryLostConnection(ctx context.Context, err error, again func() error) error {
+	for try := 0; try < connectionRetries && connectionLost(err) && ctx.Err() == nil; try++ {
+		timer := time.NewTimer(connectionRetryDelay << min(try, 5))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+		err = again()
+	}
+	return err
+}
 
 // connectionLost reports a request that died with its connection rather than
 // being answered by Telegram.

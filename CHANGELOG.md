@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.10] — 2026-10-13
+
+### Fixed
+- **Queued items failed when the main Telegram connection dropped.** Each item's message is refreshed on the main connection before its download; a drop failed that request ("broken pipe", "engine forcibly closed") and, during a burst, used up the item's five attempts in seconds. The refresh is now asked again once the connection is back (six tries, about 16 s).
+
+### Service worker
+- `VERSION = 'v34100'`
+
 ## [3.4.9] — 2026-10-13
 
 ### Fixed

@@ -21,7 +21,14 @@ type RefreshedMessage struct {
 }
 
 func (a *Account) RefreshMessage(ctx context.Context, message *tg.Message) (*RefreshedMessage, error) {
-	return refreshMessage(ctx, a.API(), a.state, a.selfID, message)
+	// The main connection drops under download load; a refresh is a read, so
+	// ask again once it is back rather than spending the item's attempt.
+	fresh, err := refreshMessage(ctx, a.API(), a.state, a.selfID, message)
+	err = retryLostConnection(ctx, err, func() (e error) {
+		fresh, e = refreshMessage(ctx, a.API(), a.state, a.selfID, message)
+		return e
+	})
+	return fresh, err
 }
 
 func refreshMessage(ctx context.Context, api messageAPI, state *UpdateState, userID int64, message *tg.Message) (*RefreshedMessage, error) {
