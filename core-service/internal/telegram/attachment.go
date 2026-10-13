@@ -339,7 +339,15 @@ func (i sharedInvoker) Invoke(ctx context.Context, input bin.Encoder, output bin
 	if i.guard == nil {
 		return i.pool.Invoke(ctx, input, output)
 	}
-	return i.guard.invoke(ctx, i.pool, input, output)
+	err := i.guard.invoke(ctx, i.pool, input, output)
+	// A wait short enough to sleep through that is still refused after every
+	// inline retry is Telegram refusing this file, not the account: the
+	// library would retry it forever, closing the account's gate each time
+	// and starving every other download. Fail the attempt instead.
+	if d, flood := tgerr.AsFloodWait(err); flood && d <= floodSleepThreshold {
+		return fmt.Errorf("Telegram kept refusing this file after %d waits (FLOOD_WAIT_%d)", floodInlineRetries+1, int(d.Seconds()))
+	}
+	return err
 }
 
 func (sharedInvoker) Close() error { return nil }

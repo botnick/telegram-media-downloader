@@ -86,3 +86,29 @@ func TestFloodGuardStopsInlineRetriesAndPassesOtherErrors(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+type scriptedPool struct{ *scriptedInvoker }
+
+func (scriptedPool) Close() error { return nil }
+
+// A file Telegram refuses on every retry must fail its attempt as an ordinary
+// error: left as a flood wait the library retries it forever and each retry
+// closes the account gate for every other download.
+func TestSharedInvokerFailsFileThatKeepsFlooding(t *testing.T) {
+	withFastFlood(t)
+	floodInlineRetries = 1
+	t.Cleanup(func() { floodInlineRetries = 3 })
+	g := newFloodGuard()
+	g.limiter = rate.NewLimiter(rate.Inf, 1)
+	next := &scriptedInvoker{errs: []error{floodErr(0), floodErr(0), floodErr(0)}}
+	err := sharedInvoker{scriptedPool{next}, g}.Invoke(context.Background(), nil, nil)
+	if _, flood := tgerr.AsFloodWait(err); err == nil || flood || next.calls != 2 {
+		t.Fatalf("err=%v calls=%d", err, next.calls)
+	}
+	// A long wait is the account's: it stays a flood wait and is rescheduled.
+	long := &scriptedInvoker{errs: []error{floodErr(30)}}
+	g = newFloodGuard()
+	if _, flood := tgerr.AsFloodWait(sharedInvoker{scriptedPool{long}, g}.Invoke(context.Background(), nil, nil)); !flood {
+		t.Fatal("long wait lost its flood type")
+	}
+}

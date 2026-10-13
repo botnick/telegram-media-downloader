@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.8] — 2026-10-13
+
+### Fixed
+- **One refused file throttled the whole account.** Telegram can answer `FLOOD_WAIT` for a single file on every request. The download was retried forever, and every refusal closed the account's flood gate, so all other downloads got one request per wait and the worker count stayed at its minimum. A file still refused after the inline retries now fails its attempt like any other error (and ends as failed after the usual retries); waits longer than a minute remain account-wide and are rescheduled as before.
+
+### Service worker
+- `VERSION = 'v3480'`
+
 ## [3.4.7] — 2026-10-13
 
 ### Fixed

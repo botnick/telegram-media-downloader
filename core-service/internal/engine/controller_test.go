@@ -337,7 +337,7 @@ func TestFloodWaitReschedulesWithoutSpendingAttempts(t *testing.T) {
 		if err := s.reader.QueryRow(`SELECT status,attempts,retry_at FROM tgdl_work`).Scan(&status, &attempts, &retryAt); err != nil {
 			t.Fatal(err)
 		}
-		if calls.Load() == 1 && status == "pending" {
+		if calls.Load() == 1 && status == "pending" && retryAt != 0 {
 			break
 		}
 		time.Sleep(time.Millisecond)
