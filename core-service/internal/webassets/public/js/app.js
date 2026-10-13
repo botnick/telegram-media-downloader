@@ -6,7 +6,8 @@
 import { state, getGroupName, updateGroupNameCache, isUnresolvedName } from './store.js';
 import { api } from './api.js';
 import { escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
-import { getThumbUrl, isPeerRow, initFileToken } from './media-url.js';
+import { getThumbUrl, getMediaUrl, isPeerRow, initFileToken } from './media-url.js';
+import { mountTgs } from './tgs.js';
 import * as Viewer from './viewer.js';
 import { initEngine, handleEngineWsMessage } from './engine.js';
 import { ws } from './ws.js';
@@ -2414,7 +2415,7 @@ function _galleryTileHtml(file, originalIndex) {
     const durLabel = file.type === 'videos' && file.duration ? formatDuration(file.duration) : '';
     const durBadge = durLabel ? `<span class="video-duration">${durLabel}</span>` : '';
     const thumbInner =
-        file.type === 'images'
+        file.type === 'images' || file.type === 'stickers'
             ? imgFallback
             : file.type === 'videos'
               ? `<div class="relative w-full h-full bg-black">
@@ -2431,7 +2432,7 @@ function _galleryTileHtml(file, originalIndex) {
     // in GRID/COMPACT modes (where doc icon needs context). CSS
     // hides this in list mode (which has its own tile-name).
     const gridDocLabel =
-        file.type !== 'images' && file.type !== 'videos'
+        file.type !== 'images' && file.type !== 'videos' && file.type !== 'stickers'
             ? `<span class="absolute inset-x-0 bottom-0 text-[11px] text-tg-textSecondary truncate text-center px-2 py-1 bg-black/40">${escapeHtml(file.name || '')}</span>`
             : '';
     // List-mode metadata. `tile-text/size/date` are display:none in
@@ -2657,6 +2658,36 @@ function renderMediaGrid(opts = {}) {
 }
 
 let _gridDelegated = false;
+
+// Animated stickers drawn into tiles. The virtual grid drops tiles without
+// telling anyone, so each new mount first releases the ones that are gone.
+const _tileStickers = new Set();
+
+// A sticker without a thumbnail is either an animated one (.tgs, which the
+// server cannot render — drawn here, still until hovered) or a dead file,
+// which gets the sticker icon instead of an empty tile.
+async function _stickerTileFallback(img) {
+    const tile = img.closest('.media-item[data-index]');
+    const file = tile ? state.files[parseInt(tile.dataset.index, 10)] : null;
+    const url = file && file.type === 'stickers' ? getMediaUrl(file) : null;
+    if (!url || !img.parentElement) return;
+    for (const entry of _tileStickers) {
+        if (entry.holder.isConnected) continue;
+        entry.anim.destroy();
+        _tileStickers.delete(entry);
+    }
+    const holder = document.createElement('div');
+    holder.className = 'w-full h-full flex items-center justify-center';
+    img.after(holder);
+    const anim = await mountTgs(holder, url, { autoplay: false });
+    if (!anim) {
+        holder.innerHTML = '<i class="ri-emoji-sticker-line text-3xl text-tg-textSecondary"></i>';
+        return;
+    }
+    _tileStickers.add({ holder, anim });
+    tile.addEventListener('mouseenter', () => anim.play());
+    tile.addEventListener('mouseleave', () => anim.stop());
+}
 function _wireMediaGridDelegation(grid) {
     if (_gridDelegated) return;
     _gridDelegated = true;
@@ -2681,6 +2712,7 @@ function _wireMediaGridDelegation(grid) {
             if (img && img.tagName === 'IMG' && img.closest('.media-item')) {
                 img.classList.add('loaded');
                 img.style.display = 'none';
+                _stickerTileFallback(img);
             }
         },
         true,

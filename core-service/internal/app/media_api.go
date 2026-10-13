@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -218,6 +219,51 @@ func renderGalleryThumb(ctx context.Context, source, tmp string, accels []string
 	return false
 }
 
+// thumbMissCache remembers sources ffmpeg could not turn into a thumbnail
+// (a damaged video, an animated .tgs sticker) so that every later view of the
+// tile does not run ffmpeg again. An entry holds until the file changes.
+type thumbMissCache struct {
+	mu   sync.Mutex
+	seen map[int64]thumbMiss
+}
+
+type thumbMiss struct {
+	size    int64
+	modTime time.Time
+}
+
+const thumbMissMax = 20000
+
+func (c *thumbMissCache) known(id int64, source string) bool {
+	c.mu.Lock()
+	miss, ok := c.seen[id]
+	c.mu.Unlock()
+	if !ok {
+		return false
+	}
+	st, err := os.Stat(source)
+	if err == nil && st.Size() == miss.size && st.ModTime().Equal(miss.modTime) {
+		return true
+	}
+	c.mu.Lock()
+	delete(c.seen, id)
+	c.mu.Unlock()
+	return false
+}
+
+func (c *thumbMissCache) add(id int64, source string) {
+	st, err := os.Stat(source)
+	if err != nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.seen == nil || len(c.seen) >= thumbMissMax {
+		c.seen = make(map[int64]thumbMiss)
+	}
+	c.seen[id] = thumbMiss{size: st.Size(), modTime: st.ModTime()}
+}
+
 func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 	a.mediaMu.RLock()
 	defer a.mediaMu.RUnlock()
@@ -254,6 +300,10 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 			writeText(w, r, http.StatusNotFound, "No thumb")
 			return
 		}
+		if a.thumbMisses.known(id, source) {
+			writeText(w, r, http.StatusNotFound, "No thumb")
+			return
+		}
 		tmp := thumbPath + fmt.Sprintf(".tmp-%d", os.Getpid())
 		_ = os.Remove(tmp)
 		accels := []string{""}
@@ -264,6 +314,9 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !renderGalleryThumb(r.Context(), source, tmp, accels, kind == "video") {
+			if r.Context().Err() == nil {
+				a.thumbMisses.add(id, source)
+			}
 			writeText(w, r, http.StatusNotFound, "No thumb")
 			return
 		}

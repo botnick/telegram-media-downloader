@@ -42,3 +42,24 @@ func TestRenderGalleryThumbStill(t *testing.T) {
 		t.Fatal("still thumbnail not rendered as WebP")
 	}
 }
+
+func TestThumbMissCacheHoldsUntilFileChanges(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "sticker.tgs")
+	if err := os.WriteFile(source, []byte{0x1f, 0x8b, 0}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var cache thumbMissCache
+	if cache.known(7, source) {
+		t.Fatal("empty cache reported a miss")
+	}
+	cache.add(7, source)
+	if !cache.known(7, source) {
+		t.Fatal("recorded miss was not remembered")
+	}
+	if err := os.WriteFile(source, []byte("replaced by a good download"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if cache.known(7, source) {
+		t.Fatal("miss survived the file being replaced")
+	}
+}

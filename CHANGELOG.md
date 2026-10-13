@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.11] — 2026-10-13
+
+### Added
+- **Stickers show as pictures and animated stickers play.** Sticker tiles were a document icon and opened as "no preview". Static stickers now show their thumbnail and open as images, video stickers play in the video player, and animated stickers (`.tgs`) are drawn in the browser — still in the gallery until hovered, playing in the viewer. This includes the animated stickers 2.x saved under a `.webp` name, which are recognised by content; no file is renamed. The player (lottie-web, light build) is loaded from cdnjs the first time an animated sticker is shown.
+
+### Fixed
+- **A file with no possible thumbnail ran ffmpeg on every view.** A damaged video or an animated sticker was handed to ffmpeg again each time its tile appeared. The failure is now remembered until the file changes, so the tile's request returns at once.
+
+### Service worker
+- `VERSION = 'v34110'`
+
 ## [3.4.10] — 2026-10-13
 
 ### Fixed

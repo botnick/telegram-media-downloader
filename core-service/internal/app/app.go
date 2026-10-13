@@ -126,6 +126,7 @@ type App struct {
 	faststartStatus     map[string]any
 	faststartLastRun    map[string]any
 	thumbMu             sync.Mutex
+	thumbMisses         thumbMissCache
 	thumbBuildStatus    map[string]any
 	thumbBuildLastRun   map[string]any
 	thumbRebuildStatus  map[string]any

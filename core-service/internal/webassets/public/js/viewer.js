@@ -8,6 +8,7 @@ import { pushOverlay, popOverlay } from './overlay-history.js';
 import { ws } from './ws.js';
 import { renderTextInto, renderCodeInto, renderMarkdownInto, langFromExt } from './viewer-text.js';
 import { renderArchiveInto } from './viewer-archive.js';
+import { mountTgs } from './tgs.js';
 
 // ---- Seekbar feature flag — lazy, module-scoped --------------------------
 //
@@ -418,6 +419,11 @@ async function _runReviewAction(action) {
 function _classifyFile(file) {
     const ext = (file?.name || '').split('.').pop()?.toLowerCase() || '';
     const t = file?.type;
+    if (t === 'stickers') {
+        // Static stickers are WebP, video stickers WebM, animated ones Lottie.
+        if (ext === 'tgs') return 'tgs';
+        return ext === 'webm' || ext === 'mp4' ? 'video' : 'image';
+    }
     if (t === 'images') return 'image';
     if (t === 'videos') return 'video';
     if (
@@ -540,6 +546,34 @@ export const _classifyFileForTests = _classifyFile;
 // can re-show exactly one. Called at the top of every open, on close,
 // and on file navigation. Defensive against missing nodes so older
 // index.html builds (mid-deploy) don't crash the viewer.
+let _tgsAnim = null;
+let _tgsReq = 0;
+
+// Animated sticker (.tgs). Falls back to the download card when the file is
+// not one after all or the player cannot be loaded.
+async function _showTgs(file, url, downloadUrl) {
+    const c = document.getElementById('tgs-container');
+    const stage = document.getElementById('tgs-stage');
+    if (!c || !stage) {
+        _showFallback(file, downloadUrl);
+        return;
+    }
+    const req = ++_tgsReq;
+    stage.innerHTML = '';
+    c.classList.remove('hidden');
+    const anim = await mountTgs(stage, url, { stale: () => req !== _tgsReq });
+    if (req !== _tgsReq) {
+        if (anim) anim.destroy();
+        return;
+    }
+    if (!anim) {
+        c.classList.add('hidden');
+        _showFallback(file, downloadUrl);
+        return;
+    }
+    _tgsAnim = anim;
+}
+
 function _resetAllPreviewContainers() {
     for (const id of [
         'image-container',
@@ -552,9 +586,15 @@ function _resetAllPreviewContainers() {
         'archive-container',
         'office-container',
         'fallback-container',
+        'tgs-container',
     ]) {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
+    }
+    _tgsReq++;
+    if (_tgsAnim) {
+        _tgsAnim.destroy();
+        _tgsAnim = null;
     }
     // Detach any in-flight previews so abandoning a clip mid-load
     // doesn't leak its src into the background.
@@ -621,13 +661,26 @@ export function openMediaViewer(index) {
     resetZoom();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     if (videoPlayer) videoPlayer.unload();
+    image.onerror = null;
     image.removeAttribute('src');
 
     const kind = _classifyFile(file);
     const ext = (file.name || '').split('.').pop()?.toLowerCase() || '';
 
     switch (kind) {
+        case 'tgs':
+            _showTgs(file, url, downloadUrl);
+            break;
         case 'image':
+            if (file.type === 'stickers') {
+                // 2.x saved animated stickers under a .webp name.
+                image.onerror = () => {
+                    image.onerror = null;
+                    if (state.files[state.currentFileIndex] !== file) return;
+                    imageContainer.classList.add('hidden');
+                    _showTgs(file, url, downloadUrl);
+                };
+            }
             image.src = url;
             imageContainer.classList.remove('hidden');
             setupImageZoom();

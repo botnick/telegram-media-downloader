@@ -77,6 +77,7 @@ export function getFileIcon(ext) {
         png: 'ri-image-line',
         gif: 'ri-image-line',
         webp: 'ri-image-line',
+        tgs: 'ri-emoji-sticker-line',
         bmp: 'ri-image-line',
         pdf: 'ri-file-pdf-line',
         doc: 'ri-file-word-line',
