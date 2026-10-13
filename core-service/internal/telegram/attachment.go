@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gotd/td/bin"
 	gotd "github.com/gotd/td/telegram"
@@ -340,6 +342,19 @@ func (i sharedInvoker) Invoke(ctx context.Context, input bin.Encoder, output bin
 		return i.pool.Invoke(ctx, input, output)
 	}
 	err := i.guard.invoke(ctx, i.pool, input, output)
+	// Telegram drops download connections under load, failing every request
+	// in flight on them. Reads are idempotent: ask again on another pooled
+	// connection instead of failing the whole file.
+	for try := 0; try < connectionRetries && connectionLost(err) && ctx.Err() == nil; try++ {
+		timer := time.NewTimer(connectionRetryDelay << min(try, 4))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+		err = i.guard.invoke(ctx, i.pool, input, output)
+	}
 	// A wait short enough to sleep through that is still refused after every
 	// inline retry is Telegram refusing this file, not the account: the
 	// library would retry it forever, closing the account's gate each time
@@ -351,6 +366,29 @@ func (i sharedInvoker) Invoke(ctx context.Context, input bin.Encoder, output bin
 }
 
 func (sharedInvoker) Close() error { return nil }
+
+var (
+	connectionRetries    = 6
+	connectionRetryDelay = 250 * time.Millisecond
+)
+
+// connectionLost reports a request that died with its connection rather than
+// being answered by Telegram.
+func connectionLost(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	text := err.Error()
+	for _, mark := range []string{"engine forcibly closed", "engine was closed", "connection dead", "broken pipe", "connection reset"} {
+		if strings.Contains(text, mark) {
+			return true
+		}
+	}
+	return false
+}
 
 const downloadPartSize = 1024 * 1024
 

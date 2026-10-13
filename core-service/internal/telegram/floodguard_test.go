@@ -112,3 +112,30 @@ func TestSharedInvokerFailsFileThatKeepsFlooding(t *testing.T) {
 		t.Fatal("long wait lost its flood type")
 	}
 }
+
+// A request that dies with its connection is asked again instead of failing
+// the file; an answer from Telegram is not retried.
+func TestSharedInvokerRetriesLostConnection(t *testing.T) {
+	delay := connectionRetryDelay
+	connectionRetryDelay = time.Millisecond
+	t.Cleanup(func() { connectionRetryDelay = delay })
+	g := newFloodGuard()
+	lost := errors.New("invoke pool: rpcDoRequest: retryUntilAck: engine forcibly closed: context canceled")
+	next := &scriptedInvoker{errs: []error{lost, errors.New("write tcp 1.2.3.4:1->5.6.7.8:443: write: broken pipe")}}
+	if err := (sharedInvoker{scriptedPool{next}, g}).Invoke(context.Background(), nil, nil); err != nil || next.calls != 3 {
+		t.Fatalf("err=%v calls=%d", err, next.calls)
+	}
+	refused := &tgerr.Error{Code: 400, Type: "FILE_REFERENCE_EXPIRED"}
+	next = &scriptedInvoker{errs: []error{refused}}
+	if err := (sharedInvoker{scriptedPool{next}, g}).Invoke(context.Background(), nil, nil); !errors.Is(err, refused) || next.calls != 1 {
+		t.Fatalf("err=%v calls=%d", err, next.calls)
+	}
+	// The caller's own cancellation is not a lost connection.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	next = &scriptedInvoker{errs: []error{lost, lost}}
+	_ = (sharedInvoker{scriptedPool{next}, g}).Invoke(ctx, nil, nil)
+	if next.calls > 1 {
+		t.Fatalf("retried after cancel: calls=%d", next.calls)
+	}
+}

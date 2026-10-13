@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.9] — 2026-10-13
+
+### Fixed
+- **A dropped download connection failed every file using it.** Under load Telegram closes download connections ("engine forcibly closed", "broken pipe", "connection dead"); each file in flight lost an attempt and, during a burst, ran out of attempts within seconds. A part whose connection died is now requested again on another pooled connection (up to six times, with a short backoff) before the file's attempt fails.
+
+### Service worker
+- `VERSION = 'v3490'`
+
 ## [3.4.8] — 2026-10-13
 
 ### Fixed
