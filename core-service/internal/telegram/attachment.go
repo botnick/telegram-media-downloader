@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"os"
 	"strconv"
 	"strings"
 
@@ -266,15 +267,20 @@ func (c *GotdClient) DownloadMedia(ctx context.Context, a Attachment, w io.Write
 	if c == nil || c.client == nil || a.Location == nil || a.DC <= 0 {
 		return errors.New("invalid Telegram download request")
 	}
-	// Telegram keeps no chunk hashes for some files and can refuse them in the
-	// middle of a transfer. Remember such a file so its next attempt streams
-	// without per-chunk verification (the library still checks the SHA-256).
-	// The refusal is a property of the chat (seen on whole channels), so the
-	// chat is remembered too and its later files skip the wasted first try.
+	// Per-chunk verification is opt-in (TGDL_VERIFY_CHUNKS=1): it makes the
+	// library request 128 KiB hash-sized parts instead of 1 MiB ones, and
+	// Telegram rate-limits download requests by count, so it cut throughput
+	// about eightfold. MTProto already authenticates every response.
+	//
+	// When enabled: Telegram keeps no chunk hashes for some files and can
+	// refuse them in the middle of a transfer. Remember such a file so its
+	// next attempt streams without per-chunk verification. The refusal is a
+	// property of the chat (seen on whole channels), so the chat is remembered
+	// too and its later files skip the wasted first try.
 	key, chat := a.Identity.Key(), "chat:"+a.GroupID
 	_, plainFile := c.unverified.Load(key)
 	_, plainChat := c.unverified.Load(chat)
-	err := downloadMedia(ctx, guardedClient{c.client, c}, a, w, !plainFile && !plainChat)
+	err := downloadMedia(ctx, guardedClient{c.client, c}, a, w, verifyChunks && !plainFile && !plainChat)
 	if err != nil && hashesUnavailable(err) {
 		c.unverified.Store(key, struct{}{})
 		if a.GroupID != "" {
@@ -339,6 +345,9 @@ func (i sharedInvoker) Invoke(ctx context.Context, input bin.Encoder, output bin
 func (sharedInvoker) Close() error { return nil }
 
 const downloadPartSize = 1024 * 1024
+
+// verifyChunks turns on per-chunk hash verification (see DownloadMedia).
+var verifyChunks = os.Getenv("TGDL_VERIFY_CHUNKS") == "1"
 
 type downloadClient interface {
 	Config() tg.Config

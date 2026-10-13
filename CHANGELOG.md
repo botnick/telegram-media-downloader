@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.7] — 2026-10-13
+
+### Fixed
+- **Downloads were about eight times slower than 2.x.** Per-chunk hash verification made every request fetch a 128 KiB hash-sized part instead of 1 MiB, and Telegram limits download requests by count (on the affected account: about five requests, then a 3–9 s `FLOOD_WAIT`). Verification is now off by default, so each request carries 1 MiB again. MTProto already authenticates every response. Set `TGDL_VERIFY_CHUNKS=1` to turn it back on.
+- **A file could sit at 0 bytes for its whole attempt.** With verification on, the library re-requested chunk hashes in a loop under flood waits without fetching any data. This no longer happens with the default setting.
+
+### Service worker
+- `VERSION = 'v3470'`
+
 ## [3.4.6] — 2026-10-13
 
 ### Fixed
