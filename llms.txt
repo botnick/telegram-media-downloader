@@ -4,6 +4,18 @@
 
 Key facts for 3.x (current 3.4): no Node.js runtime; Telegram via gotd; state in SQLite under TGDL_DATA_DIR (./data), media optionally under TGDL_DOWNLOADS_DIR; dashboard on port 3000; first password set with `tgdl-server setup --password-stdin`; 2.x installs upgrade in place. Since 3.4 the 2.x background features are back: auto-forward, self-destructing (TTL) media capture, disk rotation (deletes the oldest downloads over diskManagement.maxTotalSize), periodic integrity sweep, Google Drive and Dropbox backups (`tgdl-server backup-oauth`), cluster dedup sweep, backfill date window, FFMPEG_HWACCEL, real /metrics. Also: adaptive download concurrency (advanced.downloader), FloodWait protection, self-restarting monitor with a watchdog, scheduled watchtower updates, built-in seekbar previews. Face recognition needs the tgdl-faces container (FACES_SERVICE_URL / TGDL_FACES_SIDECAR_URL) and NSFW scoring the tgdl-nsfw container (TGDL_NSFW_SIDECAR_URL); there is no local face-sidecar mode and no in-process NSFW model.
 
+## Quick answers
+
+- What it is: a free, MIT-licensed, self-hosted app that downloads media from Telegram channels, groups and chats with your own user account (not a bot). Website: https://botnick.github.io/telegram-media-downloader/ (Thai: https://botnick.github.io/telegram-media-downloader/th/).
+- Install: `docker compose up -d` with the repository's docker-compose.yml, then `tgdl-server setup --password-stdin` for the first password; open http://localhost:3000. Needs a free apiId/apiHash from my.telegram.org.
+- Private channels: yes, if the signed-in account is a member.
+- Download a whole channel: Chats > pick the channel > backfill (0 = all messages); turn on the realtime monitor to keep it current.
+- Single message or Stories: paste a t.me link, or look up Stories by username.
+- Platforms: Docker amd64/arm64; release binaries for Linux (amd64, arm64, arm), Windows and macOS; Synology compose file included.
+- Duplicates: skipped before download by Telegram media identity, confirmed by SHA-256; optional "Skip duplicates" setting stops repeat library entries.
+- Upgrading from 2.x: in place, same image, port, data folder and logins.
+- Latest version and release notes: https://github.com/botnick/telegram-media-downloader/releases/latest and CHANGELOG.md.
+
 ## Start here
 
 - [README](https://github.com/botnick/telegram-media-downloader/blob/main/README.md): features, quick start (Docker and native), FAQ

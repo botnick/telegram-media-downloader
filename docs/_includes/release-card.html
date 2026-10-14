@@ -1,0 +1,23 @@
+{%- comment -%}
+  Recent releases, rendered from the GitHub API when Pages builds the site
+  (jekyll-github-metadata) and refreshed in the browser from CHANGELOG.md,
+  so the card shows releases published after the last build too.
+  Params: title, note, stars, forks, pushed, all.
+{%- endcomment -%}
+{%- assign tgdl_releases = site.github.releases | where: "draft", false | where: "prerelease", false -%}
+{%- assign tgdl_repo = site.github.public_repositories | where: "name", "telegram-media-downloader" | first -%}
+<aside class="rel" aria-labelledby="rel-title">
+  <div class="rel-head"><h2 id="rel-title" style="font-size:inherit;letter-spacing:0">{{ include.title }}</h2><span>{{ include.note }}</span></div>
+  <ol id="rel-list">
+{%- for r in tgdl_releases limit: 4 %}
+    {%- assign what = r.body | split: "**" -%}
+    <li><a href="{{ r.html_url }}"><span class="tag">{{ r.tag_name }}</span><span class="what">{% if what.size > 1 %}{{ what[1] | strip_html | replace: "`", "" | strip }}{% else %}{{ r.name | default: r.tag_name }}{% endif %}</span><span class="when"><time datetime="{{ r.published_at | date_to_xmlschema }}">{{ r.published_at | date: "%-d %b %Y" }}</time></span></a></li>
+{%- endfor %}
+  </ol>
+  <div class="rel-foot">
+    <span>{{ include.stars }} <b id="rel-stars">{{ tgdl_repo.stargazers_count | default: "–" }}</b></span>
+    <span>{{ include.forks }} <b id="rel-forks">{{ tgdl_repo.forks_count | default: "–" }}</b></span>
+    <span>{{ include.pushed }} <b><time id="rel-pushed" datetime="{{ tgdl_repo.pushed_at | date_to_xmlschema }}">{{ tgdl_repo.pushed_at | date: "%-d %b %Y" }}</time></b></span>
+    <a href="{{ site.software.repository }}/blob/main/CHANGELOG.md" rel="noopener">{{ include.all }} &rarr;</a>
+  </div>
+</aside>

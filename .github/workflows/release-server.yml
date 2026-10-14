@@ -30,8 +30,21 @@ jobs:
           tar -xzf core-service/dist/tgdl-server-${GITHUB_REF_NAME}-linux-amd64.tar.gz -C /tmp/tgdl-release-smoke
           /tmp/tgdl-release-smoke/tgdl-server version | grep -F "tgdl-server ${GITHUB_REF_NAME#v} "
           (cd core-service/dist && sha256sum -c SHA256SUMS)
+      - name: Release notes from CHANGELOG.md
+        run: |
+          # The section for this tag, without the service-worker bookkeeping.
+          awk -v v="${GITHUB_REF_NAME#v}" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && /^## \[/ { exit }
+            on && /^### Service worker/ { skip = 1; next }
+            on && /^### / { skip = 0 }
+            on && !skip { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md || echo "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)." > release-notes.md
+          cat release-notes.md
       - uses: softprops/action-gh-release@v3
         with:
+          body_path: release-notes.md
           files: |
             core-service/dist/tgdl-server-*.tar.gz
             core-service/dist/SHA256SUMS

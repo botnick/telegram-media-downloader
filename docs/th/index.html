@@ -37,7 +37,7 @@ permalink: /th/
 <meta name="twitter:image" content="{{ base }}/assets/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
 {% include head_custom.html %}
 <script type="application/ld+json">
 {
@@ -54,10 +54,62 @@ permalink: /th/
   ]
 }
 </script>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "HowTo",
+ "name": "วิธีติดตั้ง Telegram Media Downloader ด้วย Docker",
+ "totalTime": "PT10M",
+ "tool": [
+  {
+   "@type": "HowToTool",
+   "name": "Docker with Compose"
+  }
+ ],
+ "step": [
+  {
+   "@type": "HowToStep",
+   "position": 1,
+   "name": "ขอ API ของ Telegram",
+   "text": "สร้าง apiId และ apiHash ที่ my.telegram.org",
+   "url": "{{ base }}/th/#quick-start"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 2,
+   "name": "เปิด container",
+   "text": "ดาวน์โหลด docker-compose.yml จาก repository แล้วรัน docker compose up -d",
+   "url": "{{ base }}/th/#quick-start"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 3,
+   "name": "ตั้งรหัสผ่านแรก",
+   "text": "รัน tgdl-server setup --password-stdin ใน container",
+   "url": "{{ base }}/th/#quick-start"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 4,
+   "name": "เข้าสู่ระบบ",
+   "text": "เปิด http://localhost:3000 ใส่ API ที่ Settings > Telegram API แล้วเพิ่มบัญชี Telegram",
+   "url": "{{ base }}/th/#quick-start"
+  },
+  {
+   "@type": "HowToStep",
+   "position": 5,
+   "name": "เริ่มโหลด",
+   "text": "เปิดการเฝ้าแชต ดึงข้อความย้อนหลัง หรือวางลิงก์ t.me",
+   "url": "{{ base }}/th/#quick-start"
+  }
+ ]
+}
+</script>
 <style>
 {% include landing.css %}
-:root { --font: "Manrope", "Noto Sans Thai", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-h1, h2, h3 { line-height: 1.3; }
+h1, h2, h3 { line-height: 1.35; letter-spacing: 0; }
+:root { --latest-label: "ล่าสุด"; }
+.hero h1 { font-weight: 700; }
 </style>
 </head>
 <body>
@@ -86,26 +138,26 @@ h1, h2, h3 { line-height: 1.3; }
 <main id="main">
 <section class="hero" aria-labelledby="hero-title">
   <div class="wrap">
-    <div class="hero-copy">
-      <span class="eyebrow">โอเพนซอร์ส &middot; ฟรี &middot; v{{ tgdl_version }}</span>
-      <h1 id="hero-title">โหลดวิดีโอและรูปจาก <span>Telegram</span></h1>
-      <p class="sub"><b>Telegram Media Downloader</b> เก็บรูป วิดีโอ และไฟล์จากช่อง กลุ่ม และแชต Telegram ด้วยบัญชีของคุณเอง รวมถึงช่องส่วนตัวที่คุณเป็นสมาชิก ติดตั้งบนเครื่องตัวเองด้วย Docker หรือไฟล์ Go ไฟล์เดียว มีหน้าเว็บจัดการในตัว</p>
-      <div class="cta">
-        <a class="btn primary" href="#quick-start">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
-          เริ่มใช้งาน
-        </a>
-        <a class="btn ghost" href="{{ site.software.repository }}" rel="noopener">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5-4.8-4.6 6.6-.9z"/></svg>
-          กดดาวบน GitHub <span class="stars" id="stars2" hidden></span>
-        </a>
+    <div class="hero-grid">
+      <div>
+        <a class="chip" href="{{ site.software.repository }}/releases/latest" rel="noopener"><span class="dot"></span>ล่าสุด <b>v{{ tgdl_version }}</b></a>
+        <h1 id="hero-title">โหลดรูปและวิดีโอจาก Telegram <em>เก็บไว้ในเครื่องคุณ</em></h1>
+        <p class="sub">เก็บไฟล์จากทุกช่อง กลุ่ม และแชตที่บัญชีคุณเข้าถึงได้ รวมช่องส่วนตัว ติดตั้งด้วย Docker หรือไฟล์ Go ไฟล์เดียว มีหน้าเว็บจัดการในตัว</p>
+        <div class="cta">
+          <a class="btn primary" href="#quick-start">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+            เริ่มใช้งาน
+          </a>
+          <a class="btn ghost" href="{{ site.software.repository }}" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5-4.8-4.6 6.6-.9z"/></svg>
+            กดดาวบน GitHub <span class="stars" id="stars2" hidden></span>
+          </a>
+        </div>
+        <ul class="facts"><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>ฟรี โอเพนซอร์ส (MIT)</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>Docker amd64 / arm64</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>Linux, Windows, macOS</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>ไทย, English</li></ul>
       </div>
-      <ul class="pills" aria-label="จุดเด่น">
-        <li>Docker</li><li>ไฟล์ Go ไฟล์เดียว</li><li>Linux &middot; Windows &middot; macOS</li><li>ใช้บนมือถือได้</li><li>ช่องส่วนตัว</li><li>ภาษาไทย</li>
-      </ul>
+      {% include release-card.html title="เวอร์ชันล่าสุด" note="จาก GitHub" stars="ดาว" forks="Fork" pushed="อัปเดตล่าสุด" all="ประวัติทั้งหมด" %}
     </div>
     <div class="frame">
-      <div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div>
       <picture>
         <source media="(prefers-color-scheme: light)" srcset="{{ '/screenshots/library-light.webp' | relative_url }}">
         <img src="{{ '/screenshots/library.webp' | relative_url }}" width="1600" height="1000" alt="หน้าคลังไฟล์: รูปและวิดีโอที่โหลดมาทั้งหมด จัดกลุ่มตามวันที่ พร้อมรายชื่อแชตด้านซ้าย" fetchpriority="high">

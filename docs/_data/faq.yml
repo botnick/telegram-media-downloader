@@ -1,3 +1,7 @@
+- q: What is Telegram Media Downloader?
+  a: A free, open-source (MIT) app you run on your own computer, server or NAS that downloads photos, videos, files, voice messages and Stories from Telegram channels, groups and chats. It signs in as your own Telegram account, so it also works for private channels you are a member of. It runs as one Go program (`tgdl-server`) or a Docker image and is managed from a web dashboard.
+- q: Is it free?
+  a: Yes. It is open source under the MIT license, with no paid tier, account or cloud service. You only need a free `apiId` and `apiHash` from [my.telegram.org](https://my.telegram.org).
 - q: How do I download all media from a Telegram channel?
   a: Add your Telegram account (Settings > Accounts), open Chats, pick the channel and start a backfill. Choose how many messages to read, or 0 for all of them. The queue shows every file with progress, speed and ETA. To keep the archive current, turn on the realtime monitor for that chat.
 - q: Can it download from private channels and groups?

@@ -10,21 +10,52 @@
 {%- if site.keywords %}
 <meta name="keywords" content="{{ site.keywords | strip | escape }}">
 {%- endif %}
+{%- assign tgdl_base = site.url | append: site.baseurl -%}
+{%- assign tgdl_repo_url = site.software.repository -%}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": {{ site.title | jsonify }},
-  "description": {{ site.description | strip | jsonify }},
-  "applicationCategory": "MultimediaApplication",
-  "operatingSystem": "Linux, Windows, macOS, Docker",
-  "programmingLanguage": "Go",
-  "featureList": "Realtime Telegram channel and group monitor, history backfill, t.me link and Stories downloads, auto-forward, duplicate skipping, web dashboard and PWA, backups to S3, SFTP, FTP, Google Drive and Dropbox, cluster mode, optional face and NSFW sidecars",
-  "license": {{ site.software.license | jsonify }},
-  "downloadUrl": {{ site.software.repository | append: "/releases/latest" | jsonify }},
-  "softwareVersion": {{ tgdl_version | jsonify }},
-  "codeRepository": {{ site.software.repository | jsonify }},
-  "url": {{ site.url | append: site.baseurl | jsonify }},
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": {{ tgdl_base | append: "/#website" | jsonify }},
+      "url": {{ tgdl_base | append: "/" | jsonify }},
+      "name": {{ site.title | jsonify }},
+      "inLanguage": ["en", "th"],
+      "publisher": { "@id": "https://github.com/botnick" }
+    },
+    {
+      "@type": "Person",
+      "@id": "https://github.com/botnick",
+      "name": "botnick",
+      "url": "https://github.com/botnick"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": {{ tgdl_base | append: "/#app" | jsonify }},
+      "name": {{ site.title | jsonify }},
+      "alternateName": ["tgdl", "tgdl-server"],
+      "description": {{ site.description | strip | jsonify }},
+      "url": {{ tgdl_base | append: "/" | jsonify }},
+      "applicationCategory": "MultimediaApplication",
+      "applicationSubCategory": "Telegram media downloader",
+      "operatingSystem": "Linux, Windows, macOS, Docker",
+      "softwareVersion": {{ tgdl_version | jsonify }},
+{%- if site.github.latest_release.published_at %}
+      "datePublished": {{ site.github.latest_release.published_at | date_to_xmlschema | jsonify }},
+{%- endif %}
+      "featureList": "Realtime Telegram channel and group monitor, history backfill, t.me link and Stories downloads, auto-forward, duplicate skipping, web dashboard and PWA, backups to S3, SFTP, FTP, Google Drive and Dropbox, cluster mode, optional face and NSFW sidecars",
+      "screenshot": {{ tgdl_base | append: "/screenshots/library.webp" | jsonify }},
+      "image": {{ tgdl_base | append: "/assets/og.png" | jsonify }},
+      "downloadUrl": {{ tgdl_repo_url | append: "/releases/latest" | jsonify }},
+      "installUrl": {{ tgdl_base | append: "/DEPLOY.html" | jsonify }},
+      "releaseNotes": {{ tgdl_repo_url | append: "/blob/main/CHANGELOG.md" | jsonify }},
+      "license": {{ site.software.license | jsonify }},
+      "isAccessibleForFree": true,
+      "author": { "@id": "https://github.com/botnick" },
+      "sameAs": [{{ tgdl_repo_url | jsonify }}, "https://github.com/botnick/telegram-media-downloader/pkgs/container/telegram-media-downloader"],
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+    }
+  ]
 }
 </script>
