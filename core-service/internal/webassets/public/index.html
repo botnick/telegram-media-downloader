@@ -1144,6 +1144,13 @@
                                     oninput="document.getElementById('retries-value').textContent = this.value">
                                 <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.download.attempts_help">Includes the first attempt. Set 1 to disable retries.</p>
                             </div>
+                            <div>
+                                <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer">
+                                    <div class="text-tg-text text-sm" data-i18n="settings.download.skip_duplicates">Skip duplicates</div>
+                                    <div id="setting-skip-duplicates" class="tg-toggle"></div>
+                                </label>
+                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.download.skip_duplicates_help">A photo or video already in the library (reposted, or forwarded to another chat) is not added again. Links you paste are always added.</p>
+                            </div>
                             <!-- Download folder field retired in v2.9: it
                                  was read-only and changing it required CLI
                                  anyway, so it leaked information without

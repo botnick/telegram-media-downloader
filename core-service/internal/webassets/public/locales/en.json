@@ -200,6 +200,8 @@
     "settings.download.concurrent_max": "50 (Max)",
     "settings.download.retries": "Maximum Download Attempts",
     "settings.download.attempts_help": "Includes the first attempt. Set 1 to disable retries.",
+    "settings.download.skip_duplicates": "Skip duplicates",
+    "settings.download.skip_duplicates_help": "A photo or video already in the library (reposted, or forwarded to another chat) is not added again. Links you paste are always added.",
     "settings.download.folder": "Download Folder",
     "settings.download.cli_only_toast": "Use CLI to change path.",
     "settings.download.folder_help": "Change via CLI: edit config.json.",

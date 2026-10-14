@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.14] — 2026-10-14
+
+### Added
+- **Settings → Download → Skip duplicates** (`download.skipDuplicates`, off by default). A photo or video that is reposted, or forwarded to another monitored chat, was never downloaded twice, but each message still got its own library entry pointing at the same file, so the gallery filled with repeats. With the option on, media already in the library under another message is not catalogued again: a forward of the same Telegram media is skipped before any download, and a re-upload with the same bytes is downloaded once to learn its hash and then dropped. A message that already has an entry is still updated normally, links you paste are always added, and an entry whose file is missing never causes a skip.
+
+### Service worker
+- `VERSION = 'v34140'`
+
 ## [3.4.13] — 2026-10-14
 
 ### Fixed

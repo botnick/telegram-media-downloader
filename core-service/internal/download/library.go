@@ -34,7 +34,11 @@ type Item struct {
 	Identity   telegram.MediaIdentity
 	Facts      telegram.MediaFacts
 	TTLSeconds int // self-destruct timer of the source media, 0 when none
-	generation int64
+	// SkipDuplicates: media already in the library under another message is
+	// not catalogued again. Reposts and forwards of one photo or clip
+	// otherwise each became an entry pointing at the same file.
+	SkipDuplicates bool
+	generation     int64
 }
 
 type Record struct {
@@ -42,6 +46,10 @@ type Record struct {
 	Path   string
 	SHA256 string
 	Reused bool
+	// Skipped: the media was already catalogued for another message, so no
+	// entry was made for this one (Item.SkipDuplicates). ID is the existing
+	// entry.
+	Skipped bool
 }
 
 // Library uses the existing downloads table as its durable identity index.
@@ -139,6 +147,9 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 		return Record{}, err
 	}
 	defer release()
+	if record, found, err := l.existing(ctx, item, `d.telegram_media_kind=? AND d.telegram_media_id=?`, item.Identity.Kind, item.Identity.ID); err != nil || found {
+		return record, err
+	}
 	if record, found, err := l.reuse(ctx, item, `d.telegram_media_kind=? AND d.telegram_media_id=? AND (d.telegram_media_size=? OR (d.telegram_media_size IS NULL AND d.file_size=?))`, item.Identity.Kind, item.Identity.ID, item.Identity.Size, item.Identity.Size); err != nil || found {
 		return record, err
 	}
@@ -191,6 +202,17 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 		return Record{}, err
 	}
 	defer contentRelease()
+	if record, found, err := l.existing(ctx, item, `d.file_hash=?`, sum); err != nil {
+		return Record{}, err
+	} else if found {
+		if err := root.Remove(path); err != nil {
+			return record, fmt.Errorf("remove redundant downloaded file: %w", err)
+		}
+		if _, err := l.writer.ExecContext(ctx, `DELETE FROM tgdl_ingest_files WHERE path=?`, filepath.ToSlash(path)); err != nil {
+			return record, err
+		}
+		return record, nil
+	}
 	if record, found, err := l.reuse(ctx, item, `d.file_hash=? AND d.file_size=?`, sum, item.Identity.Size); err != nil {
 		return Record{}, err
 	} else if found {
@@ -321,6 +343,43 @@ func (l *Library) open(name string) (*os.File, os.FileInfo, error) {
 
 func sameMedia(a, b os.FileInfo) bool {
 	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
+}
+
+// existing finds, when item.SkipDuplicates is set, an entry of another
+// message whose media matches `where` and whose file is still on disk. A
+// message that already has its own entry is never skipped: that is a repair
+// or an edit, and it goes through the normal path.
+func (l *Library) existing(ctx context.Context, item Item, where string, args ...any) (Record, bool, error) {
+	if !item.SkipDuplicates {
+		return Record{}, false, nil
+	}
+	var own bool
+	if err := l.reader.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM downloads WHERE group_id=? AND message_id=?)`, item.GroupID, item.MessageID).Scan(&own); err != nil || own {
+		return Record{}, false, err
+	}
+	rows, err := l.reader.QueryContext(ctx, `SELECT d.id,d.file_path,COALESCE(d.file_hash,'') FROM downloads d
+		WHERE d.status='completed' AND d.file_path IS NOT NULL AND d.file_path<>'' AND (`+where+`) ORDER BY d.id LIMIT 20`, args...)
+	if err != nil {
+		return Record{}, false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var path, sum string
+		if err := rows.Scan(&id, &path, &sum); err != nil {
+			return Record{}, false, err
+		}
+		f, info, err := l.open(path)
+		if err != nil {
+			continue
+		}
+		f.Close()
+		if info.Size() <= 0 {
+			continue
+		}
+		return Record{ID: id, Path: filepath.ToSlash(path), SHA256: sum, Reused: true, Skipped: true}, true, nil
+	}
+	return Record{}, false, rows.Err()
 }
 
 func (l *Library) reuse(ctx context.Context, item Item, where string, args ...any) (Record, bool, error) {

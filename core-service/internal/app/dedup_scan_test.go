@@ -69,3 +69,22 @@ func TestDedupScanStopEndsRunningScan(t *testing.T) {
 	a.dedupScanCancel = nil
 	a.dedupMu.Unlock()
 }
+
+func TestSkipDuplicatesIsOptIn(t *testing.T) {
+	a, _ := socketTestApp(t)
+	ctx := context.Background()
+	if a.skipDuplicates(ctx) {
+		t.Fatal("skipDuplicates is on without being set")
+	}
+	cfg, err := a.config.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg["download"] = map[string]any{"skipDuplicates": true}
+	if err := a.config.Save(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !a.skipDuplicates(ctx) {
+		t.Fatal("download.skipDuplicates=true ignored")
+	}
+}

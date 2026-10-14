@@ -109,6 +109,15 @@ export async function loadSettings() {
         bind('setting-retries', dl.retries);
         document.getElementById('retries-value').textContent = dl.retries || 5;
 
+        const skipDupToggle = document.getElementById('setting-skip-duplicates');
+        if (skipDupToggle) {
+            skipDupToggle.classList.toggle('active', dl.skipDuplicates === true);
+            skipDupToggle.onclick = (e) => {
+                e.preventDefault();
+                skipDupToggle.classList.toggle('active');
+            };
+        }
+
         bind('setting-path', dl.path || './data/downloads');
 
         // Max Download Speed — dual-input (numeric value + unit picker)
@@ -1573,6 +1582,9 @@ function _gatherSettingsPayload() {
             concurrent: parseInt(get('setting-concurrent')),
             retries: parseInt(get('setting-retries')),
             maxSpeed: parseInt(get('setting-max-speed')) || 0,
+            skipDuplicates:
+                document.getElementById('setting-skip-duplicates')?.classList.contains('active') ===
+                true,
         },
         diskManagement: {
             maxTotalSize: combineDiskCap(
@@ -1691,6 +1703,9 @@ export async function saveSettings() {
             concurrent: parseInt(get('setting-concurrent')),
             retries: parseInt(get('setting-retries')),
             maxSpeed: parseInt(get('setting-max-speed')) || 0,
+            skipDuplicates:
+                document.getElementById('setting-skip-duplicates')?.classList.contains('active') ===
+                true,
         },
         diskManagement: {
             maxTotalSize: combineDiskCap(

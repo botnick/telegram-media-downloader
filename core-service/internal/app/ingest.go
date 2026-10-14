@@ -37,6 +37,10 @@ func (a *App) ingestTelegram(ctx context.Context, message *tg.Message, groupID, 
 			return download.Record{}, err
 		}
 		item.Type = "stories"
+	} else if engine.Origin(ctx) != "url" {
+		// A link the operator pasted is always catalogued; monitored and
+		// backfilled messages follow download.skipDuplicates.
+		item.SkipDuplicates = a.skipDuplicates(ctx)
 	}
 	if err := rescue.Observe(ctx, a.db.Writer, accountID, groupID, message, engine.Origin(ctx)); err != nil {
 		return download.Record{}, err
@@ -48,6 +52,11 @@ func (a *App) ingestTelegram(ctx context.Context, message *tg.Message, groupID, 
 	record, err := a.library.Ingest(ctx, item, telegram.AttachmentClient{Source: transport, Media: attachment})
 	if err != nil {
 		return record, err
+	}
+	if record.Skipped {
+		payload := map[string]any{"key": item.GroupID + "_" + strconv.FormatInt(item.MessageID, 10), "groupId": item.GroupID, "groupName": item.GroupName, "messageId": item.MessageID, "fileName": item.Name, "filePath": record.Path, "fileSize": item.Identity.Size, "mediaType": item.Type, "deduped": true, "skipped": true, "addedAt": nil, "accountId": accountID, "accountName": nil}
+		a.hub.Broadcast(ws.Event{Type: "download_complete", Payload: payload})
+		return record, nil
 	}
 	if ttl > 0 {
 		// 2.x announced captured self-destructing media to the dashboard.
@@ -69,4 +78,15 @@ func (a *App) ingestTelegram(ctx context.Context, message *tg.Message, groupID, 
 		a.backups.Wake()
 	}
 	return record, a.drainFileCleanup(ctx)
+}
+
+// skipDuplicates reads download.skipDuplicates. Off unless set, so an
+// upgrade keeps cataloguing every message as before.
+func (a *App) skipDuplicates(ctx context.Context) bool {
+	cfg, err := a.config.Load(ctx)
+	if err != nil {
+		return false
+	}
+	dl, _ := cfg["download"].(map[string]any)
+	return dl["skipDuplicates"] == true
 }

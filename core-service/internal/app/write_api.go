@@ -87,6 +87,12 @@ func (a *App) handleAPIConfigSave(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		if value, present := raw["skipDuplicates"]; present {
+			if _, ok := value.(bool); !ok {
+				writeJSONError(w, http.StatusBadRequest, "download.skipDuplicates must be true or false")
+				return
+			}
+		}
 		if value, present := raw["retries"]; present {
 			n := number(value, -1)
 			if n < 1 || n > 20 || n != math.Trunc(n) {

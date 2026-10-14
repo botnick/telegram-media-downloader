@@ -200,6 +200,8 @@
     "settings.download.concurrent_max": "50 (สูงสุด)",
     "settings.download.retries": "จำนวนครั้งที่ลองดาวน์โหลดสูงสุด",
     "settings.download.attempts_help": "รวมครั้งแรกด้วย ตั้งเป็น 1 เพื่อไม่ลองซ้ำ",
+    "settings.download.skip_duplicates": "ไม่เก็บไฟล์ซ้ำ",
+    "settings.download.skip_duplicates_help": "รูปหรือวิดีโอที่มีในคลังแล้ว (โพสต์ซ้ำ หรือส่งต่อมาจากห้องอื่น) จะไม่ถูกเพิ่มอีก ลิงก์ที่วางเองจะถูกเพิ่มเสมอ",
     "settings.download.folder": "โฟลเดอร์ดาวน์โหลด",
     "settings.download.cli_only_toast": "โปรดใช้ CLI เพื่อเปลี่ยน path",
     "settings.download.folder_help": "เปลี่ยนผ่าน CLI โดยแก้ไขไฟล์ config.json",
