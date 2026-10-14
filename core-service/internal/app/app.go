@@ -112,6 +112,7 @@ type App struct {
 	maintenanceClosed   bool
 	dedupLastScan       map[string]any
 	dedupScanStatus     map[string]any
+	dedupScanCancel     context.CancelFunc
 	dedupDeleteStatus   map[string]any
 	downloadsDir        string
 	restartMu           sync.Mutex

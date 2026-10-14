@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.13] — 2026-10-14
+
+### Fixed
+- **Find duplicates stopped part-way on large libraries.** The scan hashed every unhashed file inside the request that started it; behind a proxy that ends requests after about 100 s (Cloudflare), the rest of the scan could no longer save its hashes. It now runs in the background — the page follows its progress as before — and Stop actually stops it. A second scan is not started while one runs.
+
+### Service worker
+- `VERSION = 'v34130'`
+
 ## [3.4.12] — 2026-10-14
 
 ### Fixed

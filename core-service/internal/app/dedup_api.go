@@ -120,22 +120,71 @@ func (a *App) handleDedupDeleteStatus(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *App) handleDedupScanStop(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, 200, map[string]any{"stopped": true, "wasRunning": false})
+	a.dedupMu.Lock()
+	cancel := a.dedupScanCancel
+	a.dedupMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	writeJSON(w, 200, map[string]any{"stopped": true, "wasRunning": cancel != nil})
 }
 
-func (a *App) handleDedupScan(w http.ResponseWriter, r *http.Request) {
+// handleDedupScan hashes every catalog file that has no hash yet, then
+// reports the duplicate sets. It reads whole files, so it runs in the
+// background: the dashboard follows dedup_progress / dedup_done and
+// GET /dedup/status, and a request cut by a proxy no longer stops the scan.
+func (a *App) handleDedupScan(w http.ResponseWriter, _ *http.Request) {
 	started := time.Now()
 	a.dedupMu.Lock()
+	if a.dedupClosed || a.dedupScanCancel != nil {
+		a.dedupMu.Unlock()
+		writeJSON(w, 200, map[string]any{"started": false, "alreadyRunning": true, "success": true})
+		return
+	}
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.dedupScanCancel = cancel
 	status := dedupIdleStatus("dedupScan")
 	status["attempts"] = 1
 	status["running"] = true
 	status["stage"] = "scanning"
 	status["startedAt"] = started.UnixMilli()
 	a.dedupScanStatus = status
+	a.dedupWG.Add(1)
 	a.dedupMu.Unlock()
-	rows, err := a.db.Reader.QueryContext(r.Context(), `SELECT id,file_path FROM downloads WHERE file_hash IS NULL AND file_path IS NOT NULL ORDER BY id ASC`)
+	go func() {
+		defer a.dedupWG.Done()
+		defer func() {
+			cancel()
+			a.dedupMu.Lock()
+			a.dedupScanCancel = nil
+			a.dedupMu.Unlock()
+		}()
+		a.runDedupScan(ctx, started, status)
+	}()
+	writeJSON(w, 200, map[string]any{"started": true, "success": true})
+}
+
+// contextReader stops a long hash between reads once ctx is done.
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c contextReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
+func (a *App) runDedupScan(ctx context.Context, started time.Time, status map[string]any) {
+	rows, err := a.db.Reader.QueryContext(ctx, `SELECT id,file_path FROM downloads WHERE file_hash IS NULL AND file_path IS NOT NULL ORDER BY id ASC`)
 	if err != nil {
-		writeJSONError(w, 500, "dedup scan failed")
+		a.dedupMu.Lock()
+		status["running"], status["stage"], status["error"] = false, "error", "dedup scan failed"
+		status["failures"] = 1
+		a.dedupMu.Unlock()
+		a.hub.Broadcast(ws.Event{Type: "dedup_done", Flat: true, Payload: map[string]any{"kind": "dedupScan", "error": "dedup scan failed"}})
 		return
 	}
 	type candidate struct {
@@ -151,28 +200,39 @@ func (a *App) handleDedupScan(w http.ResponseWriter, r *http.Request) {
 	}
 	rows.Close()
 	a.hub.Broadcast(ws.Event{Type: "dedup_progress", Flat: true, Payload: map[string]any{"kind": "dedupScan", "processed": 0, "total": len(candidates)}})
-	hashed, errored := 0, 0
+	hashed, errored, processed := 0, 0, 0
 	for _, c := range candidates {
+		if ctx.Err() != nil {
+			break
+		}
+		processed++
+		if processed%200 == 0 {
+			a.hub.Broadcast(ws.Event{Type: "dedup_progress", Flat: true, Payload: map[string]any{"kind": "dedupScan", "processed": processed, "total": len(candidates)}})
+			a.dedupMu.Lock()
+			status["progress"] = map[string]any{"processed": processed, "total": len(candidates), "hashed": hashed, "errored": errored, "stage": "scanning"}
+			a.dedupMu.Unlock()
+		}
 		f, e := os.Open(filepath.Join(a.downloadsDir, filepath.FromSlash(c.path)))
 		if e != nil {
 			errored++
 			continue
 		}
 		h := sha256.New()
-		_, e = io.Copy(h, f)
+		_, e = io.Copy(h, contextReader{ctx, f})
 		f.Close()
 		if e != nil {
 			errored++
 			continue
 		}
-		_, e = a.db.Writer.ExecContext(r.Context(), "UPDATE downloads SET file_hash=? WHERE id=?", hex.EncodeToString(h.Sum(nil)), c.id)
+		_, e = a.db.Writer.ExecContext(ctx, "UPDATE downloads SET file_hash=? WHERE id=?", hex.EncodeToString(h.Sum(nil)), c.id)
 		if e == nil {
 			hashed++
 		} else {
 			errored++
 		}
 	}
-	sets, _ := a.loadDedupSets(r.Context())
+	aborted := ctx.Err() != nil
+	sets, _ := a.loadDedupSets(context.WithoutCancel(ctx))
 	extra := 0
 	reclaim := int64(0)
 	for _, s := range sets {
@@ -183,7 +243,7 @@ func (a *App) handleDedupScan(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	finished := time.Now()
-	result := map[string]any{"aborted": false, "errored": errored, "hashed": hashed, "scanned": len(candidates), "duplicateSets": sets}
+	result := map[string]any{"aborted": aborted, "errored": errored, "hashed": hashed, "scanned": processed, "duplicateSets": sets}
 	a.dedupMu.Lock()
 	a.dedupLastScan = map[string]any{"duplicateSets": len(sets), "extraCopies": extra, "finishedAt": finished.UnixMilli(), "hashed": hashed, "reclaimableBytes": reclaim, "scanned": len(candidates)}
 	status["running"] = false
@@ -200,8 +260,7 @@ func (a *App) handleDedupScan(w http.ResponseWriter, r *http.Request) {
 	status["result"] = result
 	a.dedupScanStatus = status
 	a.dedupMu.Unlock()
-	a.hub.Broadcast(ws.Event{Type: "dedup_done", Flat: true, Payload: map[string]any{"kind": "dedupScan", "durationMs": finished.Sub(started).Milliseconds(), "aborted": false, "errored": errored, "hashed": hashed, "scanned": len(candidates)}})
-	writeJSON(w, 200, map[string]any{"started": true, "success": true})
+	a.hub.Broadcast(ws.Event{Type: "dedup_done", Flat: true, Payload: map[string]any{"kind": "dedupScan", "durationMs": finished.Sub(started).Milliseconds(), "aborted": aborted, "errored": errored, "hashed": hashed, "scanned": len(candidates)}})
 }
 
 func (a *App) handleDedupDelete(w http.ResponseWriter, r *http.Request) {
