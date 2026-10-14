@@ -3,6 +3,8 @@ title: "Purge internals"
 description: "Engineering note on group purge, delete-files and factory reset: what is removed and how it survives restarts."
 parent: "Developer notes"
 nav_order: 12
+sitemap: false
+noindex: true
 ---
 
 # Native Go purge behavior

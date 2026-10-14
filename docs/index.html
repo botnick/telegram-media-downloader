@@ -13,10 +13,15 @@ permalink: /
 <title>Telegram Media Downloader: self-hosted channel and group media downloader</title>
 <meta name="description" content="{{ page.description | escape }}">
 <link rel="canonical" href="{{ base }}/">
+<link rel="alternate" hreflang="en" href="{{ base }}/">
+<link rel="alternate" hreflang="th" href="{{ base }}/th/">
+<link rel="alternate" hreflang="x-default" href="{{ base }}/">
 <meta name="theme-color" content="#0b1424" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f8fc" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="{{ '/assets/favicon.png' | relative_url }}">
 <meta property="og:type" content="website">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="th_TH">
 <meta property="og:site_name" content="{{ site.title }}">
 <meta property="og:title" content="Telegram Media Downloader">
 <meta property="og:description" content="Self-hosted Telegram media downloader with a web dashboard. One Go binary or Docker image: monitor, backfill, dedup, backups.">
@@ -49,153 +54,7 @@ permalink: /
 }
 </script>
 <style>
-:root {
-  --bg: #f4f8fc; --bg2: #ffffff; --ink: #0d1b2e; --muted: #526279; --line: #d9e3ef;
-  --accent: #1785c4; --accent-ink: #ffffff; --accent-soft: #e3f2fb; --glow: rgba(42,171,238,.28);
-  --code-bg: #0d1b2e; --code-ink: #dbeafe; --shadow: 0 24px 60px -24px rgba(13,27,46,.35);
-  --font: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b1424; --bg2: #101c31; --ink: #e8f0fb; --muted: #93a4bd; --line: #1f2f4a;
-    --accent: #2aabee; --accent-ink: #04121f; --accent-soft: #12304a; --glow: rgba(42,171,238,.22);
-    --code-bg: #07101d; --code-ink: #cfe6fb; --shadow: 0 24px 60px -24px rgba(0,0,0,.7);
-  }
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); line-height: 1.6; -webkit-font-smoothing: antialiased; }
-img { max-width: 100%; height: auto; display: block; }
-a { color: var(--accent); }
-.wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
-section { padding: 72px 0; }
-h1, h2, h3 { line-height: 1.15; letter-spacing: -0.02em; margin: 0; }
-h2 { font-size: clamp(1.7rem, 3.6vw, 2.4rem); font-weight: 800; }
-.lead { color: var(--muted); font-size: 1.1rem; max-width: 60ch; margin: 12px 0 0; }
-.eyebrow { display: inline-block; font-size: .78rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
-.skip { position: absolute; left: -999px; top: 8px; background: var(--accent); color: var(--accent-ink); padding: 8px 14px; border-radius: 8px; z-index: 20; }
-.skip:focus { left: 8px; }
-
-/* header */
-header.top { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); background: color-mix(in srgb, var(--bg) 82%, transparent); border-bottom: 1px solid var(--line); }
-.bar { display: flex; align-items: center; gap: 20px; height: 64px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
-.brand svg { width: 28px; height: 28px; }
-nav.main { margin-left: auto; display: flex; align-items: center; gap: 4px; }
-nav.main a { color: var(--muted); text-decoration: none; font-weight: 600; font-size: .95rem; padding: 8px 12px; border-radius: 8px; }
-nav.main a:hover { color: var(--ink); background: var(--accent-soft); }
-.gh { display: inline-flex; align-items: center; gap: 8px; }
-.gh svg { width: 18px; height: 18px; }
-.stars { font-size: .8rem; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
-
-/* buttons */
-.btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 12px; font-weight: 700; text-decoration: none; border: 1px solid transparent; font-family: inherit; font-size: 1rem; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease, background .15s ease; }
-.btn.primary { background: var(--accent); color: var(--accent-ink); box-shadow: 0 10px 30px -10px var(--glow); }
-.btn.primary:hover { transform: translateY(-2px); }
-.btn.ghost { background: var(--bg2); color: var(--ink); border-color: var(--line); }
-.btn.ghost:hover { border-color: var(--accent); transform: translateY(-2px); }
-.btn svg { width: 18px; height: 18px; }
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
-
-/* hero */
-.hero { padding: 64px 0 40px; position: relative; overflow: hidden; }
-.hero::before { content: ""; position: absolute; inset: -20% -10% auto; height: 520px; background: radial-gradient(closest-side, var(--glow), transparent 70%); pointer-events: none; }
-.hero-copy { position: relative; text-align: center; max-width: 820px; margin: 0 auto; }
-.hero h1 { font-size: clamp(2.4rem, 6.4vw, 4.4rem); font-weight: 800; }
-.hero h1 span { color: var(--accent); }
-.hero p.sub { font-size: clamp(1.05rem, 2.2vw, 1.3rem); color: var(--muted); margin: 18px auto 0; max-width: 44ch; }
-.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 28px; }
-.pills { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 22px; padding: 0; list-style: none; }
-.pills li { font-size: .82rem; font-weight: 600; color: var(--muted); border: 1px solid var(--line); background: var(--bg2); padding: 4px 12px; border-radius: 999px; }
-.frame { position: relative; margin: 44px auto 0; max-width: 1040px; border-radius: 16px; border: 1px solid var(--line); background: var(--bg2); box-shadow: var(--shadow); overflow: hidden; animation: rise .8s ease both; }
-.frame .chrome { display: flex; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
-.frame .chrome i { width: 11px; height: 11px; border-radius: 50%; background: var(--line); }
-@keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
-
-/* features */
-.grid { display: grid; gap: 16px; margin-top: 36px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-.card { background: var(--bg2); border: 1px solid var(--line); border-radius: 16px; padding: 22px; transition: transform .2s ease, border-color .2s ease; }
-.card:hover { transform: translateY(-3px); border-color: var(--accent); }
-.card .ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); margin-bottom: 14px; }
-.card .ico svg { width: 24px; height: 24px; }
-.card h3 { font-size: 1.05rem; margin-bottom: 6px; letter-spacing: -0.01em; }
-.card p { margin: 0; color: var(--muted); font-size: .95rem; }
-
-/* quick start */
-.qs > * { min-width: 0; }
-.qs { display: grid; gap: 28px; grid-template-columns: 1.15fr .85fr; align-items: start; margin-top: 32px; }
-.code { position: relative; background: var(--code-bg); color: var(--code-ink); border-radius: 14px; border: 1px solid var(--line); box-shadow: var(--shadow); }
-.code pre { margin: 0; padding: 22px 22px 22px; overflow-x: auto; font: 500 .9rem/1.7 var(--mono); }
-.code .label { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.08); font-size: .78rem; color: #8fa5c2; }
-.copy { font: 700 .78rem var(--font); color: #cfe6fb; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); padding: 5px 12px; border-radius: 8px; cursor: pointer; }
-.copy:hover { background: rgba(255,255,255,.16); }
-.code code { background: none; padding: 0; font-size: inherit; color: inherit; }
-.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 14px; }
-.steps li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr; gap: 12px; }
-.steps li::before { content: counter(s); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 800; }
-.steps b { display: block; }
-.steps span { color: var(--muted); font-size: .95rem; }
-.upd { margin-top: 20px; font-size: .95rem; color: var(--muted); }
-code { font-family: var(--mono); font-size: .88em; background: var(--accent-soft); padding: 2px 6px; border-radius: 6px; }
-
-/* screenshots */
-.shots { display: grid; gap: 16px; margin-top: 36px; grid-template-columns: repeat(3, 1fr); }
-.shot { margin: 0; background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-.shot figcaption { padding: 10px 14px; font-size: .88rem; color: var(--muted); border-top: 1px solid var(--line); }
-.shot figcaption b { color: var(--ink); }
-.phones { display: grid; gap: 16px; margin-top: 16px; grid-template-columns: repeat(4, 1fr); }
-.phones img { border-radius: 18px; border: 1px solid var(--line); box-shadow: var(--shadow); }
-
-/* architecture */
-.arch { margin-top: 32px; background: var(--bg2); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
-.arch svg { width: 100%; height: auto; display: block; }
-.arch .box { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
-.arch .hot { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
-.arch text { fill: var(--ink); font: 700 15px var(--font); }
-.arch .sm { font: 500 12px var(--font); fill: var(--muted); }
-.arch .ln { stroke: var(--muted); stroke-width: 1.6; fill: none; }
-.arch marker path { fill: var(--muted); }
-.arch-note { color: var(--muted); font-size: .95rem; margin: 16px 0 0; }
-
-/* faq */
-.faq { margin-top: 32px; display: grid; gap: 10px; max-width: 860px; }
-details { background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 0 20px; }
-details[open] { border-color: var(--accent); }
-summary { cursor: pointer; font-weight: 700; padding: 16px 0; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
-summary::-webkit-details-marker { display: none; }
-summary::after { content: "+"; color: var(--accent); font-size: 1.4rem; line-height: 1; }
-details[open] summary::after { content: "\2212"; }
-details .ans { padding: 0 0 18px; color: var(--muted); }
-details .ans p { margin: 0; }
-
-/* footer */
-footer { border-top: 1px solid var(--line); padding: 44px 0 56px; color: var(--muted); font-size: .95rem; }
-.foot { display: grid; gap: 28px; grid-template-columns: 1.4fr 1fr 1fr; }
-footer h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink); margin-bottom: 10px; }
-footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-footer a { color: var(--muted); text-decoration: none; }
-footer a:hover { color: var(--accent); }
-.fine { margin-top: 32px; font-size: .85rem; }
-
-@media (max-width: 860px) {
-  section { padding: 52px 0; }
-  .qs { grid-template-columns: 1fr; }
-  .shots { grid-template-columns: 1fr; }
-  .phones { grid-template-columns: repeat(2, 1fr); }
-  .foot { grid-template-columns: 1fr; }
-  nav.main a.hide-sm { display: none; }
-  .top .brand span { display: none; }
-}
-@media (max-width: 420px) {
-  .btn { width: 100%; justify-content: center; }
-  .stars { display: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  .frame { animation: none; }
-  .btn, .card { transition: none; }
-}
+{% include landing.css %}
 </style>
 </head>
 <body>
@@ -212,6 +71,7 @@ footer a:hover { color: var(--accent); }
       <a class="hide-sm" href="#quick-start">Quick start</a>
       <a class="hide-sm" href="#faq">FAQ</a>
       <a href="{{ '/docs/' | relative_url }}">Docs</a>
+      <a href="{{ '/th/' | relative_url }}" hreflang="th" lang="th">ไทย</a>
       <a class="gh" href="{{ site.software.repository }}" rel="noopener">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         <span>GitHub</span><span class="stars" id="stars" hidden></span>
@@ -224,7 +84,7 @@ footer a:hover { color: var(--accent); }
 <section class="hero" aria-labelledby="hero-title">
   <div class="wrap">
     <div class="hero-copy">
-      <span class="eyebrow">Open source &middot; MIT &middot; v{{ site.software.version }}</span>
+      <span class="eyebrow">Open source &middot; MIT &middot; v{{ tgdl_version }}</span>
       <h1 id="hero-title">Telegram <span>Media Downloader</span></h1>
       <p class="sub">Save media from Telegram channels, groups and chats with your own account. One Go binary or Docker image, with a web dashboard.</p>
       <div class="cta">
@@ -278,7 +138,7 @@ footer a:hover { color: var(--accent); }
     <div class="qs">
       <div>
         <div class="code">
-          <div class="label"><span>bash</span><button class="copy" type="button" data-copy="#cmd">Copy</button></div>
+          <div class="label"><span>bash</span><button class="copy" type="button" data-copy="#cmd" data-done="Copied">Copy</button></div>
 <pre id="cmd"><code>mkdir telegram-media-downloader &amp;&amp; cd telegram-media-downloader
 mkdir -p data
 curl -fsSLO https://raw.githubusercontent.com/botnick/telegram-media-downloader/main/docker-compose.yml
@@ -385,26 +245,7 @@ docker compose exec -T -u node telegram-downloader \
 </footer>
 
 <script>
-(function () {
-  var copy = document.querySelector('.copy');
-  if (copy) copy.addEventListener('click', function () {
-    var text = document.querySelector(copy.getAttribute('data-copy')).innerText;
-    var done = function () { copy.textContent = 'Copied'; setTimeout(function () { copy.textContent = 'Copy'; }, 1800); };
-    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
-  });
-  try {
-    fetch('https://api.github.com/repos/botnick/telegram-media-downloader')
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) {
-        if (!d || typeof d.stargazers_count !== 'number') return;
-        ['stars', 'stars2'].forEach(function (id) {
-          var el = document.getElementById(id);
-          el.textContent = d.stargazers_count.toLocaleString('en-US');
-          el.hidden = false;
-        });
-      }).catch(function () {});
-  } catch (e) {}
-})();
+{% include landing.js %}
 </script>
 </body>
 </html>

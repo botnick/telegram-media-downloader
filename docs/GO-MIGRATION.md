@@ -3,6 +3,8 @@ title: "Go migration plan"
 description: "Original design for moving the Telegram Media Downloader backend from Node.js to Go: cutover, data compatibility and gates."
 parent: "Developer notes"
 nav_order: 2
+sitemap: false
+noindex: true
 ---
 
 # Moving the backend to pure Go

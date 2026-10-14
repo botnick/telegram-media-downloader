@@ -1,3 +1,12 @@
+{%- comment -%}
+  The released version comes from the GitHub API at build time
+  (jekyll-github-metadata), so the site follows each release on its own;
+  site.software.version is only the fallback for local builds.
+{%- endcomment -%}
+{%- assign tgdl_version = site.github.latest_release.tag_name | default: site.software.version | remove_first: "v" -%}
+{%- if page.noindex %}
+<meta name="robots" content="noindex, follow">
+{%- endif %}
 {%- if site.keywords %}
 <meta name="keywords" content="{{ site.keywords | strip | escape }}">
 {%- endif %}
@@ -13,7 +22,7 @@
   "featureList": "Realtime Telegram channel and group monitor, history backfill, t.me link and Stories downloads, auto-forward, duplicate skipping, web dashboard and PWA, backups to S3, SFTP, FTP, Google Drive and Dropbox, cluster mode, optional face and NSFW sidecars",
   "license": {{ site.software.license | jsonify }},
   "downloadUrl": {{ site.software.repository | append: "/releases/latest" | jsonify }},
-  "softwareVersion": {{ site.software.version | jsonify }},
+  "softwareVersion": {{ tgdl_version | jsonify }},
   "codeRepository": {{ site.software.repository | jsonify }},
   "url": {{ site.url | append: site.baseurl | jsonify }},
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }

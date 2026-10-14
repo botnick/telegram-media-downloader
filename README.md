@@ -20,6 +20,7 @@
   <a href="#dashboard">Dashboard</a> &bull;
   <a href="#faq">FAQ</a> &bull;
   <a href="https://botnick.github.io/telegram-media-downloader/">Website</a> &bull;
+  <a href="https://botnick.github.io/telegram-media-downloader/th/">ภาษาไทย</a> &bull;
   <a href="docs/README.md">Docs</a>
 </p>
 

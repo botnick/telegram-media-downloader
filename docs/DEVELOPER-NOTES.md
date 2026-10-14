@@ -3,6 +3,8 @@ title: "Developer notes"
 description: "Engineering notes from the Telegram Media Downloader 3.0 Go migration: design, acceptance evidence, per-feature behaviour and historical audits."
 nav_order: 8
 has_children: true
+sitemap: false
+noindex: true
 ---
 
 # Developer notes

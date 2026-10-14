@@ -3,6 +3,8 @@ title: "tgdl-core (2.x companion)"
 description: "The tgdl-core Go helper used by the 2.x Node app for hashing, walks and media serving; replaced by tgdl-server in 3.0."
 parent: "Developer notes"
 nav_order: 4
+sitemap: false
+noindex: true
 ---
 
 # Go core (`tgdl-core`)

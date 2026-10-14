@@ -3,6 +3,8 @@ title: "Rescue retention"
 description: "Engineering note on rescue mode: retention deadlines, source-deletion receipts and expiry sweeps."
 parent: "Developer notes"
 nav_order: 14
+sitemap: false
+noindex: true
 ---
 
 # Native rescue retention and live dashboard status

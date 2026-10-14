@@ -3,6 +3,8 @@ title: "HTTP policy"
 description: "Engineering note on reverse-proxy trust, HTTPS enforcement, CSP, API quotas and response compression in the Go server."
 parent: "Developer notes"
 nav_order: 9
+sitemap: false
+noindex: true
 ---
 
 # Native HTTP policy and compression

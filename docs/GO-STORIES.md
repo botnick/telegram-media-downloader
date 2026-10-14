@@ -3,6 +3,8 @@ title: "Stories internals"
 description: "Engineering note on Telegram Stories listing and downloads, and the proxy connection probe."
 parent: "Developer notes"
 nav_order: 15
+sitemap: false
+noindex: true
 ---
 
 # Native Stories and proxy probe

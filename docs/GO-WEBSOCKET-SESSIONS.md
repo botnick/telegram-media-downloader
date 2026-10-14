@@ -3,6 +3,8 @@ title: "Sessions and WebSockets"
 description: "Engineering note on dashboard session revocation and WebSocket lifetime in the Go server."
 parent: "Developer notes"
 nav_order: 17
+sitemap: false
+noindex: true
 ---
 
 # Dashboard session and WebSocket lifetime

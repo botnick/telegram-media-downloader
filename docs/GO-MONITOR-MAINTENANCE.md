@@ -3,6 +3,8 @@ title: "Monitor maintenance"
 description: "Engineering note on dialog resync, monitor restart and group info/photo refresh in the Go server."
 parent: "Developer notes"
 nav_order: 10
+sitemap: false
+noindex: true
 ---
 
 # Native monitor maintenance

@@ -3,6 +3,8 @@ title: "Audit (v2.0)"
 description: "Historical security and reliability audit of Telegram Media Downloader, frozen at the v2.0 release."
 parent: "Developer notes"
 nav_order: 18
+sitemap: false
+noindex: true
 ---
 
 # Project Audit — Telegram Media Downloader

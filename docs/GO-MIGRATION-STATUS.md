@@ -3,6 +3,8 @@ title: "Go migration status"
 description: "Scope, packaging checks and test evidence recorded during the Go migration, before the 3.0.0 release."
 parent: "Developer notes"
 nav_order: 1
+sitemap: false
+noindex: true
 ---
 
 # Go migration status

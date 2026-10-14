@@ -3,6 +3,8 @@ title: "Message link downloads"
 description: "Engineering note on resolving t.me message links and queueing their media."
 parent: "Developer notes"
 nav_order: 16
+sitemap: false
+noindex: true
 ---
 
 # Native Telegram message links

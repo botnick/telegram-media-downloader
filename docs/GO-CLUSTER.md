@@ -3,6 +3,8 @@ title: "Cluster internals"
 description: "Engineering note on Go cluster pairing, peer authentication, durable catalog sync and ranged media proxying."
 parent: "Developer notes"
 nav_order: 6
+sitemap: false
+noindex: true
 ---
 
 # Native cluster foundation

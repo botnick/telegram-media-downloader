@@ -3,6 +3,8 @@ title: "Core delivery verification"
 description: "Acceptance evidence for the Go server's downloads, dedup, queue, dashboard and access controls, recorded before 3.0.0."
 parent: "Developer notes"
 nav_order: 3
+sitemap: false
+noindex: true
 ---
 
 # Core delivery verification — 2026-10-09

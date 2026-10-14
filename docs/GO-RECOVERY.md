@@ -3,6 +3,8 @@ title: "Recovery internals"
 description: "Engineering note on the maintenance recovery page: resolving downloads whose chat or account changed."
 parent: "Developer notes"
 nav_order: 13
+sitemap: false
+noindex: true
 ---
 
 # Native recovery cleanup

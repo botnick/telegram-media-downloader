@@ -3,6 +3,8 @@ title: "Proxy routing"
 description: "Engineering note on how configured SOCKS, HTTP and MTProxy proxies reach Telegram logins, updates and media downloads."
 parent: "Developer notes"
 nav_order: 11
+sitemap: false
+noindex: true
 ---
 
 # Native Telegram proxy routing

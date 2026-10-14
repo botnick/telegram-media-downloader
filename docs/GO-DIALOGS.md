@@ -3,6 +3,8 @@ title: "Dialog pagination"
 description: "Engineering note on how the Go server pages Telegram dialogs so no chat is skipped."
 parent: "Developer notes"
 nav_order: 7
+sitemap: false
+noindex: true
 ---
 
 # Native dialog pagination

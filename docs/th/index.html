@@ -1,0 +1,254 @@
+---
+layout: null
+title: Telegram Media Downloader ภาษาไทย
+description: โปรแกรมโหลดรูป วิดีโอ และไฟล์จากช่อง กลุ่ม และแชต Telegram ด้วยบัญชีของคุณเอง ติดตั้งบนเครื่องตัวเองด้วย Docker หรือไฟล์ Go ไฟล์เดียว มีหน้าเว็บจัดการในตัว ฟรีและโอเพนซอร์ส
+lang: th
+permalink: /th/
+---
+{%- assign base = site.url | append: site.baseurl -%}
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>โหลดวิดีโอและรูปจาก Telegram ทั้งช่อง กลุ่ม แชตส่วนตัว | Telegram Media Downloader</title>
+<meta name="description" content="{{ page.description | escape }}">
+<link rel="canonical" href="{{ base }}/th/">
+<link rel="alternate" hreflang="en" href="{{ base }}/">
+<link rel="alternate" hreflang="th" href="{{ base }}/th/">
+<link rel="alternate" hreflang="x-default" href="{{ base }}/">
+<meta name="theme-color" content="#0b1424" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f8fc" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" href="{{ '/assets/favicon.png' | relative_url }}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="th_TH">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:site_name" content="{{ site.title }}">
+<meta property="og:title" content="Telegram Media Downloader: โหลดวิดีโอและรูปจาก Telegram">
+<meta property="og:description" content="โหลดรูป วิดีโอ และไฟล์จากช่องและกลุ่ม Telegram อัตโนมัติ ติดตั้งเองด้วย Docker มีหน้าเว็บจัดการ ข้ามไฟล์ซ้ำ สำรองข้อมูลได้">
+<meta property="og:url" content="{{ base }}/th/">
+<meta property="og:image" content="{{ base }}/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="หน้าคลังไฟล์ของ Telegram Media Downloader">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Telegram Media Downloader: โหลดวิดีโอและรูปจาก Telegram">
+<meta name="twitter:description" content="โหลดรูป วิดีโอ และไฟล์จากช่องและกลุ่ม Telegram ด้วยบัญชีของคุณเอง ติดตั้งเองด้วย Docker">
+<meta name="twitter:image" content="{{ base }}/assets/og.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
+{% include head_custom.html %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+{%- for item in site.data.faq_th %}
+    {
+      "@type": "Question",
+      "name": {{ item.q | jsonify }},
+      "acceptedAnswer": { "@type": "Answer", "text": {{ item.a | markdownify | strip_html | strip | jsonify }} }
+    }{% unless forloop.last %},{% endunless %}
+{%- endfor %}
+  ]
+}
+</script>
+<style>
+{% include landing.css %}
+:root { --font: "Manrope", "Noto Sans Thai", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+h1, h2, h3 { line-height: 1.3; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">ข้ามไปที่เนื้อหา</a>
+
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="{{ '/' | relative_url }}" aria-label="หน้าแรก Telegram Media Downloader">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#2aabee"/><path d="M16 7v11m0 0-4.5-4.5M16 18l4.5-4.5M9 22.5h14" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Telegram Media Downloader</span>
+    </a>
+    <nav class="main" aria-label="Primary">
+      <a class="hide-sm" href="#features">ความสามารถ</a>
+      <a class="hide-sm" href="#quick-start">เริ่มใช้งาน</a>
+      <a class="hide-sm" href="#faq">คำถามที่พบบ่อย</a>
+      <a href="{{ '/docs/' | relative_url }}">คู่มือ</a>
+      <a href="{{ '/' | relative_url }}" hreflang="en" lang="en">EN</a>
+      <a class="gh" href="{{ site.software.repository }}" rel="noopener">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span><span class="stars" id="stars" hidden></span>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero" aria-labelledby="hero-title">
+  <div class="wrap">
+    <div class="hero-copy">
+      <span class="eyebrow">โอเพนซอร์ส &middot; ฟรี &middot; v{{ tgdl_version }}</span>
+      <h1 id="hero-title">โหลดวิดีโอและรูปจาก <span>Telegram</span></h1>
+      <p class="sub"><b>Telegram Media Downloader</b> เก็บรูป วิดีโอ และไฟล์จากช่อง กลุ่ม และแชต Telegram ด้วยบัญชีของคุณเอง รวมถึงช่องส่วนตัวที่คุณเป็นสมาชิก ติดตั้งบนเครื่องตัวเองด้วย Docker หรือไฟล์ Go ไฟล์เดียว มีหน้าเว็บจัดการในตัว</p>
+      <div class="cta">
+        <a class="btn primary" href="#quick-start">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+          เริ่มใช้งาน
+        </a>
+        <a class="btn ghost" href="{{ site.software.repository }}" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5-4.8-4.6 6.6-.9z"/></svg>
+          กดดาวบน GitHub <span class="stars" id="stars2" hidden></span>
+        </a>
+      </div>
+      <ul class="pills" aria-label="จุดเด่น">
+        <li>Docker</li><li>ไฟล์ Go ไฟล์เดียว</li><li>Linux &middot; Windows &middot; macOS</li><li>ใช้บนมือถือได้</li><li>ช่องส่วนตัว</li><li>ภาษาไทย</li>
+      </ul>
+    </div>
+    <div class="frame">
+      <div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div>
+      <picture>
+        <source media="(prefers-color-scheme: light)" srcset="{{ '/screenshots/library-light.webp' | relative_url }}">
+        <img src="{{ '/screenshots/library.webp' | relative_url }}" width="1600" height="1000" alt="หน้าคลังไฟล์: รูปและวิดีโอที่โหลดมาทั้งหมด จัดกลุ่มตามวันที่ พร้อมรายชื่อแชตด้านซ้าย" fetchpriority="high">
+      </picture>
+    </div>
+  </div>
+</section>
+
+<section id="features" aria-labelledby="features-title">
+  <div class="wrap">
+    <span class="eyebrow">ความสามารถ</span>
+    <h2 id="features-title">เก็บไฟล์จาก Telegram อัตโนมัติ ไม่ต้องคอยเฝ้า</h2>
+    <p class="lead">ล็อกอินด้วยบัญชีของคุณ แล้วโหลดไฟล์จากช่องและกลุ่ม Telegram ได้ทั้งหมด รวมถึงแชตส่วนตัวที่คุณอยู่</p>
+    <div class="grid">
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div><h3>โหลดอัตโนมัติ</h3><p>เฝ้าช่อง กลุ่ม forum topic และแชตส่วนตัวแบบเรียลไทม์ ดึงข้อความย้อนหลังได้และทำต่อหลังรีสตาร์ท โหลดจากลิงก์ <code>t.me</code>, Stories, สื่อที่ตั้งเวลาลบตัวเอง และส่งต่ออัตโนมัติ</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div><h3>หน้าเว็บและแอปบนมือถือ</h3><p>แกลเลอรี คิวโหลดพร้อมความเร็วและเวลาที่เหลือ ตัวดูแบบเต็มจอ และลิงก์แชร์ไฟล์ที่ตั้งวันหมดอายุได้ ติดตั้งเป็นแอปบนมือถือได้ มีภาษาไทย</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></div><h3>ไม่โหลดไฟล์ซ้ำ</h3><p>ข้ามไฟล์ที่มีอยู่แล้วก่อนโหลด ตรวจซ้ำด้วย SHA-256 และมีเครื่องมือสแกนหาไฟล์ซ้ำในคลังเพื่อลบทีเดียว</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div><h3>อัปเดตคลิกเดียว</h3><p>กด Install update ในหน้าเว็บ หรือตั้งให้อัปเดตเองตามเวลา ระบบสำรองฐานข้อมูลให้ก่อนทุกครั้ง</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.2 8.2 8 9 4.8-.8 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>ปลอดภัยตั้งแต่แรก</h3><p>ไม่มีใครเข้าได้จนกว่าจะตั้งรหัสผ่าน มีบัญชีผู้ชมแบบอ่านอย่างเดียว ยกเลิก session ได้ และ session ของ Telegram ถูกเข้ารหัส</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="m8.2 10.8 7.6-3.6M8.2 13.2l7.6 3.6"/></svg></div><h3>เชื่อมหลายเครื่อง</h3><p>จับคู่หลายเครื่องเข้าด้วยกัน เปิดดูและเล่นไฟล์ของทุกเครื่องจากหน้าเดียว และล้างไฟล์ซ้ำข้ามเครื่อง</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/><path d="M12 12v6m0-6-2 2m2-2 2 2"/></svg></div><h3>สำรองข้อมูล</h3><p>สำรองไปที่ดิสก์ในเครื่อง, S3, SFTP, FTP/FTPS, Google Drive หรือ Dropbox เลือกเข้ารหัสได้ และกู้คืนแบบออฟไลน์ได้</p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/></svg></div><h3>AI เสริม</h3><p>ภาพตัวอย่างตอนเลื่อนวิดีโอมีในตัว จดจำใบหน้าและคัดกรองภาพ 18+ ได้ผ่าน container เสริม <code>tgdl-faces</code> และ <code>tgdl-nsfw</code></p></article>
+      <article class="card"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div><h3>ไฟล์เดียวจบ</h3><p><code>tgdl-server</code> รันทั้งหน้าเว็บ บัญชี Telegram การโหลด และการสำรองข้อมูล ไม่ต้องลง Node.js หรืออะไรเพิ่ม มี Docker image สำหรับ amd64 และ arm64</p></article>
+    </div>
+  </div>
+</section>
+
+<section id="quick-start" aria-labelledby="qs-title">
+  <div class="wrap">
+    <span class="eyebrow">เริ่มใช้งาน</span>
+    <h2 id="qs-title">ติดตั้งเสร็จในไม่กี่นาที</h2>
+    <p class="lead">ต้องมี Docker พร้อม Compose และ <code>apiId</code> / <code>apiHash</code> จาก <a href="https://my.telegram.org" rel="noopener">my.telegram.org</a> (ขอได้ฟรี)</p>
+    <div class="qs">
+      <div>
+        <div class="code">
+          <div class="label"><span>bash</span><button class="copy" type="button" data-copy="#cmd" data-done="คัดลอกแล้ว">คัดลอก</button></div>
+<pre id="cmd"><code>mkdir telegram-media-downloader &amp;&amp; cd telegram-media-downloader
+mkdir -p data
+curl -fsSLO https://raw.githubusercontent.com/botnick/telegram-media-downloader/main/docker-compose.yml
+docker compose up -d
+# ตั้งรหัสผ่านแรก จากไฟล์ที่มีรหัสผ่านบรรทัดเดียว:
+docker compose exec -T -u node telegram-downloader \
+  tgdl-server setup --password-stdin &lt; password.txt</code></pre>
+        </div>
+        <p class="upd"><b>อัปเดต:</b> กด Settings &rsaquo; Maintenance &rsaquo; <b>Install update</b> หรือใส่ <code>WATCHTOWER_HTTP_API_PERIODIC_POLLS=true</code> ใน <code>.env</code> ให้อัปเดตเองทุกวัน หรือรัน <code>docker compose pull &amp;&amp; docker compose up -d</code></p>
+        <p class="upd"><b>ใช้ 2.x อยู่?</b> อัปเป็น 3.x ได้เลย image พอร์ต โฟลเดอร์ข้อมูล และบัญชีเดิมใช้ต่อได้ <a href="{{ '/UPGRADING.html' | relative_url }}">รายละเอียดการอัปเกรด</a></p>
+        <p class="upd"><b>ไม่มี Docker?</b> ดาวน์โหลด<a href="{{ site.software.repository }}/releases/latest" rel="noopener">ไฟล์โปรแกรม</a>สำหรับ Linux, Windows หรือ macOS แล้วรัน <code>TGDL_DATA_DIR=./data ./tgdl-server</code> ดู<a href="{{ '/DEPLOY.html' | relative_url }}">คู่มือติดตั้ง</a></p>
+      </div>
+      <ol class="steps">
+        <li><div><b>เข้าสู่ระบบ</b><span>เปิด <code>http://localhost:3000</code> แล้วใส่รหัสผ่านที่ตั้งไว้</span></div></li>
+        <li><div><b>ใส่ API ของ Telegram</b><span>Settings &rsaquo; Telegram API</span></div></li>
+        <li><div><b>เพิ่มบัญชี</b><span>เบอร์โทร รหัสยืนยัน และรหัส 2FA ถ้ามี</span></div></li>
+        <li><div><b>เริ่มเฝ้าแชต</b><span>หรือวางลิงก์ <code>t.me/</code> เพื่อโหลดทีละข้อความ</span></div></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="shots-title">
+  <div class="wrap">
+    <span class="eyebrow">หน้าเว็บ</span>
+    <h2 id="shots-title">ใช้ได้ทั้งคอมและมือถือ</h2>
+    <div class="shots">
+      <figure class="shot"><img loading="lazy" width="1600" height="1000" src="{{ '/screenshots/chats.webp' | relative_url }}" alt="หน้าแชต: เลือกช่องและกลุ่มที่จะเฝ้า"><figcaption><b>แชต</b> &mdash; เฝ้าและดึงย้อนหลัง</figcaption></figure>
+      <figure class="shot"><img loading="lazy" width="1600" height="1000" src="{{ '/screenshots/queue.webp' | relative_url }}" alt="คิวดาวน์โหลดพร้อมความคืบหน้า ความเร็ว และเวลาที่เหลือ"><figcaption><b>คิว</b> &mdash; ความคืบหน้า ความเร็ว เวลาที่เหลือ</figcaption></figure>
+      <figure class="shot"><img loading="lazy" width="1600" height="1000" src="{{ '/screenshots/tools.webp' | relative_url }}" alt="เครื่องมือ: ตรวจคลัง ความปลอดภัย AI และสำรองข้อมูล"><figcaption><b>เครื่องมือ</b> &mdash; ไฟล์ซ้ำ 18+ ใบหน้า สำรองข้อมูล</figcaption></figure>
+    </div>
+    <div class="phones">
+      <img loading="lazy" width="585" height="1266" src="{{ '/screenshots/mobile-library.webp' | relative_url }}" alt="คลังไฟล์บนมือถือ">
+      <img loading="lazy" width="585" height="1266" src="{{ '/screenshots/mobile-viewer.webp' | relative_url }}" alt="ตัวดูไฟล์บนมือถือ">
+      <img loading="lazy" width="585" height="1266" src="{{ '/screenshots/mobile-queue.webp' | relative_url }}" alt="คิวดาวน์โหลดบนมือถือ">
+      <img loading="lazy" width="585" height="1266" src="{{ '/screenshots/mobile-chats-light.webp' | relative_url }}" alt="หน้าแชตบนมือถือ ธีมสว่าง">
+    </div>
+    <p class="arch-note">ภาพหน้าจอใช้รูปตัวอย่างและชื่อแชตสมมติ</p>
+  </div>
+</section>
+
+<section aria-labelledby="arch-title">
+  <div class="wrap">
+    <span class="eyebrow">โครงสร้าง</span>
+    <h2 id="arch-title">โปรแกรมเดียว ไม่ต้องรันอย่างอื่น</h2>
+    <div class="arch">
+      <svg viewBox="0 0 840 330" role="img" aria-labelledby="arch-desc">
+        <title id="arch-desc">Diagram: the browser talks to tgdl-server over HTTP and WebSocket. tgdl-server connects to Telegram over MTProto, stores state in SQLite, writes media to disk and calls ffmpeg for thumbnails.</title>
+        <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z"/></marker></defs>
+        <rect class="box" x="20" y="105" width="140" height="60" rx="12"/><text x="90" y="133" text-anchor="middle">Browser</text><text class="sm" x="90" y="152" text-anchor="middle">dashboard / PWA</text>
+        <rect class="hot" x="270" y="85" width="300" height="100" rx="14"/><text x="420" y="120" text-anchor="middle">tgdl-server (Go)</text><text class="sm" x="420" y="142" text-anchor="middle">embedded dashboard, API, WebSocket</text><text class="sm" x="420" y="160" text-anchor="middle">accounts, durable queue, dedup, backups</text>
+        <rect class="box" x="680" y="105" width="140" height="60" rx="12"/><text x="750" y="130" text-anchor="middle">Telegram</text><text class="sm" x="750" y="150" text-anchor="middle">MTProto (gotd)</text>
+        <rect class="box" x="200" y="250" width="130" height="50" rx="12"/><text x="265" y="281" text-anchor="middle">SQLite</text>
+        <rect class="box" x="355" y="250" width="130" height="50" rx="12"/><text x="420" y="281" text-anchor="middle">media on disk</text>
+        <rect class="box" x="510" y="250" width="130" height="50" rx="12"/><text x="575" y="281" text-anchor="middle">ffmpeg</text>
+        <path class="ln" d="M160 135h108" marker-start="url(#ar)" marker-end="url(#ar)"/><text class="sm" x="214" y="126" text-anchor="middle">HTTP + WS</text>
+        <path class="ln" d="M570 135h108" marker-start="url(#ar)" marker-end="url(#ar)"/>
+        <path class="ln" d="M330 187l-55 61" marker-start="url(#ar)" marker-end="url(#ar)"/>
+        <path class="ln" d="M420 187v61" marker-end="url(#ar)"/>
+        <path class="ln" d="M510 187l55 61" marker-end="url(#ar)"/>
+      </svg>
+    </div>
+    <p class="arch-note">ไฟล์จะถูกเขียนลงไฟล์ชั่วคราวก่อนแล้วค่อยย้ายเข้าที่ งานในคิวไม่หายแม้รีสตาร์ท ดู<a href="{{ '/ARCHITECTURE.html' | relative_url }}">โครงสร้างระบบ</a>และ<a href="{{ '/FEATURES.html' | relative_url }}">รายการความสามารถทั้งหมด</a> (ภาษาอังกฤษ)</p>
+  </div>
+</section>
+
+<section id="faq" aria-labelledby="faq-title">
+  <div class="wrap">
+    <span class="eyebrow">คำถามที่พบบ่อย</span>
+    <h2 id="faq-title">คำถามที่คนถามบ่อย</h2>
+    <div class="faq">
+{%- for item in site.data.faq_th %}
+      <details><summary>{{ item.q }}</summary><div class="ans">{{ item.a | markdownify }}</div></details>
+{%- endfor %}
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="{{ '/' | relative_url }}"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#2aabee"/><path d="M16 7v11m0 0-4.5-4.5M16 18l4.5-4.5M9 22.5h14" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Telegram Media Downloader</span></a>
+        <p>ติดตั้งเอง โอเพนซอร์ส ใช้ฟรี (MIT)</p>
+      </div>
+      <nav aria-label="คู่มือ"><h3>คู่มือ (ภาษาอังกฤษ)</h3><ul>
+        <li><a href="{{ '/DEPLOY.html' | relative_url }}">ติดตั้ง</a></li>
+        <li><a href="{{ '/UPGRADING.html' | relative_url }}">อัปเกรดจาก 2.x</a></li>
+        <li><a href="{{ '/CONFIGURATION.html' | relative_url }}">การตั้งค่า</a></li>
+        <li><a href="{{ '/TROUBLESHOOTING.html' | relative_url }}">แก้ปัญหา</a></li>
+        <li><a href="{{ '/API.html' | relative_url }}">API</a></li>
+        <li><a href="{{ '/docs/' | relative_url }}">คู่มือทั้งหมด</a></li>
+      </ul></nav>
+      <nav aria-label="โปรเจกต์"><h3>โปรเจกต์</h3><ul>
+        <li><a href="{{ site.software.repository }}" rel="noopener">GitHub</a></li>
+        <li><a href="{{ site.software.repository }}/releases" rel="noopener">ดาวน์โหลด</a></li>
+        <li><a href="{{ site.software.repository }}/blob/main/CHANGELOG.md" rel="noopener">บันทึกการเปลี่ยนแปลง</a></li>
+        <li><a href="{{ site.software.license }}" rel="noopener">MIT license</a></li>
+      </ul></nav>
+    </div>
+    <p class="fine">ไม่ได้เกี่ยวข้องกับ Telegram ใช้ user API (MTProto) ของ Telegram ผ่าน gotd</p>
+  </div>
+</footer>
+
+<script>
+{% include landing.js %}
+</script>
+</body>
+</html>

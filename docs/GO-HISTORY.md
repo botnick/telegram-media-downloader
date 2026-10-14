@@ -3,6 +3,8 @@ title: "History jobs"
 description: "Engineering note on durable Telegram history backfill jobs: modes, limits, account selection and restart resumption."
 parent: "Developer notes"
 nav_order: 8
+sitemap: false
+noindex: true
 ---
 
 # Native Telegram history jobs
