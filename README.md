@@ -299,6 +299,14 @@ MinIO), SFTP, FTP/FTPS, Google Drive or Dropbox, with optional encryption and
 an offline restore command. See
 [Backup](docs/BACKUP.md).
 
+## ภาษาไทย
+
+**Telegram Media Downloader** คือโปรแกรมโหลดรูป วิดีโอ และไฟล์จากช่อง กลุ่ม และแชต Telegram
+ฟรีและโอเพนซอร์ส ติดตั้งบนเครื่องหรือ NAS ของคุณเองด้วย Docker หรือไฟล์ Go ไฟล์เดียว
+ล็อกอินด้วยบัญชี Telegram ของคุณ จึงโหลดจากช่องส่วนตัวที่เป็นสมาชิกได้ เฝ้าแชตแบบเรียลไทม์
+ดึงข้อความย้อนหลังทั้งช่อง ข้ามไฟล์ซ้ำ และสำรองข้อมูลไป S3, Google Drive หรือ Dropbox ได้
+หน้าเว็บจัดการมีภาษาไทย อ่านต่อที่[หน้าเว็บภาษาไทย](https://botnick.github.io/telegram-media-downloader/th/)
+
 ## Documentation
 
 | Page | Contents |
