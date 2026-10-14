@@ -23,7 +23,11 @@ func (a *App) statsPayload(ctx context.Context) (map[string]any, bool) {
 		return nil, false
 	}
 	var totalFiles, totalSize int64
-	if err := a.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(file_size),0) FROM downloads`).Scan(&totalFiles, &totalSize); err != nil {
+	if err := a.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads`).Scan(&totalFiles); err != nil {
+		return nil, false
+	}
+	totalSize, err := a.catalogBytes(ctx)
+	if err != nil {
 		return nil, false
 	}
 	raw, _ := a.config.Load(ctx)

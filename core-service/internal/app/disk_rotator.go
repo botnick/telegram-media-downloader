@@ -17,7 +17,8 @@ import (
 
 // The disk rotator enforces diskManagement.maxTotalSize the way 2.x did.
 // While diskManagement.enabled is true, every sweepIntervalMin minutes it
-// compares SUM(file_size) over the catalog with the cap and, above it,
+// compares the bytes of the files on disk (each shared file once) with the
+// cap and, above it,
 // deletes the oldest rows (created_at, then id) until the total is back
 // under the cap, at most advanced.diskRotator.maxDeletesPerSweep per sweep,
 // advanced.diskRotator.sweepBatch rows per transaction.
@@ -165,9 +166,15 @@ func (a *App) sweepDiskRotator(ctx context.Context) (diskRotatorResult, bool, er
 
 func (a *App) catalogBytes(ctx context.Context) (int64, error) {
 	var total int64
-	err := a.db.Reader.QueryRowContext(ctx, `SELECT COALESCE(SUM(file_size),0) FROM downloads`).Scan(&total)
+	err := a.db.Reader.QueryRowContext(ctx, catalogBytesQuery).Scan(&total)
 	return total, err
 }
+
+// catalogBytesQuery sums each stored file once. Rows for the same media
+// (a repost, a forward, a deduplicated download) share one file; summing
+// file_size over rows counted that file once per row and made the library
+// look larger than the disk, which set the rotator deleting under the cap.
+const catalogBytesQuery = `SELECT COALESCE(SUM(size),0) FROM (SELECT MAX(COALESCE(file_size,0)) AS size FROM downloads WHERE file_path IS NOT NULL AND file_path<>'' GROUP BY file_path)`
 
 // rotateBatch deletes, in one writer transaction, the oldest eligible rows
 // until *total drops to capBytes or limit rows are gone. Selecting inside the
@@ -218,7 +225,17 @@ func (a *App) rotateBatch(ctx context.Context, total *int64, capBytes int64, lim
 		if _, err = tx.ExecContext(ctx, `DELETE FROM downloads WHERE id=?`, row.id); err != nil {
 			return nil, err
 		}
-		remaining -= row.size
+		// A row without a file frees nothing, and a file another row
+		// still uses stays on disk.
+		shared := !row.path.Valid || row.path.String == ""
+		if !shared {
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM downloads WHERE file_path=?)`, row.path.String).Scan(&shared); err != nil {
+				return nil, err
+			}
+		}
+		if !shared {
+			remaining -= row.size
+		}
 		deleted = append(deleted, row)
 	}
 	if err = tx.Commit(); err != nil {

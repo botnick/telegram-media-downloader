@@ -64,8 +64,9 @@ func TestDiskRotatorOffUnlessEnabledWithCap(t *testing.T) {
 			t.Fatalf("enabled=%v cap=%v rotated: %+v active=%v %v", tc.enabled, tc.cap, res, active, err)
 		}
 	}
-	setDiskRotation(t, a, true, "12B", nil) // exactly the total
-	if res, active, err := a.sweepDiskRotator(context.Background()); err != nil || !active || res.Deleted != 0 || res.Before != 12 {
+	// Three rows share one 4-byte file: the disk holds 4 bytes, not 12.
+	setDiskRotation(t, a, true, "4B", nil) // exactly the total
+	if res, active, err := a.sweepDiskRotator(context.Background()); err != nil || !active || res.Deleted != 0 || res.Before != 4 {
 		t.Fatalf("at the cap: %+v %v", res, err)
 	}
 }
@@ -98,10 +99,12 @@ func TestDiskRotatorDeletesOldestUnprotectedUntilUnderCap(t *testing.T) {
 	}
 	client := a.hub.Add("admin")
 	defer a.hub.Remove(client)
-	// 11 rows × 4 bytes = 44; a 26-byte cap needs 5 rows (20 bytes) gone.
+	// 10 files × 4 bytes = 40 (rows 4 and 9 share one); a 26-byte cap needs
+	// 16 bytes gone: row 4 frees nothing while row 9 keeps its file, so the
+	// oldest five rows go.
 	setDiskRotation(t, a, true, "26B", map[string]any{"sweepBatch": float64(2)})
 	res, active, err := a.sweepDiskRotator(ctx)
-	if err != nil || !active || res != (diskRotatorResult{Before: 44, Deleted: 5, After: 24, CapBytes: 26}) {
+	if err != nil || !active || res != (diskRotatorResult{Before: 40, Deleted: 5, After: 24, CapBytes: 26}) {
 		t.Fatalf("sweep %+v active=%v %v", res, active, err)
 	}
 	for _, id := range []int{4, 5, 6, 7, 8} {

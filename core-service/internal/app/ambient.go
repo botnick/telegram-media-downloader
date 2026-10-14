@@ -64,8 +64,12 @@ func (a *App) pushMonitorStatus(ctx context.Context) error {
 }
 
 func (a *App) pushStats(ctx context.Context) error {
-	var files, size int64
-	if err := a.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(file_size),0) FROM downloads`).Scan(&files, &size); err != nil {
+	var files int64
+	if err := a.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads`).Scan(&files); err != nil {
+		return err
+	}
+	size, err := a.catalogBytes(ctx)
+	if err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {

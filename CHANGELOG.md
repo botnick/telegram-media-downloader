@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.12] — 2026-10-14
+
+### Fixed
+- **The disk cap deleted downloads while the disk was well under it.** Library size was the sum of every row's size, but rows for the same media (reposts, forwards, deduplicated downloads) share one file, so a shared file was counted once per row. On a library of about 3.75 TB of files this read as more than 5 TB, and the disk cap (`diskManagement.maxTotalSize`) kept deleting the oldest downloads. Library size now counts each file on disk once, and a rotated row whose file another row still uses no longer counts as space freed.
+- **The dashboard showed the library larger than it is,** for the same reason. Total size and disk usage now match the files on disk.
+
+### Service worker
+- `VERSION = 'v34120'`
+
 ## [3.4.11] — 2026-10-13
 
 ### Added
