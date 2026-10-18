@@ -12,7 +12,7 @@ import (
 
 type peerRecoveryAPI interface {
 	MessagesGetHistory(context.Context, *tg.MessagesGetHistoryRequest) (tg.MessagesMessagesClass, error)
-	ContactsResolveUsername(context.Context, string) (*tg.ContactsResolvedPeer, error)
+	ContactsResolveUsername(context.Context, *tg.ContactsResolveUsernameRequest) (*tg.ContactsResolvedPeer, error)
 }
 
 func (a *Account) ProbeDialog(ctx context.Context, dialog Dialog) error {
@@ -75,7 +75,7 @@ func resolveDialog(ctx context.Context, api peerRecoveryAPI, state *UpdateState,
 		}
 		return dialog, nil
 	}
-	result, err := api.ContactsResolveUsername(ctx, strings.TrimPrefix(query, "@"))
+	result, err := api.ContactsResolveUsername(ctx, &tg.ContactsResolveUsernameRequest{Username: strings.TrimPrefix(query, "@")})
 	if err != nil {
 		return Dialog{}, err
 	}

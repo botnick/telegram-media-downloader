@@ -70,7 +70,7 @@ func TestDownloadUsesAuthorizedHomeDCPoolAndVerifiesBytes(t *testing.T) {
 		p := &downloadTestPool{data: []byte("verified transfer")}
 		c := &downloadTestClient{pool: p}
 		var out bytes.Buffer
-		err := downloadMedia(context.Background(), c, Attachment{DC: dc, Location: &tg.InputPeerPhotoFileLocation{Peer: &tg.InputPeerSelf{}, PhotoID: 42}}, &out, true)
+		err := downloadMedia(context.Background(), c, Attachment{DC: dc, Location: &tg.InputPeerPhotoFileLocation{Peer: &tg.InputPeerSelf{}, PhotoID: 42}}, &out, true, 1)
 		if err != nil {
 			t.Fatalf("dc=%d: %v", dc, err)
 		}
@@ -90,7 +90,7 @@ func TestDownloadRetainsIntegrityAndTransportErrors(t *testing.T) {
 	c := &downloadTestClient{pool: p}
 	var out bytes.Buffer
 	a := Attachment{DC: 5, Location: &tg.InputPeerPhotoFileLocation{Peer: &tg.InputPeerSelf{}, PhotoID: 42}}
-	if err := downloadMedia(context.Background(), c, a, &out, true); !errors.Is(err, downloader.ErrHashMismatch) {
+	if err := downloadMedia(context.Background(), c, a, &out, true, 1); !errors.Is(err, downloader.ErrHashMismatch) {
 		t.Fatalf("integrity error=%v", err)
 	}
 	if out.Len() != 0 || !p.closed {
@@ -98,7 +98,7 @@ func TestDownloadRetainsIntegrityAndTransportErrors(t *testing.T) {
 	}
 	failure := errors.New("transport refused")
 	c = &downloadTestClient{failure: failure}
-	if err := downloadMedia(context.Background(), c, a, &out, true); !errors.Is(err, failure) || c.exports != 0 {
+	if err := downloadMedia(context.Background(), c, a, &out, true, 1); !errors.Is(err, failure) || c.exports != 0 {
 		t.Fatalf("unexpected alternate transport: %v", err)
 	}
 }

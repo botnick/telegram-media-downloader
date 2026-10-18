@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gotd/td/bin"
@@ -33,6 +34,8 @@ type floodGuard struct {
 	limiter *rate.Limiter
 	mu      sync.Mutex
 	until   time.Time
+	// floods counts the FLOOD_WAITs Telegram has answered this account with.
+	floods atomic.Uint64
 }
 
 func newFloodGuard() *floodGuard {
@@ -50,6 +53,7 @@ func (g *floodGuard) FloodWaitUntil() time.Time {
 }
 
 func (g *floodGuard) close(d time.Duration) time.Time {
+	g.floods.Add(1)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if until := time.Now().Add(d + floodGateMargin); until.After(g.until) {

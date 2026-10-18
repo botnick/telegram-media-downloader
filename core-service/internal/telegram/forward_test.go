@@ -30,7 +30,7 @@ func (f *fakeForwardAPI) UploadSaveBigFilePart(_ context.Context, r *tg.UploadSa
 func (f *fakeForwardAPI) MessagesGetHistory(context.Context, *tg.MessagesGetHistoryRequest) (tg.MessagesMessagesClass, error) {
 	return nil, errors.New("unexpected history read")
 }
-func (f *fakeForwardAPI) ContactsResolveUsername(context.Context, string) (*tg.ContactsResolvedPeer, error) {
+func (f *fakeForwardAPI) ContactsResolveUsername(context.Context, *tg.ContactsResolveUsernameRequest) (*tg.ContactsResolvedPeer, error) {
 	return nil, errors.New("unexpected username lookup")
 }
 func (f *fakeForwardAPI) ContactsResolvePhone(_ context.Context, phone string) (*tg.ContactsResolvedPeer, error) {

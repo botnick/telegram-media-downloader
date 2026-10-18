@@ -135,7 +135,7 @@ func MessageAttachment(message *tg.Message) (Attachment, error) {
 	if doc != nil {
 		a.Identity = MediaIdentity{Kind: "document", ID: strconv.FormatInt(doc.ID, 10), Size: doc.Size}
 		a.DC = doc.DCID
-		a.Location = doc.AsInputDocumentFileLocation()
+		a.Location = doc.AsInputDocumentFileLocation("")
 		a.Type = "document"
 		mediaType := strings.ToLower(strings.TrimSpace(strings.SplitN(doc.MimeType, ";", 2)[0]))
 		switch {
@@ -282,7 +282,20 @@ func (c *GotdClient) DownloadMedia(ctx context.Context, a Attachment, w io.Write
 	key, chat := a.Identity.Key(), "chat:"+a.GroupID
 	_, plainFile := c.unverified.Load(key)
 	_, plainChat := c.unverified.Load(chat)
-	err := downloadMedia(ctx, guardedClient{c.client, c}, a, w, verifyChunks && !plainFile && !plainChat)
+	verify := verifyChunks && !plainFile && !plainChat
+	tuned := c.threads != nil && c.guard != nil && !verify && a.Identity.Size > downloadPartSize
+	// Several parts of one file at once; a FLOOD_WAIT meanwhile halves the
+	// account's threads for its next files.
+	threads, floods := 1, uint64(0)
+	if tuned {
+		threads, floods = c.threads.threads(), c.guard.floods.Load()
+	}
+	err := downloadMedia(ctx, guardedClient{c.client, c}, a, w, verify, threads)
+	if tuned {
+		if flooded := c.guard.floods.Load() != floods; flooded || err == nil {
+			c.threads.record(flooded)
+		}
+	}
 	if err != nil && hashesUnavailable(err) {
 		c.unverified.Store(key, struct{}{})
 		if a.GroupID != "" {
@@ -408,7 +421,9 @@ type downloadClient interface {
 	DC(context.Context, int, int64) (gotd.CloseInvoker, error)
 }
 
-func downloadMedia(ctx context.Context, client downloadClient, a Attachment, w io.Writer, verify bool) error {
+// downloadMedia writes the attachment to w. Without per-chunk verification, a
+// file of more than one part is fetched with up to threads parts in flight.
+func downloadMedia(ctx context.Context, client downloadClient, a Attachment, w io.Writer, verify bool, threads int) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -426,6 +441,9 @@ func downloadMedia(ctx context.Context, client downloadClient, a Attachment, w i
 		return err
 	}
 	defer pool.Close()
+	if !verify && threads > 1 && a.Identity.Size > downloadPartSize {
+		return fetchParallel(ctx, tg.NewClient(pool), a.Location, a.Identity.Size, threads, w)
+	}
 	if !verify {
 		_, err = downloader.NewDownloader().WithPartSize(downloadPartSize).Download(tg.NewClient(pool), a.Location).Stream(ctx, w)
 		return err

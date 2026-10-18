@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [3.4.15] — 2026-10-18
+
+### Changed
+- **A large file downloads several parts at once** ([#111](https://github.com/botnick/telegram-media-downloader/issues/111)). Each file was fetched one 1 MiB part at a time, waiting for each part before asking for the next, so a single file's speed was set by the round trip to Telegram's datacenter rather than by bandwidth: about 1.3 MB/s far from the datacenter, whatever the plan. A file larger than one part now keeps up to 4 part requests in flight and still writes the parts in order, so the bandwidth limit, duplicate check and `.part` file behave as before; at most 4 MiB per file waits in memory. If Telegram answers an account with `FLOOD_WAIT` during a file, that account's next files use half as many parts at once, and it climbs back by one after 8 files without one. `TGDL_DOWNLOAD_THREADS` sets the ceiling (1–16); `1` restores one part at a time. Downloads with `TGDL_VERIFY_CHUNKS=1` still fetch one part at a time.
+- **Telegram library updated to gotd v0.162.0** (from v0.115.0): the current Telegram API layer and the library's downloader timeout and reconnect fixes. Saved Telegram sessions keep working; no new sign-in is needed. `TGDL_TELEGRAM_DEBUG` logs are now JSON lines from Go's standard logger.
+- **Built with Go 1.27.2** (server binaries and Docker image).
+
+### Service worker
+- `VERSION = 'v34150'`
+
 ## [3.4.14] — 2026-10-14
 
 ### Added

@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	sessionconv "github.com/botnick/telegram-media-downloader/core-service/internal/session"
+	"github.com/gotd/log/logslog"
 	"github.com/gotd/td/session"
 	gotd "github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
-	"go.uber.org/zap"
 )
 
 type GotdConfig struct {
@@ -38,6 +39,8 @@ type GotdClient struct {
 	// Shared download pools by datacenter (0 = the account's home DC).
 	poolMu sync.Mutex
 	pools  map[int]gotd.CloseInvoker
+	// threads adapts how many parts of one file are fetched at once.
+	threads *threadTuner
 }
 
 // FloodWaitUntil reports when Telegram allows this account's requests again
@@ -78,18 +81,13 @@ func NewGotdClient(cfg GotdConfig) (*GotdClient, error) {
 	// TGDL_TELEGRAM_DEBUG=1 writes the MTProto client's own log (connection
 	// drops, reconnects, RPC errors) to stderr for troubleshooting.
 	if level := os.Getenv("TGDL_TELEGRAM_DEBUG"); level != "" {
-		zapLevel := zap.InfoLevel
+		slogLevel := slog.LevelInfo
 		if level == "debug" {
-			zapLevel = zap.DebugLevel
+			slogLevel = slog.LevelDebug
 		}
-		config := zap.NewProductionConfig()
-		config.Level = zap.NewAtomicLevelAt(zapLevel)
-		config.Sampling = nil
-		if logger, err := config.Build(); err == nil {
-			options.Logger = logger
-		}
+		options.Logger = logslog.New(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slogLevel})))
 	}
-	return &GotdClient{guard: guard, client: gotd.NewClient(cfg.AppID, cfg.AppHash, options)}, nil
+	return &GotdClient{guard: guard, threads: newThreadTuner(maxDownloadThreads), client: gotd.NewClient(cfg.AppID, cfg.AppHash, options)}, nil
 }
 
 func ensureConvertedSession(cfg GotdConfig, storage session.Storage) error {

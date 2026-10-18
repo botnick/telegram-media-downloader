@@ -16,7 +16,8 @@ type recoveryPeerFixture struct {
 	probes  int
 }
 
-func (f *recoveryPeerFixture) ContactsResolveUsername(_ context.Context, username string) (*tg.ContactsResolvedPeer, error) {
+func (f *recoveryPeerFixture) ContactsResolveUsername(_ context.Context, req *tg.ContactsResolveUsernameRequest) (*tg.ContactsResolvedPeer, error) {
+	username := req.Username
 	if username != "public_media" {
 		f.t.Fatalf("username=%q", username)
 	}
