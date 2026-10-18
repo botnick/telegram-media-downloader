@@ -2,7 +2,9 @@ name: Notify Telegram
 
 # Posts a message to the configured Telegram chat on:
 #   - every push to main (commit summary)
-#   - every published release (release notes, with a pre-release badge)
+#   - every published release (release notes, with a pre-release badge);
+#     the release workflow starts this one with the tag, because a release
+#     created with the workflow token does not send a release event
 #
 # Required repo secrets:
 #   TELEGRAM_BOT_TOKEN  — bot token from @BotFather
@@ -11,8 +13,11 @@ name: Notify Telegram
 on:
   push:
     branches: [main]
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to announce
+        required: true
 
 # Both jobs only call the Telegram API with repo secrets; the GITHUB_TOKEN
 # needs no scopes.
@@ -45,20 +50,30 @@ jobs:
             --data-urlencode "text=${text}"
 
   notify-release:
-    if: github.event_name == 'release'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
+      - name: Load the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh api "repos/${{ github.repository }}/releases/tags/$TAG" > release.json
+          {
+            echo "REL_TAG=$(jq -r .tag_name release.json)"
+            echo "REL_NAME=$(jq -r '.name // ""' release.json)"
+            echo "REL_URL=$(jq -r .html_url release.json)"
+            echo "REL_PRE=$(jq -r .prerelease release.json)"
+            echo "REL_BODY<<RELEASE_BODY_END"
+            jq -r '.body // ""' release.json
+            echo "RELEASE_BODY_END"
+          } >> "$GITHUB_ENV"
       - name: Send release notification
         env:
           TG_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT:   ${{ secrets.TELEGRAM_CHAT_ID }}
           REPO:      ${{ github.repository }}
           ACTOR:     ${{ github.actor }}
-          REL_TAG:   ${{ github.event.release.tag_name }}
-          REL_NAME:  ${{ github.event.release.name }}
-          REL_URL:   ${{ github.event.release.html_url }}
-          REL_BODY:  ${{ github.event.release.body }}
-          REL_PRE:   ${{ github.event.release.prerelease }}
         run: |
           set -e
           if [ "$REL_PRE" = "true" ]; then badge="🧪 Pre-release"; else badge="🎉 New release"; fi

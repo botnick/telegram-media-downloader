@@ -2,7 +2,9 @@ name: Site refresh
 
 # Keeps the website current without anyone touching it:
 #   - a published release rebuilds GitHub Pages, so the version, release card
-#     and structured data on the site show the new release;
+#     and structured data on the site show the new release (the release
+#     workflow starts this one: a release created with the workflow token
+#     sends no release event);
 #   - after every site build, the sitemap URLs are sent to IndexNow (Bing,
 #     Yandex, Seznam, Naver), so search engines recrawl changed pages.
 
@@ -10,8 +12,6 @@ on:
   push:
     branches: [main]
     paths: ['docs/**']
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -39,7 +39,7 @@ jobs:
       - name: Wait for the Pages build
         env:
           GH_TOKEN: ${{ github.token }}
-          STARTED: ${{ github.event.head_commit.timestamp || github.event.release.published_at }}
+          STARTED: ${{ github.event.head_commit.timestamp }}
         run: |
           started=$(date -d "${STARTED:-now}" +%s)
           for _ in $(seq 60); do

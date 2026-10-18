@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   release:
@@ -49,3 +50,9 @@ jobs:
             core-service/dist/tgdl-server-*.tar.gz
             core-service/dist/SHA256SUMS
           fail_on_unmatched_files: true
+      - name: Announce the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run site-refresh.yml -R "$GITHUB_REPOSITORY" --ref main
+          gh workflow run telegram-notify.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="$GITHUB_REF_NAME"

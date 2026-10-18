@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   build-binaries:
-    name: binary (${{ matrix.os }} / ${{ matrix.arch }})
+    name: binary (${{ matrix.os }} / ${{ matrix.goarch }})
     strategy:
       fail-fast: false
       matrix:
