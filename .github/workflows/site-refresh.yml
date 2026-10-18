@@ -1,0 +1,63 @@
+name: Site refresh
+
+# Keeps the website current without anyone touching it:
+#   - a published release rebuilds GitHub Pages, so the version, release card
+#     and structured data on the site show the new release;
+#   - after every site build, the sitemap URLs are sent to IndexNow (Bing,
+#     Yandex, Seznam, Naver), so search engines recrawl changed pages.
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**']
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+
+concurrency:
+  group: site-refresh
+  cancel-in-progress: true
+
+env:
+  SITE: https://botnick.github.io/telegram-media-downloader
+  INDEXNOW_KEY: a354c13810270ce3e6ce79e85781f161
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rebuild Pages for the release
+        if: github.event_name != 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" --silent
+
+      - name: Wait for the Pages build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ github.event.head_commit.timestamp || github.event.release.published_at }}
+        run: |
+          started=$(date -d "${STARTED:-now}" +%s)
+          for _ in $(seq 60); do
+            sleep 20
+            read -r status created < <(gh api "repos/${{ github.repository }}/pages/builds/latest" --jq '.status + " " + .created_at')
+            echo "latest build: $status $created"
+            if [ "$status" = built ] && [ "$(date -d "$created" +%s)" -ge "$((started - 60))" ]; then exit 0; fi
+            if [ "$status" = errored ]; then echo "::error::Pages build failed"; exit 1; fi
+          done
+          echo "::error::Pages build did not finish in 20 minutes"; exit 1
+
+      - name: Send the sitemap to IndexNow
+        run: |
+          urls=$(curl -fsSL "$SITE/sitemap.xml" | grep -o '<loc>[^<]*</loc>' | sed 's/<[^>]*>//g' | jq -R . | jq -s .)
+          echo "$urls" | jq -r 'length | "\(.) URLs"'
+          body=$(jq -n --argjson urls "$urls" --arg key "$INDEXNOW_KEY" --arg site "$SITE" \
+            '{host: "botnick.github.io", key: $key, keyLocation: ($site + "/" + $key + ".txt"), urlList: $urls}')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST https://api.indexnow.org/indexnow \
+            -H 'Content-Type: application/json; charset=utf-8' -d "$body")
+          echo "IndexNow answered $code"
+          case "$code" in 200|202) ;; *) echo "::error::IndexNow answered $code"; exit 1 ;; esac

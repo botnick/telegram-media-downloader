@@ -1,0 +1,43 @@
+name: Dependabot merge
+
+# Merges Dependabot's Go module and Docker base image updates once every check
+# on the pull request has passed. Nothing is released by this: a release still
+# needs a version tag, and merges made with the workflow token do not start
+# other workflows. GitHub Actions updates are left for a person, since the
+# release workflows they change only run on a tag.
+
+on:
+  workflow_run:
+    workflows: [CI, Docker]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      (startsWith(github.event.workflow_run.head_branch, 'dependabot/go_modules/') ||
+       startsWith(github.event.workflow_run.head_branch, 'dependabot/docker/'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge when all checks pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pr=$(gh pr list -R "$REPO" --head "$BRANCH" --state open --json number,headRefOid \
+            --jq ".[] | select(.headRefOid == \"$SHA\") | .number")
+          if [ -z "$pr" ]; then echo "No open Dependabot PR at $SHA"; exit 0; fi
+          # Every check run on the head commit, by name; skipped ones do not block.
+          states=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
+            --jq '[.check_runs[] | select(.conclusion != "skipped" and .conclusion != "neutral") | (.conclusion // .status)] | unique | join(",")')
+          echo "PR #$pr checks: $states"
+          if [ "$states" != success ]; then echo "Not every check has passed yet"; exit 0; fi
+          gh pr merge -R "$REPO" "$pr" --squash --match-head-commit "$SHA" --delete-branch
