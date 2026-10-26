@@ -80,6 +80,8 @@ let saveTimer = null;
 let inflight = null;
 let savedTimer = null;
 let wsWired = false;
+let forwardRouteSequence = 0;
+const forumTopicsCache = new Map();
 
 function root() {
     let el = document.getElementById('page-chat');
@@ -365,6 +367,328 @@ function switchRow({ id, label, sub, on, disabled = false, extraClass = '' }) {
         </button>`;
 }
 
+function forwardGroupOptions(selected) {
+    const byID = new Map();
+    for (const chat of [...(state.allDialogs || []), ...(state.groups || [])]) {
+        if (chat?.id == null) continue;
+        const id = String(chat.id);
+        byID.set(id, { id, name: getGroupName(id, { fallback: chat.name || chat.title }) });
+    }
+    if (cur?.id) byID.set(String(cur.id), { id: String(cur.id), name: cur.name });
+    const groups = [...byID.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return `<option value="">${escapeHtml(i18nT('group.fwd.select_group', 'Select a group…'))}</option>${groups
+        .map((group) => `<option value="${escapeHtml(group.id)}" ${group.id === String(selected || '') ? 'selected' : ''}>${escapeHtml(group.name)}</option>`)
+        .join('')}`;
+}
+
+function forwardRouteHtml(route = {}, index = 0) {
+    const routeLabel = i18nTf('group.fwd.route_number', { number: index + 1 }, `Route ${index + 1}`);
+    const suffix = ++forwardRouteSequence;
+    const sourceID = `fwd-source-topic-${suffix}`;
+    const destinationID = `fwd-destination-group-${suffix}`;
+    const destinationTopicID = `fwd-destination-topic-${suffix}`;
+    return `<fieldset class="cd-forward-route" data-forward-route>
+        <div class="cd-route-head"><span class="cd-route-number">${escapeHtml(routeLabel)}</span>
+        <button type="button" class="cd-route-remove" data-route-remove aria-label="${escapeHtml(i18nTf('group.fwd.remove_route_number', { number: index + 1 }, `Remove route ${index + 1}`))}"><i class="ri-delete-bin-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('group.fwd.remove_route', 'Remove route'))}</span></button></div>
+        <div class="cd-route-field hidden" data-route-source-topic-wrap><label class="cd-label" for="${sourceID}-trigger">${escapeHtml(i18nTf('group.fwd.source_topic', { name: cur?.name || '' }, 'Source topic · {name}'))}</label>
+        <div class="cd-search-select" data-search-select><button id="${sourceID}-trigger" type="button" class="tg-input cd-input cd-select-trigger" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span data-select-value></span><i class="ri-arrow-down-s-line" aria-hidden="true"></i></button><div class="cd-select-menu hidden" data-select-menu><input id="${sourceID}-search" class="tg-input cd-input cd-option-search" type="search" data-option-search data-option-search-empty="${escapeHtml(i18nT('group.fwd.no_search_results', 'No matching options.'))}" placeholder="${escapeHtml(i18nT('group.fwd.search_topics', 'Search topics…'))}" aria-label="${escapeHtml(i18nT('group.fwd.search_source_topics', 'Search source topics'))}" autocomplete="off"><div class="cd-select-options" data-select-options role="listbox"></div></div>
+        <select id="${sourceID}" class="cd-native-select" data-route-source-topic data-selected="${escapeHtml(String(route.sourceTopicId || 0))}" tabindex="-1" aria-hidden="true">
+            <option value="0">${escapeHtml(i18nT('group.fwd.all_topics', 'All topics'))}</option>
+        </select></div></div>
+        <div class="cd-route-field"><label class="cd-label" for="${destinationID}-trigger">${escapeHtml(i18nT('group.fwd.destination_group', 'Destination group'))}</label>
+        <div class="cd-search-select" data-search-select><button id="${destinationID}-trigger" type="button" class="tg-input cd-input cd-select-trigger" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span data-select-value></span><i class="ri-arrow-down-s-line" aria-hidden="true"></i></button><div class="cd-select-menu hidden" data-select-menu><input id="${destinationID}-search" class="tg-input cd-input cd-option-search" type="search" data-option-search data-option-search-empty="${escapeHtml(i18nT('group.fwd.no_search_results', 'No matching options.'))}" placeholder="${escapeHtml(i18nT('group.fwd.search_groups', 'Search groups…'))}" aria-label="${escapeHtml(i18nT('group.fwd.search_groups', 'Search groups…'))}" autocomplete="off"><div class="cd-select-options" data-select-options role="listbox"></div></div>
+        <select id="${destinationID}" class="cd-native-select" data-route-destination data-selected="${escapeHtml(String(route.destinationGroupId || ''))}" tabindex="-1" aria-hidden="true">${forwardGroupOptions(route.destinationGroupId)}</select></div></div>
+        <div class="cd-route-field hidden" data-route-destination-topic-wrap><label class="cd-label" for="${destinationTopicID}-trigger">${escapeHtml(i18nT('group.fwd.destination_topic', 'Destination topic'))}</label>
+        <div class="cd-search-select" data-search-select><button id="${destinationTopicID}-trigger" type="button" class="tg-input cd-input cd-select-trigger" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span data-select-value></span><i class="ri-arrow-down-s-line" aria-hidden="true"></i></button><div class="cd-select-menu hidden" data-select-menu><input id="${destinationTopicID}-search" class="tg-input cd-input cd-option-search" type="search" data-option-search data-option-search-empty="${escapeHtml(i18nT('group.fwd.no_search_results', 'No matching options.'))}" placeholder="${escapeHtml(i18nT('group.fwd.search_topics', 'Search topics…'))}" aria-label="${escapeHtml(i18nT('group.fwd.search_destination_topics', 'Search destination topics'))}" autocomplete="off"><div class="cd-select-options" data-select-options role="listbox"></div></div>
+        <select id="${destinationTopicID}" class="cd-native-select" data-route-destination-topic data-selected="${escapeHtml(String(route.destinationTopicId || 0))}" tabindex="-1" aria-hidden="true" disabled>
+            <option value="0">${escapeHtml(i18nT('group.fwd.no_topic', 'No topic'))}</option>
+        </select></div></div>
+        <p class="cd-help cd-route-full" data-route-topics-status role="status"></p><p class="cd-help cd-route-full hidden" data-route-wildcard-note>${escapeHtml(i18nT('group.fwd.all_topics_route_note', 'This route includes all source topics.'))}</p>
+    </fieldset>`;
+}
+
+function globalCaptionFields(settings = {}) {
+    const mode = ['source_info', 'source', 'none', 'override', 'regex'].includes(settings.captionMode)
+        ? settings.captionMode
+        : 'source_info';
+    return `<div class="cd-caption-fields" data-global-caption>
+        <div class="cd-route-field">
+            <label class="cd-label" for="fwd-caption-mode-trigger">${escapeHtml(i18nT('group.fwd.caption_mode', 'Group caption'))}</label>
+            <div class="cd-search-select" data-search-select>
+                <button id="fwd-caption-mode-trigger" type="button" class="tg-input cd-input cd-select-trigger" data-select-trigger aria-haspopup="listbox" aria-expanded="false">
+                    <span data-select-value></span>
+                    <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+                </button>
+                <div class="cd-select-menu hidden" data-select-menu data-no-search>
+                    <div class="cd-select-options" data-select-options role="listbox"></div>
+                </div>
+                <select id="fwd-caption-mode" class="cd-native-select" data-global-caption-mode data-selected="${escapeHtml(mode)}" tabindex="-1" aria-hidden="true">
+                    <option value="source_info" ${mode === 'source_info' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_source_info', 'Source caption + source info'))}</option>
+                    <option value="source" ${mode === 'source' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_source', 'Source caption only'))}</option>
+                    <option value="none" ${mode === 'none' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_none', 'No caption'))}</option>
+                    <option value="override" ${mode === 'override' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_override', 'Override caption'))}</option>
+                    <option value="regex" ${mode === 'regex' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_regex', 'Regex transform'))}</option>
+                </select>
+            </div>
+        </div>
+        <div class="cd-route-field cd-caption-full ${mode === 'override' ? '' : 'hidden'}" data-global-caption-override-wrap>
+            <label class="cd-label" for="fwd-caption-override">${escapeHtml(i18nT('group.fwd.override_text', 'Caption text'))}</label>
+            <textarea id="fwd-caption-override" class="tg-input cd-input" rows="2" data-global-caption-override>${escapeHtml(settings.caption || '')}</textarea>
+        </div>
+        <div class="cd-caption-full cd-caption-regex ${mode === 'regex' ? '' : 'hidden'}" data-global-caption-regex-wrap>
+            <div class="cd-route-field"><label class="cd-label" for="fwd-caption-regex">${escapeHtml(i18nT('group.fwd.regex_pattern', 'Find (regular expression)'))}</label>
+            <input id="fwd-caption-regex" class="tg-input cd-input" type="text" data-global-caption-regex value="${escapeHtml(settings.regexPattern || '')}"></div>
+            <div class="cd-route-field"><label class="cd-label" for="fwd-caption-replacement">${escapeHtml(i18nT('group.fwd.regex_replacement', 'Replace with'))}</label>
+            <textarea id="fwd-caption-replacement" class="tg-input cd-input" rows="2" data-global-caption-replacement>${escapeHtml(settings.regexReplacement || '')}</textarea></div>
+        </div>
+    </div>`;
+}
+
+async function loadTopicOptions(select, groupID, emptyLabel, disableClosed = false) {
+    if (!select) return;
+    const wrapper = select.closest('[data-route-source-topic-wrap], [data-route-destination-topic-wrap]');
+    const isSourceTopic = select.matches('[data-route-source-topic]');
+    if (!select.isConnected) return;
+    wrapper?.classList.remove('hidden');
+    const loadToken = (Number(select.dataset.loadToken) || 0) + 1;
+    select.dataset.loadToken = String(loadToken);
+    const selected = select.dataset.selected || select.value || '0';
+    select.disabled = true;
+    select.innerHTML = `<option value="0">${escapeHtml(i18nT('group.fwd.topics_loading', 'Loading topics…'))}</option>`;
+    cacheSearchOptions(select);
+    try {
+        let request = forumTopicsCache.get(groupID);
+        if (!request) {
+            request = api
+                .get(`/api/dialogs/${encodeURIComponent(groupID)}/topics`)
+                .then((result) => (Array.isArray(result?.topics) ? result.topics : []))
+                .catch((error) => {
+                    forumTopicsCache.delete(groupID);
+                    throw error;
+                });
+            forumTopicsCache.set(groupID, request);
+        }
+        const topics = await request;
+        if (!select.isConnected || select.dataset.loadToken !== String(loadToken)) return;
+        let availableTopics = topics;
+        let rule = null;
+        if (select.matches('[data-route-source-topic]')) {
+            rule = topicsPatch().topics;
+            if (rule.enabled && rule.ids.length) {
+                const ids = new Set(rule.ids.map(String));
+                availableTopics = topics.filter((topic) => rule.mode === 'whitelist' ? ids.has(String(topic.id)) : !ids.has(String(topic.id)));
+            }
+        }
+        const resolvedSelection = availableTopics.some((topic) => String(topic.id) === selected) ? selected : '0';
+        select.dataset.selected = resolvedSelection;
+        const resolvedEmptyLabel = select.matches('[data-route-source-topic]') && rule?.enabled && rule.ids.length
+            ? i18nT('group.fwd.all_processed_topics', 'All processed topics')
+            : emptyLabel;
+        const canRouteAllSourceTopics = !isSourceTopic || document.querySelectorAll('[data-forward-route]').length <= 1;
+        select.innerHTML = `<option value="0" ${canRouteAllSourceTopics ? '' : 'disabled'}>${escapeHtml(resolvedEmptyLabel)}</option>${availableTopics
+            .map((topic) => `<option value="${escapeHtml(String(topic.id))}" ${String(topic.id) === resolvedSelection ? 'selected' : ''} ${disableClosed && topic.closed ? 'disabled' : ''}>${escapeHtml(topic.name)}${topic.closed ? ` · ${escapeHtml(i18nT('group.fwd.closed', 'closed'))}` : ''}</option>`)
+            .join('')}`;
+        cacheSearchOptions(select);
+        select.disabled = topics.length === 0;
+        if (wrapper) wrapper.classList.toggle('hidden', !isSourceTopic && topics.length === 0);
+        filterSearchOptions(select);
+        updateRouteWildcardState();
+        const status = select.closest('[data-forward-route]')?.querySelector('[data-route-topics-status]');
+        if (status) status.textContent = '';
+    } catch (error) {
+        if (!select.isConnected || select.dataset.loadToken !== String(loadToken)) return;
+        select.innerHTML = `<option value="0">${escapeHtml(i18nT('group.fwd.topics_unavailable', 'Topics unavailable'))}</option>`;
+        wrapper?.classList.remove('hidden');
+        cacheSearchOptions(select);
+        const status = select.closest('[data-forward-route]')?.querySelector('[data-route-topics-status]');
+        if (status) status.textContent = error?.data?.message || error?.data?.error || i18nT('group.fwd.topics_error', 'Connect a Telegram account to load topic names.');
+    }
+}
+
+function cacheSearchOptions(select) {
+    if (!select) return;
+    select._searchOptions = [...select.options].map((option) => ({
+        value: option.value,
+        label: option.textContent,
+        disabled: option.disabled,
+    }));
+    filterSearchOptions(select);
+}
+
+function filterSearchOptions(select, query = null) {
+    if (!select) return;
+    const widget = select.closest('[data-search-select]');
+    const input = widget?.querySelector('[data-option-search]');
+    const options = select._searchOptions || [...select.options].map((option) => ({
+        value: option.value,
+        label: option.textContent,
+        disabled: option.disabled,
+    }));
+    const value = input ? (query ?? input.value).trim().toLocaleLowerCase() : '';
+    const selected = select.value;
+    const matching = options.filter((option) => !value || option.label.toLocaleLowerCase().includes(value));
+    select.replaceChildren(...options.map((option) => {
+        const element = document.createElement('option');
+        element.value = option.value;
+        element.textContent = option.label;
+        element.disabled = option.disabled;
+        element.selected = option.value === selected;
+        return element;
+    }));
+    const list = widget?.querySelector('[data-select-options]');
+    if (list) list.innerHTML = matching.length
+        ? matching.map((option) => `<button type="button" role="option" class="${option.value === selected ? 'is-selected' : ''}" aria-selected="${option.value === selected}" data-select-option="${escapeHtml(option.value)}" ${option.disabled ? 'disabled' : ''}><span class="cd-select-option-text">${escapeHtml(option.label)}</span>${option.value === selected ? '<i class="ri-check-line cd-select-check" aria-hidden="true"></i>' : ''}</button>`).join('')
+        : `<span class="cd-select-empty">${escapeHtml(input?.dataset.optionSearchEmpty || 'No matching options.')}</span>`;
+    const selectedOption = options.find((option) => option.value === selected);
+    const trigger = widget?.querySelector('[data-select-trigger]');
+    if (trigger) {
+        trigger.querySelector('[data-select-value]').textContent = selectedOption?.label || '';
+        trigger.disabled = select.disabled;
+        trigger.setAttribute('aria-label', selectedOption?.label || input?.getAttribute('aria-label') || 'Select option');
+    }
+    const empty = input?.dataset.optionSearchEmpty;
+    input?.setAttribute('aria-description', value && !options.some((option) => option.label.toLocaleLowerCase().includes(value)) ? empty : '');
+}
+
+function closeSearchSelect(widget) {
+    if (!widget) return;
+    widget.querySelector('[data-select-menu]')?.classList.add('hidden');
+    widget.querySelector('[data-select-trigger]')?.setAttribute('aria-expanded', 'false');
+}
+
+function refreshSourceTopicOptions() {
+    return Promise.all([...document.querySelectorAll('[data-route-source-topic]')]
+        .map((select) => loadTopicOptions(select, cur.id, i18nT('group.fwd.all_topics', 'All topics'))));
+}
+
+function updateRouteWildcardState() {
+    const routes = [...document.querySelectorAll('[data-forward-route]')];
+    for (const card of routes) {
+        const source = card.querySelector('[data-route-source-topic]');
+        const destination = card.querySelector('[data-route-destination]');
+        const sourceID = Number(source?.value) || 0;
+        const destinationID = destination?.value || '';
+        const sourceAll = source && !source.closest('[data-route-source-topic-wrap]')?.classList.contains('hidden') && sourceID === 0;
+        card.querySelector('[data-route-wildcard-note]')?.classList.toggle('hidden', !sourceAll);
+
+        for (const option of source?.options || []) {
+            option.disabled = Boolean(destinationID) && routes.some((other) => other !== card &&
+                other.querySelector('[data-route-destination]')?.value === destinationID &&
+                (Number(other.querySelector('[data-route-source-topic]')?.value) || 0) === Number(option.value));
+            const cached = source._searchOptions?.find((item) => item.value === option.value);
+            if (cached) cached.disabled = option.disabled;
+        }
+        for (const option of destination?.options || []) {
+            option.disabled = Boolean(option.value) && routes.some((other) => other !== card &&
+                other.querySelector('[data-route-destination]')?.value === option.value &&
+                (Number(other.querySelector('[data-route-source-topic]')?.value) || 0) === sourceID);
+            const cached = destination._searchOptions?.find((item) => item.value === option.value);
+            if (cached) cached.disabled = option.disabled;
+        }
+    }
+}
+
+async function loadForwardRouteOptions(route = null) {
+    const cards = route ? [route] : [...(document.querySelectorAll('[data-forward-route]') || [])];
+    if (!state.allDialogs && !state._forwardDialogsLoading && !state._forwardDialogsFailed) {
+        state._forwardDialogsLoading = api
+            .get('/api/dialogs')
+            .then((result) => {
+                state.allDialogs = result?.dialogs || [];
+                if (Array.isArray(result?.accounts)) state.dialogsAccounts = result.accounts;
+            })
+            .catch(() => {
+                state._forwardDialogsFailed = true;
+            });
+    }
+    if (!state.allDialogs && state._forwardDialogsLoading) await state._forwardDialogsLoading;
+    for (const card of cards) {
+        const source = card.querySelector('[data-route-source-topic]');
+        const destination = card.querySelector('[data-route-destination]');
+        if (destination) {
+            const selected = destination.dataset.selected || destination.value;
+            destination.innerHTML = forwardGroupOptions(selected);
+            destination.dataset.selected = selected;
+        }
+        cacheSearchOptions(destination);
+        card.querySelector('[data-route-source-topic]')?.closest('select')?.setAttribute('aria-label', `${i18nT('group.fwd.source_topic', 'Source topic')} · ${cur?.name || ''}`);
+    }
+
+    await Promise.all(cards.map((card) => {
+        const source = card.querySelector('[data-route-source-topic]');
+        return source && cur?.id
+            ? loadTopicOptions(source, cur.id, i18nT('group.fwd.all_topics', 'All topics'))
+            : Promise.resolve();
+    }));
+
+    await Promise.all(cards.map(async (card) => {
+        const destination = card.querySelector('[data-route-destination]');
+        const targetTopic = card.querySelector('[data-route-destination-topic]');
+        if (targetTopic && destination?.value) {
+            await loadTopicOptions(targetTopic, destination.value, i18nT('group.fwd.no_topic', 'No topic'), true);
+            targetTopic.dataset.selected = targetTopic.value || '0';
+        }
+        card.querySelectorAll('[data-search-select] select').forEach((select) => filterSearchOptions(select));
+    }));
+    updateRouteWildcardState();
+}
+
+function updateTopicFilterCount() {
+    const list = document.getElementById('topics-list');
+    const total = list ? list.querySelectorAll('[data-topic-filter-id]').length : 0;
+    const selected = list ? list.querySelectorAll('[data-topic-filter-id]:checked').length : 0;
+    const counter = document.querySelector('[data-topic-counter]');
+    if (counter) {
+        counter.textContent = total > 0 ? `${selected} / ${total} selected` : '0 selected';
+    }
+}
+
+async function loadGroupTopicFilterOptions() {
+    const list = document.getElementById('topics-list');
+    if (!list || !cur?.id) return;
+    const selected = new Set((cur.group?.topics?.ids || []).map(String));
+    list.innerHTML = `<span class="cd-help">${escapeHtml(i18nT('group.fwd.topics_loading', 'Loading topics…'))}</span>`;
+    try {
+        let request = forumTopicsCache.get(cur.id);
+        if (!request) {
+            request = api.get(`/api/dialogs/${encodeURIComponent(cur.id)}/topics`)
+                .then((result) => (Array.isArray(result?.topics) ? result.topics : []))
+                .catch((error) => { forumTopicsCache.delete(cur.id); throw error; });
+            forumTopicsCache.set(cur.id, request);
+        }
+        const topics = await request;
+        if (!list.isConnected) return;
+        list.dataset.loaded = 'true';
+        if (!topics.length) {
+            list.innerHTML = `<span class="cd-help">${escapeHtml(i18nT('group.fwd.no_topics', 'This group has no forum topics.'))}</span>`;
+            updateTopicFilterCount();
+            return;
+        }
+        list.innerHTML = topics.map((topic) => `
+            <label class="cd-topic-option">
+                <input type="checkbox" class="cd-checkbox-input" data-topic-filter-id value="${escapeHtml(String(topic.id))}" ${selected.has(String(topic.id)) ? 'checked' : ''}>
+                <span class="cd-checkbox-control" aria-hidden="true"><i class="ri-check-line"></i></span>
+                <span class="cd-topic-name">${escapeHtml(topic.name)}</span>
+                ${topic.closed ? `<span class="cd-topic-badge">${escapeHtml(i18nT('group.fwd.closed', 'closed'))}</span>` : ''}
+            </label>`).join('');
+        updateTopicFilterCount();
+    } catch (error) {
+        if (list.isConnected) list.innerHTML = `<span class="cd-help" role="status">${escapeHtml(error?.data?.message || error?.data?.error || i18nT('group.fwd.topics_error', 'Connect a Telegram account to load topic names.'))}</span>`;
+    }
+}
+
+function collectForwardRoutes() {
+    return [...document.querySelectorAll('[data-forward-route]')]
+        .map((card) => ({
+            sourceTopicId: Number(card.querySelector('[data-route-source-topic]')?.value) || 0,
+            destinationGroupId: card.querySelector('[data-route-destination]')?.value || '',
+            destinationTopicId: Number(card.querySelector('[data-route-destination-topic]')?.value) || 0,
+            captionMode: 'inherit',
+            captionModeOverride: false,
+        }))
+        .filter((route) => route.destinationGroupId);
+}
+
 function monitorSub() {
     if (cur.group?.suspended) return i18nT('groups.status.suspended', 'Suspended');
     if (!cur.group) return i18nT('chat.monitor.sub_new', 'Not monitored yet');
@@ -381,6 +705,8 @@ function render() {
     if (!el || !cur) return;
     const g = cur.group;
     const fwd = g?.autoForward || {};
+    const savedRoutes = Array.isArray(fwd.routes) ? fwd.routes : [];
+    const forwardRoutes = savedRoutes.filter((route) => String(route?.destinationGroupId || '').trim());
     const topics = g?.topics || {};
     const filters = filtersNow();
     const rescue = ['on', 'off', 'auto'].includes(g?.rescueMode) ? g.rescueMode : 'auto';
@@ -397,7 +723,11 @@ function render() {
                 <span>${escapeHtml(i18nT('chat.back', 'Back'))}</span>
             </button>
             <span id="cd-save-status" class="cd-save" data-state="idle" role="status" aria-live="polite"></span>
+            <button type="button" class="tg-btn cd-save-action" data-cd-save>
+                <i class="ri-save-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('chat.save.now', 'Save now'))}</span>
+            </button>
         </div>
+        <p class="cd-save-help">${escapeHtml(i18nT('chat.save.auto_hint', 'Edits auto-save. Save now commits any changes still pending.'))}</p>
 
         <section class="cd-card cd-hero" aria-labelledby="cd-name">
             <div class="cd-hero-top">
@@ -461,12 +791,31 @@ function render() {
                             ),
                             on: topics.enabled === true,
                         })}
-                        <label class="cd-label" for="topics-ids">${escapeHtml(i18nT('chat.topics.ids', 'Topic IDs'))}</label>
-                        <input id="topics-ids" type="text" inputmode="numeric" autocomplete="off"
-                            class="tg-input cd-input" value="${escapeHtml((topics.ids || []).join(', '))}"
-                            placeholder="${escapeHtml(i18nT('group.topics.ids_placeholder', 'e.g., 12, 34, 56'))}"
-                            aria-describedby="cd-topics-help">
-                        <p id="cd-topics-help" class="cd-help">${i18nT('group.topics.note', 'Empty list = monitor every topic. Toggle off to disable filtering entirely.')}</p>
+                        <div class="cd-route-field">
+                            <label class="cd-label" for="topics-mode-trigger">${escapeHtml(i18nT('group.topics.mode', 'Topics to process'))}</label>
+                            <div class="cd-search-select" data-search-select>
+                                <button id="topics-mode-trigger" type="button" class="tg-input cd-input cd-select-trigger" data-select-trigger aria-haspopup="listbox" aria-expanded="false">
+                                    <span data-select-value></span>
+                                    <i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+                                </button>
+                                <div class="cd-select-menu hidden" data-select-menu data-no-search>
+                                    <div class="cd-select-options" data-select-options role="listbox"></div>
+                                </div>
+                                <select id="topics-mode" class="cd-native-select" data-selected="${topics.mode === 'blacklist' ? 'blacklist' : 'whitelist'}" tabindex="-1" aria-hidden="true">
+                                    <option value="whitelist" ${topics.mode !== 'blacklist' ? 'selected' : ''}>${escapeHtml(i18nT('group.topics.process_selected', 'Process selected topics only'))}</option>
+                                    <option value="blacklist" ${topics.mode === 'blacklist' ? 'selected' : ''}>${escapeHtml(i18nT('group.topics.ignore_selected', 'Ignore selected topics'))}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="cd-topic-toolbar">
+                            <span class="cd-topic-counter" data-topic-counter>0 selected</span>
+                            <div class="cd-topic-actions">
+                                <button type="button" class="cd-pill-btn" data-topics-select-all>${escapeHtml(i18nT('common.select_all', 'Select all'))}</button>
+                                <button type="button" class="cd-pill-btn" data-topics-clear-all>${escapeHtml(i18nT('common.clear_all', 'Clear'))}</button>
+                            </div>
+                        </div>
+                        <div id="topics-list" class="cd-topic-list" role="group" aria-labelledby="topics-mode-trigger"></div>
+                        <p id="cd-topics-help" class="cd-help">${escapeHtml(i18nT('group.topics.note', 'With no topics selected, all topics are processed. Turn this filter off to process every topic.'))}</p>
                     </div>
                 </details>
             </div>
@@ -482,17 +831,7 @@ function render() {
                     on: fwd.enabled === true,
                 })}
                 <div id="fwd-settings" class="cd-sub ${fwd.enabled ? '' : 'hidden'}">
-                    <label class="cd-label" for="fwd-destination">${escapeHtml(i18nT('group.fwd.destination', 'Destination'))}</label>
-                    <div class="cd-inline">
-                        <input id="fwd-destination" type="text" autocomplete="off" spellcheck="false"
-                            class="tg-input cd-input" value="${escapeHtml(fwd.destination || '')}"
-                            placeholder="${escapeHtml(i18nT('chat.fwd.dest_placeholder', 'Chat ID, @username or me'))}"
-                            aria-describedby="cd-fwd-help">
-                        <button type="button" class="tg-btn-secondary cd-pick" data-cd-pick>
-                            <i class="ri-list-check-2" aria-hidden="true"></i><span>${escapeHtml(i18nT('chat.fwd.pick', 'Pick'))}</span>
-                        </button>
-                    </div>
-                    <p id="cd-fwd-help" class="cd-help">${escapeHtml(i18nT('group.fwd.dest_help', 'Leave empty to use "Telegram Downloader Storage".'))}</p>
+                    ${fwd.destination && !forwardRoutes.length ? `<p class="cd-help cd-legacy-destination">${escapeHtml(i18nT('group.fwd.legacy', 'Existing destination remains active until a topic route is added.'))} <strong>${escapeHtml(fwd.destination === 'me' || fwd.destination === 'storage' ? fwd.destination : getGroupName(fwd.destination, { fallback: cur.name }))}</strong></p>` : ''}
                     ${
                         fwdBlocked
                             ? `<p class="cd-fwd-warn" role="note"><i class="ri-error-warning-line" aria-hidden="true"></i><span>${escapeHtml(
@@ -513,6 +852,16 @@ function render() {
                         ),
                         on: fwd.deleteAfterForward === true,
                     })}
+                    ${globalCaptionFields(fwd)}
+                    <section class="cd-route-section" aria-labelledby="cd-routes-title">
+                        <div class="cd-route-heading">
+                            <div><h4 id="cd-routes-title" class="cd-subheading">${escapeHtml(i18nT('group.fwd.routes', 'Routes'))}</h4>
+                            <p class="cd-help">${escapeHtml(i18nT('group.fwd.routes_help', 'Choose a destination. Topic options appear only when available.'))}</p></div>
+                            <button type="button" class="tg-btn cd-route-add" data-cd-add-route><i class="ri-add-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('group.fwd.add_route', 'Add route'))}</span></button>
+                        </div>
+                        <div id="fwd-routes" class="cd-fields">${forwardRoutes.map((route, index) => forwardRouteHtml(route, index)).join('')}</div>
+                        ${!forwardRoutes.length && !fwd.destination ? `<p class="cd-route-empty">${escapeHtml(i18nT('group.fwd.routes_empty', 'No routes yet. Add a route to choose a destination.'))}</p>` : ''}
+                    </section>
                 </div>
             </div>
         </section>
@@ -586,6 +935,16 @@ function render() {
                 </div>
             </div>
         </section>`;
+    initAllSearchSelects(el);
+    if (forwardRoutes.length) void loadForwardRouteOptions();
+    if (cur.id) void loadGroupTopicFilterOptions();
+}
+
+function initAllSearchSelects(scope = document) {
+    scope.querySelectorAll('[data-search-select] select').forEach((select) => {
+        cacheSearchOptions(select);
+        filterSearchOptions(select);
+    });
 }
 
 function renderStats(s) {
@@ -902,9 +1261,26 @@ function parseTopicIds(raw) {
 function topicsPatch() {
     const enabled =
         document.getElementById('topics-enable-toggle')?.getAttribute('aria-checked') === 'true';
-    const ids = parseTopicIds(document.getElementById('topics-ids')?.value);
+    const list = document.getElementById('topics-list');
+    const ids = list?.dataset.loaded === 'true'
+        ? [...(document.querySelectorAll('[data-topic-filter-id]:checked') || [])]
+              .map((input) => parseInt(input.value, 10))
+              .filter((id) => Number.isSafeInteger(id) && id > 0)
+        : cur.group?.topics?.ids || [];
+    const selectedMode = document.getElementById('topics-mode')?.value;
     return {
-        topics: { enabled, mode: enabled && ids.length > 0 ? 'whitelist' : 'all', ids },
+        topics: { enabled, mode: enabled && ids.length > 0 ? selectedMode : 'all', ids },
+    };
+}
+
+function globalCaptionPatch() {
+    return {
+        autoForward: {
+            captionMode: document.getElementById('fwd-caption-mode')?.value || 'source_info',
+            caption: document.getElementById('fwd-caption-override')?.value || '',
+            regexPattern: document.getElementById('fwd-caption-regex')?.value || '',
+            regexReplacement: document.getElementById('fwd-caption-replacement')?.value || '',
+        },
     };
 }
 
@@ -1069,11 +1445,105 @@ export async function openDestinationPicker() {
 // ---- Events --------------------------------------------------------------------
 
 function onClick(e) {
-    if (!cur) return;
     const t = e.target;
+    const option = t.closest('[data-select-option]');
+    if (option) {
+        const widget = option.closest('[data-search-select]');
+        const select = widget?.querySelector('select');
+        if (!select || option.disabled) return;
+        select.value = option.dataset.selectOption;
+        select.dataset.selected = select.value;
+        filterSearchOptions(select, '');
+        closeSearchSelect(widget);
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
+    }
+    const trigger = t.closest('[data-select-trigger]');
+    if (trigger) {
+        const widget = trigger.closest('[data-search-select]');
+        const menu = widget?.querySelector('[data-select-menu]');
+        const open = menu?.classList.contains('hidden');
+        document.querySelectorAll('[data-search-select] [data-select-menu]').forEach((item) => item.classList.add('hidden'));
+        document.querySelectorAll('[data-search-select] [data-select-trigger]').forEach((item) => item.setAttribute('aria-expanded', 'false'));
+        if (open) {
+            menu.classList.remove('hidden');
+            trigger.setAttribute('aria-expanded', 'true');
+            const rect = trigger.getBoundingClientRect();
+            const margin = 8;
+            const left = Math.max(margin, Math.min(rect.left, window.innerWidth - rect.width - margin));
+            menu.style.left = `${left}px`;
+            menu.style.width = `${Math.min(rect.width, window.innerWidth - margin * 2)}px`;
+            const input = widget.querySelector('[data-option-search]');
+            if (input) {
+                input.value = '';
+                filterSearchOptions(widget.querySelector('select'), '');
+            } else {
+                filterSearchOptions(widget.querySelector('select'), '');
+            }
+            const menuHeight = menu.getBoundingClientRect().height;
+            const roomBelow = Math.max(0, window.innerHeight - rect.bottom - margin * 2);
+            const roomAbove = Math.max(0, rect.top - margin * 2);
+            const openBelow = roomBelow >= Math.min(180, menuHeight) || roomBelow >= roomAbove;
+            const availableHeight = Math.max(0, Math.min(menuHeight, openBelow ? roomBelow : roomAbove));
+            menu.dataset.placement = openBelow ? 'below' : 'above';
+            menu.style.maxHeight = `${availableHeight}px`;
+            const top = openBelow ? rect.bottom + margin : Math.max(margin, rect.top - availableHeight - margin);
+            menu.style.top = `${top}px`;
+            if (input) input.focus();
+            else {
+                const activeBtn = menu.querySelector('[aria-selected="true"]') || menu.querySelector('[data-select-option]:not(:disabled)');
+                activeBtn?.focus();
+            }
+        }
+        return;
+    }
+    if (t.closest('[data-topics-select-all]')) {
+        const checkboxes = document.querySelectorAll('#topics-list [data-topic-filter-id]');
+        checkboxes.forEach((cb) => { cb.checked = true; });
+        updateTopicFilterCount();
+        const rule = topicsPatch().topics;
+        if (cur.group) cur.group.topics = { ...(cur.group.topics || {}), ...rule };
+        const refresh = refreshSourceTopicOptions();
+        queueSave(topicsPatch(), 0);
+        void refresh.then(() => queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0));
+        return;
+    }
+    if (t.closest('[data-topics-clear-all]')) {
+        const checkboxes = document.querySelectorAll('#topics-list [data-topic-filter-id]');
+        checkboxes.forEach((cb) => { cb.checked = false; });
+        updateTopicFilterCount();
+        const rule = topicsPatch().topics;
+        if (cur.group) cur.group.topics = { ...(cur.group.topics || {}), ...rule };
+        const refresh = refreshSourceTopicOptions();
+        queueSave(topicsPatch(), 0);
+        void refresh.then(() => queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0));
+        return;
+    }
+    if (!t.closest('[data-search-select]')) document.querySelectorAll('[data-search-select]').forEach(closeSearchSelect);
+    if (!cur) return;
     if (t.closest('[data-cd-back]')) return goBack();
     if (t.closest('[data-cd-gallery]')) return openGallery();
     if (t.closest('#group-backfill-btn')) return void openBackfill();
+    if (t.closest('[data-cd-save]')) {
+        queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0);
+        return void flush();
+    }
+    if (t.closest('[data-cd-add-route]')) {
+        const routes = document.getElementById('fwd-routes');
+        if (!routes) return;
+        const template = document.createElement('template');
+        template.innerHTML = forwardRouteHtml({}, routes.querySelectorAll('[data-forward-route]').length).trim();
+        const card = template.content.firstElementChild;
+        routes.appendChild(card);
+        void loadForwardRouteOptions(card);
+        return;
+    }
+    if (t.closest('[data-route-remove]')) {
+        t.closest('[data-forward-route]')?.remove();
+        updateRouteWildcardState();
+        queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0);
+        return;
+    }
     if (t.closest('[data-cd-pick]')) return void openDestinationPicker();
     const accessBtn = t.closest('[data-cd-access]');
     if (accessBtn) return void onAccessAction(accessBtn.dataset.cdAccess, accessBtn);
@@ -1107,7 +1577,11 @@ function onClick(e) {
             queueSave({ autoForward: { deleteAfterForward: on } });
         } else if (sw.id === 'topics-enable-toggle') {
             setSwitch(sw.id, on);
+            const rule = topicsPatch().topics;
+            if (cur.group) cur.group.topics = { ...(cur.group.topics || {}), ...rule };
+            const refresh = refreshSourceTopicOptions();
             queueSave(topicsPatch());
+            void refresh.then(() => queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0));
         }
         return;
     }
@@ -1138,10 +1612,44 @@ function onClick(e) {
 function onChange(e) {
     if (!cur) return;
     const id = e.target.id;
-    if (id === 'fwd-destination') {
-        queueSave({ autoForward: { destination: e.target.value.trim() } }, 0);
-    } else if (id === 'topics-ids') {
+    if (e.target.matches('[data-global-caption-mode]')) {
+        document.querySelector('[data-global-caption-override-wrap]')?.classList.toggle('hidden', e.target.value !== 'override');
+        document.querySelector('[data-global-caption-regex-wrap]')?.classList.toggle('hidden', e.target.value !== 'regex');
+        queueSave(globalCaptionPatch(), 0);
+    } else if (e.target.closest('[data-global-caption]')) {
+        queueSave(globalCaptionPatch(), 0);
+    } else if (e.target.matches('[data-route-destination]')) {
+        const card = e.target.closest('[data-forward-route]');
+        const targetTopic = card?.querySelector('[data-route-destination-topic]');
+        e.target.dataset.selected = e.target.value;
+        if (targetTopic) {
+            targetTopic.dataset.selected = '0';
+            if (e.target.value) {
+                void loadTopicOptions(targetTopic, e.target.value, i18nT('group.fwd.no_topic', 'No topic'), true).then(() => filterSearchOptions(targetTopic));
+            } else {
+                targetTopic.innerHTML = `<option value="0">${escapeHtml(i18nT('group.fwd.no_topic', 'No topic'))}</option>`;
+                targetTopic.disabled = true;
+                targetTopic.closest('[data-route-destination-topic-wrap]')?.classList.add('hidden');
+            }
+        }
+        filterSearchOptions(e.target);
+        updateRouteWildcardState();
+        queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0);
+    } else if (e.target.matches('[data-topic-filter-id]') || id === 'topics-mode') {
+        const rule = topicsPatch().topics;
+        if (cur.group) cur.group.topics = { ...(cur.group.topics || {}), ...rule };
+        const refresh = refreshSourceTopicOptions();
         queueSave(topicsPatch(), 0);
+        void refresh.then(() => queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0));
+    } else if (e.target.closest('[data-forward-route]')) {
+        if (e.target.matches('[data-route-source-topic], [data-route-destination-topic]')) {
+            e.target.dataset.selected = e.target.value;
+            filterSearchOptions(e.target);
+            updateRouteWildcardState();
+        }
+        queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0);
+    } else if (id === 'fwd-destination') {
+        queueSave({ autoForward: { destination: e.target.value.trim() } }, 0);
     } else if (id === 'setting-rescue-hours') {
         queueSave(rescueHoursPatch(), 0);
     } else if (id === 'monitor-account') {
@@ -1157,21 +1665,98 @@ function onChange(e) {
 
 function onInput(e) {
     if (!cur) return;
+    if (e.target.matches('[data-option-search]')) {
+        filterSearchOptions(e.target.closest('[data-search-select]')?.querySelector('select'), e.target.value);
+        return;
+    }
     const id = e.target.id;
-    if (id === 'fwd-destination') {
+    if (e.target.closest('[data-global-caption]')) {
+        if (e.target.matches('[data-global-caption-regex]')) return;
+        queueSave(globalCaptionPatch(), TEXT_SAVE_MS);
+    } else if (e.target.closest('[data-forward-route]')) {
+        queueSave({ autoForward: { routes: collectForwardRoutes() } }, TEXT_SAVE_MS);
+    } else if (id === 'fwd-destination') {
         queueSave({ autoForward: { destination: e.target.value.trim() } }, TEXT_SAVE_MS);
-    } else if (id === 'topics-ids') {
-        queueSave(topicsPatch(), TEXT_SAVE_MS);
     } else if (id === 'setting-rescue-hours') {
         queueSave(rescueHoursPatch(), TEXT_SAVE_MS);
     }
 }
 
 function onKeydown(e) {
-    if (e.key === 'Enter' && e.target.matches?.('#page-chat input.cd-input')) {
+    const widget = e.target.closest?.('[data-search-select]');
+    if (widget) {
+        const menu = widget.querySelector('[data-select-menu]');
+        const isOpen = menu && !menu.classList.contains('hidden');
+        if (e.key === 'Escape' && isOpen) {
+            e.preventDefault();
+            closeSearchSelect(widget);
+            widget.querySelector('[data-select-trigger]')?.focus();
+            return;
+        }
+        if (isOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            e.preventDefault();
+            const options = [...menu.querySelectorAll('[data-select-options] [data-select-option]:not(:disabled)')];
+            if (!options.length) return;
+            const input = widget.querySelector('[data-option-search]');
+            const currentIndex = options.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown') {
+                if (document.activeElement === input || currentIndex === -1) {
+                    options[0]?.focus();
+                } else {
+                    const next = options[Math.min(options.length - 1, currentIndex + 1)];
+                    next?.focus();
+                }
+            } else if (e.key === 'ArrowUp') {
+                if (currentIndex <= 0) {
+                    if (input) input.focus();
+                    else options[0]?.focus();
+                } else {
+                    options[currentIndex - 1]?.focus();
+                }
+            }
+            return;
+        }
+        if (e.key === 'Enter') {
+            if (e.target.matches?.('[data-option-search]')) {
+                e.preventDefault();
+                widget?.querySelector('[data-select-options] [data-select-option]:not(:disabled)')?.click();
+                return;
+            }
+            if (e.target.matches?.('[data-select-option]')) {
+                e.preventDefault();
+                e.target.click();
+                return;
+            }
+        }
+    }
+    if (e.key === 'Enter' && e.target.matches?.('#page-chat input.cd-input:not([data-option-search])')) {
         e.preventDefault();
         flush();
     }
+}
+
+function repositionOpenSearchSelects() {
+    document.querySelectorAll('[data-search-select] [data-select-trigger][aria-expanded="true"]').forEach((trigger) => {
+        const widget = trigger.closest('[data-search-select]');
+        const menu = widget?.querySelector('[data-select-menu]');
+        if (!menu || menu.classList.contains('hidden')) return;
+        const rect = trigger.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > window.innerHeight) {
+            closeSearchSelect(widget);
+            return;
+        }
+        const margin = 8;
+        const left = Math.max(margin, Math.min(rect.left, window.innerWidth - rect.width - margin));
+        menu.style.left = `${left}px`;
+        menu.style.width = `${Math.min(rect.width, window.innerWidth - margin * 2)}px`;
+        const roomBelow = Math.max(0, window.innerHeight - rect.bottom - margin * 2);
+        const roomAbove = Math.max(0, rect.top - margin * 2);
+        const openBelow = roomBelow >= Math.min(180, menu.scrollHeight) || roomBelow >= roomAbove;
+        const height = Math.min(menu.scrollHeight, openBelow ? roomBelow : roomAbove);
+        menu.dataset.placement = openBelow ? 'below' : 'above';
+        menu.style.maxHeight = `${height}px`;
+        menu.style.top = `${openBelow ? rect.bottom + margin : Math.max(margin, rect.top - height - margin)}px`;
+    });
 }
 
 let wired = false;
@@ -1182,6 +1767,8 @@ function wire(el) {
     el.addEventListener('change', onChange);
     el.addEventListener('input', onInput);
     el.addEventListener('keydown', onKeydown);
+    window.addEventListener('resize', repositionOpenSearchSelects, { passive: true });
+    window.addEventListener('scroll', repositionOpenSearchSelects, { passive: true, capture: true });
     window.addEventListener('pagehide', flushOnUnload);
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) flush();

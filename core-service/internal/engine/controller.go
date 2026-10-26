@@ -279,6 +279,25 @@ func (s *DialogSession) List(limit int) ([]Dialog, error) {
 	return out, nil
 }
 
+func (s *DialogSession) ForumTopics(ctx context.Context, groupID string) ([]telegram.ForumTopic, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	for _, id := range s.run.ids {
+		account, ok := s.run.accounts[id].(interface {
+			ForumTopics(context.Context, string) ([]telegram.ForumTopic, error)
+		})
+		if !ok {
+			continue
+		}
+		topics, err := account.ForumTopics(ctx, groupID)
+		if err == nil {
+			return topics, nil
+		}
+	}
+	return nil, errors.New("no connected account can read topics for this group")
+}
+
 func dialogAccessPriority(state string) int {
 	switch state {
 	case "ok":

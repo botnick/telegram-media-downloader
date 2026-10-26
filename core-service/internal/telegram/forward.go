@@ -34,6 +34,7 @@ type SendFileRequest struct {
 	// Destination is "me"/"saved" (Saved Messages), "" or "storage" (the
 	// storage channel), a numeric chat ID, a @username/t.me link or a +phone.
 	Destination string
+	TopicID     int
 	Name        string
 	Size        int64
 	Body        io.Reader
@@ -97,12 +98,19 @@ func (s *fileSender) send(ctx context.Context, req SendFileRequest) (int, error)
 	}
 	randomID := int64(binary.LittleEndian.Uint64(random[:]))
 	updates, err := s.api.MessagesSendMedia(ctx, &tg.MessagesSendMediaRequest{
-		Peer: peer, Media: uploadedMedia(file, req), Message: req.Caption, Entities: req.Entities, RandomID: randomID,
+		Peer: peer, ReplyTo: forwardTopicReply(req.TopicID), Media: uploadedMedia(file, req), Message: req.Caption, Entities: req.Entities, RandomID: randomID,
 	})
 	if err != nil {
 		return 0, err
 	}
 	return sentMessageID(updates, randomID), nil
+}
+
+func forwardTopicReply(topicID int) tg.InputReplyToClass {
+	if topicID <= 0 {
+		return nil
+	}
+	return &tg.InputReplyToMessage{ReplyToMsgID: topicID}
 }
 
 var numericDestination = regexp.MustCompile(`^-?\d+$`)
@@ -302,6 +310,22 @@ func sentMessageID(updates tg.UpdatesClass, randomID int64) int {
 
 // Telegram's caption limit, counted in UTF-16 code units like entity offsets.
 const maxCaption = 1024
+
+func PlainForwardCaption(text string) string {
+	if utf16Len(text) <= maxCaption {
+		return text
+	}
+	used, cut := 0, 0
+	for i, r := range text {
+		n := utf16.RuneLen(r)
+		if used+n > maxCaption-1 {
+			cut = i
+			break
+		}
+		used += n
+	}
+	return text[:cut] + "…"
+}
 
 // ForwardCaption builds the 2.x caption: the source text, a blank line and
 // "📌 Source: <chat>" linking to the original post (t.me/c/<id>/<message>),

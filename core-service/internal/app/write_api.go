@@ -225,6 +225,13 @@ func (a *App) handleAPIGroupSave(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				group[key] = normalizedTopics(value)
+			case "autoForward":
+				normalized, err := normalizedAutoForward(group[key], value)
+				if err != nil {
+					writeJSONError(w, http.StatusBadRequest, err.Error())
+					return
+				}
+				group[key] = normalized
 			case "rescueMode":
 				if mode, ok := value.(string); ok && (mode == "on" || mode == "off") {
 					group[key] = mode
@@ -273,6 +280,13 @@ func (a *App) handleAPIGroupSave(w http.ResponseWriter, r *http.Request) {
 				}
 			case "topics":
 				saved[key] = normalizedTopics(value)
+			case "autoForward":
+				normalized, err := normalizedAutoForward(nil, value)
+				if err != nil {
+					writeJSONError(w, http.StatusBadRequest, err.Error())
+					return
+				}
+				saved[key] = normalized
 			default:
 				saved[key] = value
 			}
@@ -341,12 +355,17 @@ func decodeConfigPatch(w http.ResponseWriter, r *http.Request, dst *map[string]a
 
 func normalizedTopics(value any) map[string]any {
 	input, _ := value.(map[string]any)
-	out := map[string]any{"enabled": false, "ids": []any{}}
+	out := map[string]any{"enabled": false, "mode": "all", "ids": []any{}}
 	if input == nil {
 		return out
 	}
 	if enabled, ok := input["enabled"].(bool); ok {
 		out["enabled"] = enabled
+	}
+	modeSet := false
+	if mode, ok := input["mode"].(string); ok && (mode == "all" || mode == "whitelist" || mode == "blacklist") {
+		out["mode"] = mode
+		modeSet = true
 	}
 	ids, _ := input["ids"].([]any)
 	clean := make([]any, 0, len(ids))
@@ -363,6 +382,9 @@ func normalizedTopics(value any) map[string]any {
 		}
 	}
 	out["ids"] = clean
+	if !modeSet && out["enabled"] == true && len(clean) > 0 {
+		out["mode"] = "whitelist"
+	}
 	return out
 }
 

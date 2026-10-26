@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Changed
+- **Searchable topic routing.** Route selectors now search inside their dropdown menus. Source topic choices respect the group's only/ignore filter, and a route covering all processed topics prevents adding redundant topic routes.
+
+### Service worker
+- `VERSION = 'v34160'`
+
 ## [3.4.15] — 2026-10-18
 
 ### Changed

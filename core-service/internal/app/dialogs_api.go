@@ -18,6 +18,39 @@ import (
 
 func registerDialogRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("GET /api/dialogs", a.requireSession(http.HandlerFunc(a.handleDialogs)))
+	mux.Handle("GET /api/dialogs/{id}/topics", a.requireSession(http.HandlerFunc(a.handleDialogTopics)))
+}
+
+func (a *App) handleDialogTopics(w http.ResponseWriter, r *http.Request) {
+	user, _ := auth.SessionFromContext(r.Context())
+	if user.Role != "admin" {
+		writeJSONError(w, http.StatusForbidden, "Only admins can browse Telegram topics")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	a.monitorOp.Lock()
+	err := a.startTelegramEngine(ctx, false)
+	var session *engine.DialogSession
+	if err == nil {
+		session, err = a.monitor.OpenDialogs(ctx)
+	}
+	a.monitorOp.Unlock()
+	if err != nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "Telegram account is not connected")
+		return
+	}
+	defer session.Close()
+	if _, err := session.List(-1); err != nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "Telegram topics are unavailable")
+		return
+	}
+	topics, err := session.ForumTopics(ctx, r.PathValue("id"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "Could not load forum topics: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"topics": topics})
 }
 
 func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {

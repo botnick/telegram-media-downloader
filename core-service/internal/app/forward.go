@@ -15,6 +15,7 @@ import (
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
+	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
 )
 
@@ -33,6 +34,7 @@ type forwardSender interface {
 type forwardJob struct {
 	groupID, groupName string
 	messageID          int
+	topicID            int
 	text               string
 	recordID           int64
 	path               string
@@ -78,20 +80,146 @@ func forwardSettings(cfg map[string]any, groupID string) (settings map[string]an
 	return nil, "", false
 }
 
+func normalizedAutoForward(existing, value any) (map[string]any, error) {
+	current, _ := existing.(map[string]any)
+	incoming, ok := value.(map[string]any)
+	if !ok {
+		return nil, errors.New("autoForward must be an object")
+	}
+	out := make(map[string]any, len(current)+len(incoming))
+	for key, item := range current {
+		out[key] = item
+	}
+	for key, item := range incoming {
+		out[key] = item
+	}
+	if enabled, ok := out["enabled"].(bool); !ok {
+		out["enabled"] = false
+	} else {
+		out["enabled"] = enabled
+	}
+	if enabled, ok := out["deleteAfterForward"].(bool); !ok {
+		out["deleteAfterForward"] = false
+	} else {
+		out["deleteAfterForward"] = enabled
+	}
+	rawRoutes, _ := out["routes"].([]any)
+	routes := make([]any, 0, len(rawRoutes))
+	for _, raw := range rawRoutes {
+		route, ok := raw.(map[string]any)
+		if !ok {
+			return nil, errors.New("autoForward route must be an object")
+		}
+		destination := strings.TrimSpace(toString(route["destinationGroupId"]))
+		if destination == "" {
+			continue
+		}
+		mode := toString(route["captionMode"])
+		if mode == "" {
+			mode = "inherit"
+		}
+		if mode == "source_info" && route["captionModeOverride"] != true {
+			mode = "inherit"
+		}
+		switch mode {
+		case "inherit", "source_info", "source", "none", "override", "regex":
+		default:
+			return nil, errors.New("autoForward route has an invalid caption mode")
+		}
+		for _, key := range []string{"caption", "regexPattern", "regexReplacement"} {
+			if len(toString(route[key])) > 4096 {
+				return nil, errors.New("autoForward caption fields must be 4096 bytes or fewer")
+			}
+		}
+		if mode == "regex" {
+			pattern := toString(route["regexPattern"])
+			if pattern == "" {
+				return nil, errors.New("caption regex cannot be empty")
+			}
+			if _, err := regexp.Compile(pattern); err != nil {
+				return nil, fmt.Errorf("invalid caption regex: %w", err)
+			}
+		}
+		route["destinationGroupId"] = destination
+		route["captionMode"] = mode
+		route["captionModeOverride"] = mode != "inherit"
+		for _, key := range []string{"sourceTopicId", "destinationTopicId"} {
+			n := number(route[key], 0)
+			if n < 0 || n > 2147483647 || n != float64(int(n)) {
+				return nil, errors.New("autoForward topic IDs must be non-negative integers")
+			}
+			route[key] = int(n)
+		}
+		routes = append(routes, route)
+	}
+	seenRoutes := make(map[string]struct{}, len(routes))
+	for _, raw := range routes {
+		route := raw.(map[string]any)
+		key := fmt.Sprintf("%d\x00%s", int(number(route["sourceTopicId"], 0)), toString(route["destinationGroupId"]))
+		if _, exists := seenRoutes[key]; exists {
+			return nil, errors.New("autoForward route duplicates a source topic and destination")
+		}
+		seenRoutes[key] = struct{}{}
+	}
+	mode := toString(out["captionMode"])
+	if mode == "" {
+		mode = "source_info"
+	}
+	switch mode {
+	case "source_info", "source", "none", "override", "regex":
+	default:
+		return nil, errors.New("autoForward has an invalid caption mode")
+	}
+	for _, key := range []string{"caption", "regexPattern", "regexReplacement"} {
+		if len(toString(out[key])) > 4096 {
+			return nil, errors.New("autoForward caption fields must be 4096 bytes or fewer")
+		}
+	}
+	if mode == "regex" {
+		pattern := toString(out["regexPattern"])
+		if pattern == "" {
+			return nil, errors.New("caption regex cannot be empty")
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			return nil, fmt.Errorf("invalid caption regex: %w", err)
+		}
+	}
+	out["captionMode"] = mode
+	out["routes"] = routes
+	return out, nil
+}
+
 func (a *App) forward(ctx context.Context, job forwardJob) {
 	cfg, err := a.config.Load(ctx)
 	if err != nil {
 		a.forwardFailed(job, "", err)
 		return
 	}
-	settings, accountID, enabled := forwardSettings(cfg, job.groupID)
+	groupSettings, accountID, enabled := forwardSettings(cfg, job.groupID)
 	if !enabled {
 		return
 	}
-	destination := strings.TrimSpace(toString(settings["destination"]))
+	routes := matchingForwardRoutes(groupSettings, job.topicID)
+	if len(routes) == 0 {
+		return
+	}
 	// The source chat is paused everywhere else; stay consistent.
 	if blocked, _, err := a.accessBlocked(ctx, job.groupID); err != nil || blocked {
 		return
+	}
+	for i, route := range routes {
+		settings := inheritCaptionSettings(route, groupSettings)
+		deleteAfter := groupSettings["deleteAfterForward"] == true && i == len(routes)-1
+		if !a.forwardToRoute(ctx, job, accountID, settings, deleteAfter) {
+			return
+		}
+	}
+}
+
+func (a *App) forwardToRoute(ctx context.Context, job forwardJob, accountID string, settings map[string]any, deleteAfter bool) bool {
+	destination := strings.TrimSpace(toString(settings["destinationGroupId"]))
+	if destination == "" {
+		destination = strings.TrimSpace(toString(settings["destination"]))
 	}
 	key := destinationKey(destination)
 	destWasBlocked := false
@@ -99,27 +227,31 @@ func (a *App) forward(ctx context.Context, job forwardJob) {
 		blocked, due, err := a.accessBlocked(ctx, key)
 		if err != nil {
 			a.forwardFailed(job, destination, err)
-			return
+			return false
 		}
 		if blocked && !due {
 			// That forward is the re-check once its time comes.
-			return
+			return false
 		}
 		destWasBlocked = blocked
 	}
 	file, err := openMedia(a.downloadsDir, job.path)
 	if err != nil {
 		a.forwardFailed(job, destination, fmt.Errorf("open downloaded file: %w", err))
-		return
+		return false
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
 		a.forwardFailed(job, destination, err)
-		return
+		return false
 	}
-	caption, entities := telegram.ForwardCaption(job.text, job.groupName, job.groupID, job.messageID)
-	req := telegram.SendFileRequest{Destination: destination, Name: path.Base(job.path), Size: info.Size(), Facts: job.facts, Caption: caption, Entities: entities}
+	caption, entities, err := routeCaption(settings, job)
+	if err != nil {
+		a.forwardFailed(job, destination, err)
+		return false
+	}
+	req := telegram.SendFileRequest{Destination: destination, TopicID: int(number(settings["destinationTopicId"], 0)), Name: path.Base(job.path), Size: info.Size(), Facts: job.facts, Caption: caption, Entities: entities}
 	var used string
 	var sent int
 	for attempt := 1; ; attempt++ {
@@ -140,13 +272,13 @@ func (a *App) forward(ctx context.Context, job forwardJob) {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return
+			return false
 		case <-timer.C:
 		}
 	}
 	if err != nil {
 		if ctx.Err() != nil {
-			return
+			return false
 		}
 		a.forwardFailed(job, destination, err)
 		if key != "" {
@@ -156,7 +288,7 @@ func (a *App) forward(ctx context.Context, job forwardJob) {
 				}
 			}
 		}
-		return
+		return false
 	}
 	if key != "" {
 		if err := a.markDestinationReachable(ctx, key, used); err != nil && a.output != nil {
@@ -174,9 +306,71 @@ func (a *App) forward(ctx context.Context, job forwardJob) {
 		}
 		fmt.Fprintf(a.output, "AutoForward: sent %s from %s to %s%s\n", req.Name, job.groupName, label, tail)
 	}
-	if settings["deleteAfterForward"] == true {
+	if deleteAfter {
 		file.Close()
 		a.deleteForwarded(ctx, job)
+	}
+	return true
+}
+
+func inheritCaptionSettings(route, group map[string]any) map[string]any {
+	if _, routeSpecific := route["destinationGroupId"]; !routeSpecific || toString(route["captionMode"]) != "inherit" {
+		return route
+	}
+	out := make(map[string]any, len(route)+4)
+	for key, value := range route {
+		out[key] = value
+	}
+	for _, key := range []string{"captionMode", "caption", "regexPattern", "regexReplacement"} {
+		if value, ok := group[key]; ok {
+			out[key] = value
+		}
+	}
+	return out
+}
+
+func matchingForwardRoutes(settings map[string]any, sourceTopicID int) []map[string]any {
+	routes, ok := settings["routes"].([]any)
+	if !ok || len(routes) == 0 {
+		return []map[string]any{settings}
+	}
+	var exact, fallback []map[string]any
+	for _, raw := range routes {
+		route, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		topicID := int(number(route["sourceTopicId"], 0))
+		if topicID == sourceTopicID && sourceTopicID != 0 {
+			exact = append(exact, route)
+		}
+		if topicID == 0 {
+			fallback = append(fallback, route)
+		}
+	}
+	if len(exact) > 0 {
+		return exact
+	}
+	return fallback
+}
+
+func routeCaption(settings map[string]any, job forwardJob) (string, []tg.MessageEntityClass, error) {
+	switch toString(settings["captionMode"]) {
+	case "none":
+		return "", nil, nil
+	case "source":
+		return telegram.PlainForwardCaption(job.text), nil, nil
+	case "override":
+		return telegram.PlainForwardCaption(toString(settings["caption"])), nil, nil
+	case "regex":
+		pattern, err := regexp.Compile(toString(settings["regexPattern"]))
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid caption regex: %w", err)
+		}
+		return telegram.PlainForwardCaption(pattern.ReplaceAllString(job.text, toString(settings["regexReplacement"]))), nil, nil
+	default:
+		caption, entities := telegram.ForwardCaption(job.text, job.groupName, job.groupID, job.messageID)
+		return caption, entities, nil
 	}
 }
 
