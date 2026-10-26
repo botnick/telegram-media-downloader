@@ -2,7 +2,10 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.4.16] — 2026-10-26
+
+### Added
+- **Forum-topic forwarding routes.** Send downloaded files to selected topics in destination groups, with searchable selectors and configurable captions. Includes Thai labels.
 
 ### Changed
 - **Searchable topic routing.** Route selectors now search inside their dropdown menus. Source topic choices respect the group's only/ignore filter, and topic-specific routes override the catch-all route only for the same destination.
