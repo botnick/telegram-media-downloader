@@ -77,7 +77,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.22'
+          go-version-file: seekbar-service/go.mod
+          cache-dependency-path: seekbar-service/go.sum
 
       - name: Build
         shell: bash
@@ -101,6 +102,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: seekbar-service/dist/${{ matrix.slug }}.tar.gz
+          body_path: seekbar-service/CHANGELOG.md
           # Sidecar releases must never become the repo's "Latest" release —
           # that slot belongs to the app (vX.Y.Z tags).
           make_latest: false

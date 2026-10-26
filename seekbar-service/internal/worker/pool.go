@@ -214,6 +214,34 @@ func (p *Pool) Submit(j *Job) {
 	p.total++
 }
 
+// Snapshot returns a stable job value for polling or JSON encoding. Callers
+// must not read the submitted job pointer while workers are running.
+func (p *Pool) Snapshot(j *Job) Job {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return copyJob(j)
+}
+
+func copyJob(j *Job) Job {
+	out := *j
+	if j.Params != nil {
+		params := *j.Params
+		out.Params = &params
+	}
+	return out
+}
+
+// Cancel only cancels queued jobs; a running ffmpeg operation keeps its current
+// contract. Cancellation and dequeue use the same lock.
+func (p *Pool) Cancel(j *Job) Job {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if j.Status == "pending" {
+		j.Status = "cancelled"
+	}
+	return copyJob(j)
+}
+
 // Start launches worker goroutines. Accepts a pre-resolved hwaccel
 // backend so the caller (server.go) can share detection results with
 // the /health endpoint without probing twice. Pass an empty string to
@@ -324,6 +352,11 @@ func (p *Pool) worker(ctx context.Context) {
 				continue
 			}
 		}
+		// Work on a private copy; publish all result fields together after
+		// cleanup. Readers must never see a partially completed result.
+		queued := j
+		working := p.Snapshot(queued)
+		j = &working
 		// Job was cancelled via the HTTP cancel endpoint before it was
 		// picked up — count it as done but don't invoke ffmpeg.
 		if j.Status == "cancelled" {
@@ -331,22 +364,25 @@ func (p *Pool) worker(ctx context.Context) {
 			d := int(atomic.AddInt32(&p.done, 1))
 			if p.onProgress != nil {
 				p.mu.Lock()
-				q := len(p.queue)
+				q, total := len(p.queue), p.total
 				p.mu.Unlock()
-				p.onProgress(d, p.total, int(atomic.LoadInt32(&p.genOk)), int(atomic.LoadInt32(&p.genErr)), q)
+				p.onProgress(d, total, int(atomic.LoadInt32(&p.genOk)), int(atomic.LoadInt32(&p.genErr)), q)
 			}
 			continue
 		}
 		atomic.AddInt32(&p.running, 1)
 		p.processJob(ctx, j)
 		p.cleanupUpload(j)
+		p.mu.Lock()
+		*queued = working
+		p.mu.Unlock()
 		atomic.AddInt32(&p.running, -1)
 		d := int(atomic.AddInt32(&p.done, 1))
 		if p.onProgress != nil {
 			p.mu.Lock()
-			q := len(p.queue)
+			q, total := len(p.queue), p.total
 			p.mu.Unlock()
-			p.onProgress(d, p.total, int(atomic.LoadInt32(&p.genOk)), int(atomic.LoadInt32(&p.genErr)), q)
+			p.onProgress(d, total, int(atomic.LoadInt32(&p.genOk)), int(atomic.LoadInt32(&p.genErr)), q)
 		}
 	}
 }

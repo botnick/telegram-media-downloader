@@ -55,7 +55,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/worker"
 )
 
-const ServiceVersion = "0.4.0"
+var ServiceVersion = "0.4.1"
 
 // Features advertised on /health so callers can pick what this build
 // supports (older builds report none and are used in path mode only).
@@ -466,26 +466,23 @@ func (s *Server) handleSubmitOne(w http.ResponseWriter, r *http.Request) {
 		for {
 			select {
 			case <-ctx.Done():
+				snapshot := s.pool.Snapshot(j)
 				writeJSON(w, http.StatusAccepted, map[string]any{
-					"job_id":   j.ID,
+					"job_id":   snapshot.ID,
 					"status":   "timeout",
-					"video_id": j.VideoID,
+					"video_id": snapshot.VideoID,
 				})
 				return
 			case <-time.After(150 * time.Millisecond):
-				// Read Status under the server lock to avoid a data race:
-				// pool workers write j.Status without holding s.mu.
-				s.mu.RLock()
-				status := j.Status
-				s.mu.RUnlock()
-				if status == "done" || status == "failed" || status == "cancelled" {
-					writeJSON(w, http.StatusOK, j)
+				snapshot := s.pool.Snapshot(j)
+				if snapshot.Status == "done" || snapshot.Status == "failed" || snapshot.Status == "cancelled" {
+					writeJSON(w, http.StatusOK, snapshot)
 					return
 				}
 			}
 		}
 	}
-	writeJSON(w, http.StatusAccepted, j)
+	writeJSON(w, http.StatusAccepted, s.pool.Snapshot(j))
 }
 
 type submitBatchReq struct {
@@ -527,8 +524,8 @@ func (s *Server) handleSubmitBatch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.trackJob(j)
-		s.pool.Submit(j)
 		ids = append(ids, j.ID)
+		s.pool.Submit(j)
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"submitted": len(ids),
@@ -708,10 +705,10 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	out := make([]*worker.Job, 0, limit)
+	out := make([]worker.Job, 0, limit)
 	for i := len(s.jobList) - 1; i >= 0 && len(out) < limit; i-- {
 		if j, ok := s.jobs[s.jobList[i]]; ok {
-			out = append(out, j)
+			out = append(out, s.pool.Snapshot(j))
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"jobs": out, "count": len(out)})
@@ -726,22 +723,19 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, j)
+	writeJSON(w, http.StatusOK, s.pool.Snapshot(j))
 }
 
 func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	s.mu.Lock()
+	s.mu.RLock()
 	j, ok := s.jobs[id]
-	if ok && j.Status == "pending" {
-		j.Status = "cancelled"
-	}
-	s.mu.Unlock()
+	s.mu.RUnlock()
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, j)
+	writeJSON(w, http.StatusOK, s.pool.Cancel(j))
 }
 
 func (s *Server) handleDeleteSprite(w http.ResponseWriter, r *http.Request) {

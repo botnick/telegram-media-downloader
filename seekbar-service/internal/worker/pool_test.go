@@ -53,7 +53,7 @@ func ffmpegClip(t *testing.T, dst string) (ff, probe string) {
 	gen := exec.Command(ff, "-hide_banner", "-loglevel", "error", "-f", "lavfi",
 		"-i", "testsrc=duration=6:size=320x180:rate=10", "-pix_fmt", "yuv420p", "-f", "mp4", "-y", dst)
 	if out, err := gen.CombinedOutput(); err != nil {
-		t.Skipf("cannot make a test clip: %v %s", err, out)
+		t.Fatalf("cannot make a test clip: %v %s", err, out)
 	}
 	return ff, probe
 }
@@ -98,8 +98,7 @@ func runJob(t *testing.T, cfg *config.Config, j *Job) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	// Give the worker a moment to run the post-job cleanup.
-	time.Sleep(100 * time.Millisecond)
+	// A terminal status is published only after post-job cleanup.
 	if j.Status != "done" {
 		t.Fatalf("job failed: %s", j.Error)
 	}
@@ -169,5 +168,28 @@ func TestPerJobOverwriteAlways(t *testing.T) {
 	runJob(t, cfg, j)
 	if b, _ := os.ReadFile(sprite); string(b) == "stale" {
 		t.Fatal("overwrite=always returned the cached sprite")
+	}
+}
+
+func TestSnapshotAndCancellationDoNotMutatePreviousResponse(t *testing.T) {
+	p := NewPool(config.Defaults(), logx.New("error", "text"))
+	j := &Job{ID: "pending", Params: &JobParams{TileW: 80}}
+	p.Submit(j)
+	before := p.Snapshot(j)
+	cancelled := p.Cancel(j)
+	if before.Status != "pending" || cancelled.Status != "cancelled" {
+		t.Fatalf("before=%s after=%s", before.Status, cancelled.Status)
+	}
+	before.Params.TileW = 100
+	if p.Snapshot(j).Params.TileW != 80 {
+		t.Fatal("snapshot retained mutable job parameters")
+	}
+	if next := p.next(); next == nil || p.Snapshot(next).Status != "cancelled" {
+		t.Fatal("dequeue must preserve cancellation")
+	}
+	p.Submit(&Job{ID: "running"})
+	running := p.next()
+	if p.Cancel(running).Status != "running" {
+		t.Fatal("queued-only cancellation changed a running job")
 	}
 }

@@ -21,7 +21,7 @@
 #       -v tgdl-seekbar:/data ghcr.io/botnick/tgdl-seekbar:latest
 
 # ---- Stage 1: build the binaries -----------------------------------------
-FROM --platform=$BUILDPLATFORM golang:1.22-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm AS build
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -59,7 +59,7 @@ RUN useradd --system --create-home --uid 1000 --user-group seekbar
 COPY --from=build /out/seekbar-server /usr/local/bin/seekbar-server
 COPY --from=build /out/seekbar-cli    /usr/local/bin/seekbar-cli
 
-ENV SEEKBAR_VERSION=0.4.0 \
+ENV SEEKBAR_VERSION=0.4.1 \
     SEEKBAR_OUTPUT_DIR=/data/output \
     SEEKBAR_TEMP_DIR=/data/tmp \
     SEEKBAR_HTTP_LISTEN=:8089 \

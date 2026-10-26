@@ -5,6 +5,7 @@ All notable changes to this project are documented here. The format is based on 
 ## [3.4.17] — 2026-10-26
 
 ### Fixed
+- **seekbar-service 0.4.1:** workers publish completed job results atomically after upload cleanup. Job polling, list responses and queued-job cancellation use synchronized snapshots instead of racing with generation.
 - Disk-rotation test cleanup now waits for background workers before restoring shared settings, eliminating an intermittent race-test failure.
 - Password recovery inputs now have accessible labels and new-password autocomplete. Login errors and reset results expose alert/status semantics for assistive technology.
 - Security support guidance links to the latest stable release instead of naming an obsolete version series.

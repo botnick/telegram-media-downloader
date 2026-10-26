@@ -2,7 +2,9 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -246,5 +248,59 @@ func TestAllowRootsLimitsPathMode(t *testing.T) {
 	open, _ := newTestServer(t, nil)
 	if _, ok := open.resolveSource(badFile); !ok {
 		t.Fatalf("no allow_roots should keep the old behaviour")
+	}
+}
+
+func TestJobResponsesAreConsistentWhileWorkersFinish(t *testing.T) {
+	s, h := newTestServer(t, func(c *config.Config) {
+		c.Jobs.Concurrency = 4
+		c.Storage.Overwrite = "never"
+		c.Thumb.Format = "webp"
+	})
+	if err := os.MkdirAll(s.cfg.Storage.OutputDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Cache hits exercise real worker completion without a codec dependency.
+	for _, name := range []string{"fixture.webp", "fixture.json"} {
+		if err := os.WriteFile(filepath.Join(s.cfg.Storage.OutputDir, name), []byte("fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 100; i++ {
+		j := &worker.Job{ID: fmt.Sprintf("job-%d", i), VideoID: "fixture", Source: "path"}
+		s.trackJob(j)
+		s.pool.Submit(j)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.pool.Start(ctx, "none")
+	defer s.pool.Stop()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, one := do(t, h, "GET", "/v1/jobs/job-0", nil, nil)
+		if one["status"] == "done" && (one["sprite_path"] == nil || one["finished_at"] == nil) {
+			t.Fatalf("partial completed job: %v", one)
+		}
+		rec, body := do(t, h, "GET", "/v1/jobs", nil, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatal(rec.Code)
+		}
+		jobs := body["jobs"].([]any)
+		done := 0
+		for _, value := range jobs {
+			j := value.(map[string]any)
+			if j["status"] == "done" {
+				done++
+				if j["sprite_path"] == nil || j["meta_path"] == nil || j["finished_at"] == nil {
+					t.Fatalf("partial completed job: %v", j)
+				}
+			}
+		}
+		if done == 100 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d jobs completed", done)
+		}
 	}
 }
