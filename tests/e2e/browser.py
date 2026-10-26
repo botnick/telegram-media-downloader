@@ -17,6 +17,9 @@ try:
     with sync_playwright() as pw:
         browser=pw.chromium.launch(headless=True)
         context=browser.new_context();page=context.new_page();errors=[]
+        # Keep actual application/API traffic while making optional external
+        # fonts/icons independent of the runner's outbound network and CDN.
+        context.route('**/*', lambda route: route.continue_() if route.request.url.startswith(base+'/') else route.abort())
         page.on('pageerror',lambda e:errors.append(str(e)))
         for _ in range(100):
             try:
@@ -24,8 +27,8 @@ try:
             except Exception:time.sleep(.1)
         assert context.request.post(base+('/api/auth/setup' if fresh else '/api/login'),data={'password':'local-e2e-password-3417'}).ok
         assert context.request.post(base+'/api/logout',data={}).ok
-        page.goto(base+'/login.html');page.locator('#password').fill('local-e2e-password-3417');page.locator('#submitBtn').click()
-        page.wait_for_url(re.compile(r'.*/(?:index.html)?(?:#.*)?$'))
+        page.goto(base+'/login.html',wait_until='domcontentloaded');page.locator('#password').fill('local-e2e-password-3417');page.locator('#submitBtn').click()
+        page.wait_for_url(re.compile(r'.*/(?:index.html)?(?:#.*)?$'),wait_until='domcontentloaded')
         record('real browser login',passed=True)
         for path in ['/api/accounts','/api/stats','/api/groups','/api/queue/snapshot','/api/config','/api/backup/destinations','/api/system/health']:
             r=context.request.get(base+path);assert r.ok,(path,r.status);record(path,status=r.status)
@@ -33,9 +36,10 @@ try:
         for width in [390,1280]:
             page.set_viewport_size({'width':width,'height':900})
             for route in routes:
-                page.goto(base+'/#/'+route);page.wait_for_timeout(700)
-                assert page.locator('#page-title').is_visible(),route
-                assert page.locator('#content-area > [id^="page-"]:visible').count()>=1,route
+                page.goto(base+'/#/'+route,wait_until='domcontentloaded')
+                expect(page.locator('#page-title')).to_be_visible()
+                expect(page.locator('#content-area > [id^="page-"]:visible').first).to_be_visible()
+                page.wait_for_timeout(700)
                 assert not page.evaluate('document.documentElement.scrollWidth > innerWidth'), (route,width)
                 record('browser route',route=route,width=width,overflow=page.evaluate('document.documentElement.scrollWidth > innerWidth'))
             page.screenshot(path=str(root/f'browser-{width}.png'))
