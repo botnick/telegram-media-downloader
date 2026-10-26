@@ -370,6 +370,19 @@ func (c *ftpSession) data(verb, name string) (net.Conn, error) {
 	}
 	return conn, nil
 }
+func (c *ftpSession) finishUpload(conn net.Conn, err error) error {
+	if secure, ok := conn.(*tls.Conn); ok && err == nil {
+		// Keep the transport open until the peer consumes close_notify and
+		// closes its side. Closing TCP immediately can discard buffered upload
+		// records in asynchronous FTPS servers even when STOR returns 226.
+		err = secure.CloseWrite()
+		if err == nil {
+			_, err = io.Copy(io.Discard, secure)
+		}
+	}
+	return c.finishData(conn, err)
+}
+
 func (c *ftpSession) finishData(conn net.Conn, err error) error {
 	err = errors.Join(err, conn.Close())
 	if err != nil {

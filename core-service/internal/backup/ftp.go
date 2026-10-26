@@ -390,7 +390,7 @@ func (p *ftpProvider) Upload(ctx context.Context, name string, src io.ReadSeeker
 		reader := &pacedReader{ctx, io.TeeReader(io.LimitReader(src, size+1), hash), uploadPacerFrom(ctx)}
 		writer := &ftpProgressWriter{writer: conn, progress: progress}
 		n, e := io.CopyBuffer(writer, reader, make([]byte, 64<<10))
-		e = c.finishData(conn, e)
+		e = c.finishUpload(conn, e)
 		if e != nil {
 			return e
 		}
