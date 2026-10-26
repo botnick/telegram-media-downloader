@@ -387,7 +387,9 @@ function forwardRouteHtml(route = {}, index = 0) {
     const sourceID = `fwd-source-topic-${suffix}`;
     const destinationID = `fwd-destination-group-${suffix}`;
     const destinationTopicID = `fwd-destination-topic-${suffix}`;
-    return `<fieldset class="cd-forward-route" data-forward-route>
+    const captions = Object.fromEntries(['captionMode', 'captionModeOverride', 'caption', 'regexPattern', 'regexReplacement']
+        .filter((key) => key in route).map((key) => [key, route[key]]));
+    return `<fieldset class="cd-forward-route" data-forward-route data-caption-settings="${escapeHtml(JSON.stringify(captions))}">
         <div class="cd-route-head"><span class="cd-route-number">${escapeHtml(routeLabel)}</span>
         <button type="button" class="cd-route-remove" data-route-remove aria-label="${escapeHtml(i18nTf('group.fwd.remove_route_number', { number: index + 1 }, `Remove route ${index + 1}`))}"><i class="ri-delete-bin-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('group.fwd.remove_route', 'Remove route'))}</span></button></div>
         <div class="cd-route-field hidden" data-route-source-topic-wrap><label class="cd-label" for="${sourceID}-trigger">${escapeHtml(i18nTf('group.fwd.source_topic', { name: cur?.name || '' }, 'Source topic · {name}'))}</label>
@@ -454,7 +456,7 @@ async function loadTopicOptions(select, groupID, emptyLabel, disableClosed = fal
     select.dataset.loadToken = String(loadToken);
     const selected = select.dataset.selected || select.value || '0';
     select.disabled = true;
-    select.innerHTML = `<option value="0">${escapeHtml(i18nT('group.fwd.topics_loading', 'Loading topics…'))}</option>`;
+    select.innerHTML = `<option value="${escapeHtml(selected)}" selected>${escapeHtml(i18nT('group.fwd.topics_loading', 'Loading topics…'))}</option>`;
     cacheSearchOptions(select);
     try {
         let request = forumTopicsCache.get(groupID);
@@ -479,15 +481,14 @@ async function loadTopicOptions(select, groupID, emptyLabel, disableClosed = fal
                 availableTopics = topics.filter((topic) => rule.mode === 'whitelist' ? ids.has(String(topic.id)) : !ids.has(String(topic.id)));
             }
         }
-        const resolvedSelection = availableTopics.some((topic) => String(topic.id) === selected) ? selected : '0';
+        const resolvedSelection = selected;
         select.dataset.selected = resolvedSelection;
         const resolvedEmptyLabel = select.matches('[data-route-source-topic]') && rule?.enabled && rule.ids.length
             ? i18nT('group.fwd.all_processed_topics', 'All processed topics')
             : emptyLabel;
-        const canRouteAllSourceTopics = !isSourceTopic || document.querySelectorAll('[data-forward-route]').length <= 1;
-        select.innerHTML = `<option value="0" ${canRouteAllSourceTopics ? '' : 'disabled'}>${escapeHtml(resolvedEmptyLabel)}</option>${availableTopics
+        select.innerHTML = `<option value="0">${escapeHtml(resolvedEmptyLabel)}</option>${availableTopics
             .map((topic) => `<option value="${escapeHtml(String(topic.id))}" ${String(topic.id) === resolvedSelection ? 'selected' : ''} ${disableClosed && topic.closed ? 'disabled' : ''}>${escapeHtml(topic.name)}${topic.closed ? ` · ${escapeHtml(i18nT('group.fwd.closed', 'closed'))}` : ''}</option>`)
-            .join('')}`;
+            .join('')}${selected !== '0' && !availableTopics.some((topic) => String(topic.id) === selected) ? `<option value="${escapeHtml(selected)}" selected>${escapeHtml(emptyLabel)} #${escapeHtml(selected)}</option>` : ''}`;
         cacheSearchOptions(select);
         select.disabled = topics.length === 0;
         if (wrapper) wrapper.classList.toggle('hidden', !isSourceTopic && topics.length === 0);
@@ -497,7 +498,7 @@ async function loadTopicOptions(select, groupID, emptyLabel, disableClosed = fal
         if (status) status.textContent = '';
     } catch (error) {
         if (!select.isConnected || select.dataset.loadToken !== String(loadToken)) return;
-        select.innerHTML = `<option value="0">${escapeHtml(i18nT('group.fwd.topics_unavailable', 'Topics unavailable'))}</option>`;
+        select.innerHTML = `<option value="${escapeHtml(selected)}" selected>${escapeHtml(i18nT('group.fwd.topics_unavailable', 'Topics unavailable'))} #${escapeHtml(selected)}</option>`;
         wrapper?.classList.remove('hidden');
         cacheSearchOptions(select);
         const status = select.closest('[data-forward-route]')?.querySelector('[data-route-topics-status]');
@@ -680,11 +681,12 @@ async function loadGroupTopicFilterOptions() {
 function collectForwardRoutes() {
     return [...document.querySelectorAll('[data-forward-route]')]
         .map((card) => ({
-            sourceTopicId: Number(card.querySelector('[data-route-source-topic]')?.value) || 0,
+            sourceTopicId: Number(card.querySelector('[data-route-source-topic]')?.dataset.selected ?? card.querySelector('[data-route-source-topic]')?.value) || 0,
             destinationGroupId: card.querySelector('[data-route-destination]')?.value || '',
-            destinationTopicId: Number(card.querySelector('[data-route-destination-topic]')?.value) || 0,
+            destinationTopicId: Number(card.querySelector('[data-route-destination-topic]')?.dataset.selected ?? card.querySelector('[data-route-destination-topic]')?.value) || 0,
             captionMode: 'inherit',
             captionModeOverride: false,
+            ...JSON.parse(card.dataset.captionSettings || '{}'),
         }))
         .filter((route) => route.destinationGroupId);
 }
@@ -831,7 +833,7 @@ function render() {
                     on: fwd.enabled === true,
                 })}
                 <div id="fwd-settings" class="cd-sub ${fwd.enabled ? '' : 'hidden'}">
-                    ${fwd.destination && !forwardRoutes.length ? `<p class="cd-help cd-legacy-destination">${escapeHtml(i18nT('group.fwd.legacy', 'Existing destination remains active until a topic route is added.'))} <strong>${escapeHtml(fwd.destination === 'me' || fwd.destination === 'storage' ? fwd.destination : getGroupName(fwd.destination, { fallback: cur.name }))}</strong></p>` : ''}
+                    ${fwd.destination && !Array.isArray(fwd.routes) ? `<p class="cd-help cd-legacy-destination">${escapeHtml(i18nT('group.fwd.legacy', 'Existing destination remains active until a topic route is added.'))} <strong>${escapeHtml(fwd.destination === 'me' || fwd.destination === 'storage' ? fwd.destination : getGroupName(fwd.destination, { fallback: cur.name }))}</strong></p>` : ''}
                     ${
                         fwdBlocked
                             ? `<p class="cd-fwd-warn" role="note"><i class="ri-error-warning-line" aria-hidden="true"></i><span>${escapeHtml(

@@ -5,7 +5,11 @@ All notable changes to this project are documented here. The format is based on 
 ## [Unreleased]
 
 ### Changed
-- **Searchable topic routing.** Route selectors now search inside their dropdown menus. Source topic choices respect the group's only/ignore filter, and a route covering all processed topics prevents adding redundant topic routes.
+- **Searchable topic routing.** Route selectors now search inside their dropdown menus. Source topic choices respect the group's only/ignore filter, and topic-specific routes override the catch-all route only for the same destination.
+
+### Fixed
+- Topic route validation preserves distinct source topics and rejects malformed IDs. Removing the last route stops forwarding instead of reviving a legacy destination.
+- Topic lookup failures preserve saved IDs and per-route captions instead of silently broadening the route.
 
 ### Service worker
 - `VERSION = 'v34160'`

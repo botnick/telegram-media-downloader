@@ -19,7 +19,7 @@ func (a *Account) ForumTopics(ctx context.Context, groupID string) ([]ForumTopic
 	if err != nil {
 		return nil, err
 	}
-	if dialog.Type != "channel" {
+	if dialog.Type != "channel" && dialog.Type != "supergroup" {
 		return nil, nil
 	}
 	if dialog.peer == nil {

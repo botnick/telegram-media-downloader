@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"path"
 	"regexp"
@@ -103,12 +104,23 @@ func normalizedAutoForward(existing, value any) (map[string]any, error) {
 	} else {
 		out["deleteAfterForward"] = enabled
 	}
-	rawRoutes, _ := out["routes"].([]any)
+	rawRoutes, validRoutes := out["routes"].([]any)
+	_, hasRoutes := out["routes"]
+	if hasRoutes && !validRoutes {
+		return nil, errors.New("autoForward routes must be an array")
+	}
+	if len(rawRoutes) > 100 {
+		return nil, errors.New("autoForward supports at most 100 routes")
+	}
 	routes := make([]any, 0, len(rawRoutes))
 	for _, raw := range rawRoutes {
-		route, ok := raw.(map[string]any)
+		original, ok := raw.(map[string]any)
 		if !ok {
 			return nil, errors.New("autoForward route must be an object")
+		}
+		route := make(map[string]any, len(original))
+		for key, value := range original {
+			route[key] = value
 		}
 		destination := strings.TrimSpace(toString(route["destinationGroupId"]))
 		if destination == "" {
@@ -144,11 +156,14 @@ func normalizedAutoForward(existing, value any) (map[string]any, error) {
 		route["captionMode"] = mode
 		route["captionModeOverride"] = mode != "inherit"
 		for _, key := range []string{"sourceTopicId", "destinationTopicId"} {
-			n := number(route[key], 0)
-			if n < 0 || n > 2147483647 || n != float64(int(n)) {
+			n := float64(0)
+			if value, present := route[key]; present {
+				n = number(value, math.NaN())
+			}
+			if math.IsNaN(n) || n < 0 || n > 2147483647 || n != float64(int(n)) {
 				return nil, errors.New("autoForward topic IDs must be non-negative integers")
 			}
-			route[key] = int(n)
+			route[key] = n
 		}
 		routes = append(routes, route)
 	}
@@ -185,7 +200,9 @@ func normalizedAutoForward(existing, value any) (map[string]any, error) {
 		}
 	}
 	out["captionMode"] = mode
-	out["routes"] = routes
+	if hasRoutes {
+		out["routes"] = routes
+	}
 	return out, nil
 }
 
@@ -330,9 +347,13 @@ func inheritCaptionSettings(route, group map[string]any) map[string]any {
 }
 
 func matchingForwardRoutes(settings map[string]any, sourceTopicID int) []map[string]any {
-	routes, ok := settings["routes"].([]any)
-	if !ok || len(routes) == 0 {
+	raw, present := settings["routes"]
+	if !present {
 		return []map[string]any{settings}
+	}
+	routes, ok := raw.([]any)
+	if !ok {
+		return nil
 	}
 	var exact, fallback []map[string]any
 	for _, raw := range routes {
@@ -348,10 +369,16 @@ func matchingForwardRoutes(settings map[string]any, sourceTopicID int) []map[str
 			fallback = append(fallback, route)
 		}
 	}
-	if len(exact) > 0 {
-		return exact
+	destinations := make(map[string]bool)
+	for _, route := range exact {
+		destinations[toString(route["destinationGroupId"])] = true
 	}
-	return fallback
+	for _, route := range fallback {
+		if !destinations[toString(route["destinationGroupId"])] {
+			exact = append(exact, route)
+		}
+	}
+	return exact
 }
 
 func routeCaption(settings map[string]any, job forwardJob) (string, []tg.MessageEntityClass, error) {

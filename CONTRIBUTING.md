@@ -64,3 +64,14 @@ run `scripts/build-server-release.sh`, which builds the release archives and
 Describe what changed, how you verified it and any remaining limitations. Fill
 in the [pull request template](.github/PULL_REQUEST_TEMPLATE.md). Security
 issues go through [SECURITY.md](SECURITY.md), not public PRs.
+
+For forum-routing UI changes, run the browser regression checks at mobile and
+desktop widths (Python with `playwright` and its Chromium browser installed):
+
+```sh
+python3 tests/ui/forum_routes.py
+```
+
+These use mocked Telegram topic responses to check that unavailable or filtered
+topics cannot silently change saved routing IDs or captions. A live Telegram
+account is still needed to validate actual delivery to a forum topic.
