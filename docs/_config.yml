@@ -61,6 +61,6 @@ exclude:
 # Read by _includes/head_custom.html (JSON-LD). On GitHub Pages the version
 # comes from the latest GitHub release; this value is the offline fallback.
 software:
-  version: 3.4.16
+  version: 3.4.17
   repository: https://github.com/botnick/telegram-media-downloader
   license: https://github.com/botnick/telegram-media-downloader/blob/main/LICENSE

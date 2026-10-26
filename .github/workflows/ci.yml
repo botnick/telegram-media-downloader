@@ -51,3 +51,17 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: CGO_ENABLED=0 GOOS=${TARGET%/*} GOARCH=${TARGET#*/} GOARM=7 go -C core-service build -trimpath -o /dev/null ./cmd/tgdl-server
+
+  ui:
+    name: Browser regression checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/ui/login_accessibility.py
+      - run: python tests/ui/forum_routes.py

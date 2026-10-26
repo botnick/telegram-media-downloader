@@ -25,7 +25,13 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    uses: ./.github/workflows/test-sidecars.yml
+    permissions:
+      contents: read
+
   build-binaries:
+    needs: test
     name: binary (${{ matrix.os }} / ${{ matrix.goarch }})
     strategy:
       fail-fast: false
@@ -103,6 +109,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   image:
+    needs: test
     name: image (linux/amd64 + linux/arm64)
     runs-on: ubuntu-latest
     steps:

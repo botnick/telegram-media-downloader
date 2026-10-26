@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.17] — 2026-10-26
+
+### Fixed
+- Disk-rotation test cleanup now waits for background workers before restoring shared settings, eliminating an intermittent race-test failure.
+- Password recovery inputs now have accessible labels and new-password autocomplete. Login errors and reset results expose alert/status semantics for assistive technology.
+- Security support guidance links to the latest stable release instead of naming an obsolete version series.
+
+### Added
+- Opt-in large-file acceptance testing with a separately authorized Telegram test account, original-file SHA-256 comparison, and disk readback verification. Credentials remain outside the repository.
+- Browser regression checks for keyboard password recovery and forum routing now run in main CI.
+- Faces, NSFW and seekbar release publishers wait for automated sidecar tests. AI contract tests do not require downloaded model weights or a GPU.
+
+### Service worker
+- `VERSION = 'v34170'`
+
 ## [3.4.16] — 2026-10-26
 
 ### Added

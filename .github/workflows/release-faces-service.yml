@@ -5,7 +5,7 @@
 # (model upgrades, security fixes in onnxruntime, etc.) without forcing
 # a full app release.
 #
-# Two jobs:
+# Release jobs (all gated by the reusable sidecar test workflow):
 #   1. build-binaries  — PyInstaller one-file binary per platform/arch,
 #                        attached to the GH Release as a tarball asset.
 #                        Consumed by src/core/ai/faces-spawn.js for the
@@ -27,6 +27,11 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    uses: ./.github/workflows/test-sidecars.yml
+    permissions:
+      contents: read
+
   # ---------------------------------------------------------------
   # Job 1 — Per-platform PyInstaller binaries
   # ---------------------------------------------------------------
@@ -40,6 +45,7 @@ jobs:
   # (insightface + onnx files are already separately compressed inside
   # the bundle, so additional tarball compression buys little).
   build-binaries:
+    needs: test
     name: binary (${{ matrix.os }} / ${{ matrix.arch }})
     strategy:
       fail-fast: false
@@ -144,6 +150,7 @@ jobs:
   # release tag but neither depends on the other. The Docker job
   # could land first if the matrix binaries take longer to build.
   build-docker:
+    needs: test
     name: docker (linux/amd64 + linux/arm64)
     runs-on: ubuntu-latest
     permissions:
@@ -186,6 +193,7 @@ jobs:
   # ghcr.io/botnick/tgdl-faces:cuda-latest. NVIDIA publishes no arm64
   # onnxruntime-gpu wheels, so this is amd64-only.
   build-docker-cuda:
+    needs: test
     name: docker cuda (linux/amd64)
     runs-on: ubuntu-latest
     permissions:

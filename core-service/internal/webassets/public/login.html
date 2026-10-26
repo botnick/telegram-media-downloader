@@ -248,7 +248,7 @@
                 <i class="ri-login-circle-line align-middle mr-1.5"></i><span>Sign in</span>
             </button>
 
-            <div id="error" class="hidden text-sm text-center"
+            <div id="error" role="alert" aria-atomic="true" class="hidden text-sm text-center"
                 style="color: var(--tg-red); padding: 8px 12px; background: rgba(229,57,53,0.10); border-radius: 8px;">
                 Invalid password
             </div>
@@ -272,15 +272,17 @@
             <button type="button" id="resetSendBtn" class="tg-btn-secondary">
                 <i class="ri-mail-send-line align-middle mr-1"></i>Send token
             </button>
+            <label for="resetToken" class="sr-only">Reset token</label>
             <input type="text" id="resetToken" placeholder="Paste token from server logs"
                 class="tg-input" style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px;"
                 autocomplete="off">
-            <input type="password" id="resetNew" placeholder="New password (min 8 chars)" minlength="8"
+            <label for="resetNew" class="sr-only">New password (min 8 chars)</label>
+            <input type="password" id="resetNew" autocomplete="new-password" placeholder="New password (min 8 chars)" minlength="8"
                 class="tg-input">
             <button type="button" id="resetConfirmBtn" class="tg-btn-primary">
                 <i class="ri-key-2-line align-middle mr-1.5"></i>Reset and sign in
             </button>
-            <div id="resetMsg" class="hidden text-xs text-center" style="padding: 8px; border-radius: 6px;"></div>
+            <div id="resetMsg" role="status" aria-live="polite" aria-atomic="true" class="hidden text-xs text-center" style="padding: 8px; border-radius: 6px;"></div>
         </div>
     </main>
 

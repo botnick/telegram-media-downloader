@@ -6,7 +6,7 @@ How to report a vulnerability in Telegram Media Downloader, what is in scope, an
 
 | Component | Supported |
 |---|---|
-| App (`tgdl-server`, Docker image) | the latest release (currently 3.0.x) |
+| App (`tgdl-server`, Docker image) | the latest stable [app release](https://github.com/botnick/telegram-media-downloader/releases/latest) |
 | faces-service, nsfw-service, seekbar-service | the latest release of each |
 
 Older versions, including 2.x, do not receive fixes; update first (see

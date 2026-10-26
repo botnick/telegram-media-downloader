@@ -1,0 +1,78 @@
+name: Sidecar tests
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - 'faces-service/**'
+      - 'nsfw-service/**'
+      - 'seekbar-service/**'
+      - '.github/workflows/test-sidecars.yml'
+      - '.github/workflows/release-*-service.yml'
+  pull_request:
+    paths:
+      - 'faces-service/**'
+      - 'nsfw-service/**'
+      - 'seekbar-service/**'
+      - '.github/workflows/test-sidecars.yml'
+      - '.github/workflows/release-*-service.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  faces:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: faces-service
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      # Contract/unit tests deliberately do not require downloaded face weights.
+      # Detection integration cases report a skip when insightface is absent.
+      - name: Install contract-test dependencies from project metadata
+        run: |
+          python - <<'PYDEPS'
+          import pathlib, tomllib
+          project = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']
+          deps = [d for d in project['dependencies'] if not d.startswith('insightface')]
+          deps += project['optional-dependencies']['test']
+          pathlib.Path('contract-requirements.txt').write_text('\n'.join(deps) + '\n')
+          PYDEPS
+          python -m pip install -r contract-requirements.txt
+      - run: python -m pytest -q
+  nsfw:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: nsfw-service
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install -r requirements.txt pytest httpx
+      # Existing fixtures substitute the classifier; no model download is needed.
+      - run: python -m pytest -q
+  seekbar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: seekbar-service
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: seekbar-service/go.mod
+          cache-dependency-path: seekbar-service/go.sum
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: go vet ./...
+      - run: go test -race ./...

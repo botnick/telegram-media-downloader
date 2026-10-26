@@ -168,7 +168,9 @@ func TestDiskRotatorStopsAtMaxDeletesPerSweep(t *testing.T) {
 func TestDiskRotatorLoopAppliesSettingsChange(t *testing.T) {
 	saved := diskRotatorStartDelay
 	diskRotatorStartDelay = 10 * time.Millisecond
-	defer func() { diskRotatorStartDelay = saved }()
+	// Registered before socketTestApp: restore only after its cleanup has
+	// closed the app and joined the background rotator.
+	t.Cleanup(func() { diskRotatorStartDelay = saved })
 	a, _ := socketTestApp(t)
 	rescueFile(t, a, "a.bin")
 	rotationRow(t, a, 1, 1, "a.bin")

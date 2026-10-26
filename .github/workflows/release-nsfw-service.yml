@@ -21,7 +21,13 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    uses: ./.github/workflows/test-sidecars.yml
+    permissions:
+      contents: read
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -50,6 +56,7 @@ jobs:
           fi
 
   image-cpu:
+    needs: test
     name: image (cpu, linux/amd64 + linux/arm64)
     runs-on: ubuntu-latest
     steps:
@@ -78,6 +85,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=nsfw-cpu
 
   image-gpu:
+    needs: test
     name: image (gpu, linux/amd64)
     runs-on: ubuntu-latest
     steps:
