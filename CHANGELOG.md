@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.18] — 2026-11-01
+
+### Changed
+- Go dependencies updated: the SQLite engine moves to 3.54.1 (`modernc.org/sqlite` 1.61.0), `gotd/td` moves to 0.163.0 (Telegram API layer 232), and the AWS SDK, `pkg/sftp`, `brotli` and `golang.org/x/net` get routine updates. The Go container image moves to 1.27.3.
+- Cancelled database work now stops sooner: a statement waiting for a lock ends as soon as its request is cancelled instead of waiting out the busy timeout.
+
+### Service worker
+- `VERSION = 'v34180'`
+
 ## [3.4.17] — 2026-10-26
 
 ### Fixed
