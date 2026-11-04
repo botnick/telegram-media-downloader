@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,5 +62,14 @@ func TestThumbMissCacheHoldsUntilFileChanges(t *testing.T) {
 	}
 	if cache.known(7, source) {
 		t.Fatal("miss survived the file being replaced")
+	}
+}
+
+func TestThumbCacheControlLeanIsNotStored(t *testing.T) {
+	if got := thumbCacheControl(httptest.NewRequest("GET", "/api/thumbs/7?w=320&lean=1", nil)); got != "no-store" {
+		t.Fatalf("lean thumbnail cache-control = %q", got)
+	}
+	if got := thumbCacheControl(httptest.NewRequest("GET", "/api/thumbs/7?w=320", nil)); got != "private, max-age=3600, stale-while-revalidate=2592000" {
+		t.Fatalf("default thumbnail cache-control = %q", got)
 	}
 }

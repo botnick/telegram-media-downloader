@@ -927,6 +927,7 @@
     "update.confirm_body": "ข้อมูล downloads, sessions, config และฐานข้อมูล SQLite จะถูกเก็บไว้ครบทุกอย่าง — volume ของ data ถูก mount แยกจาก container และฐานข้อมูลจะถูก snapshot ไปยัง data/backups/ ก่อน หน้า dashboard จะออฟไลน์ชั่วครู่ระหว่างที่ container เปลี่ยนเป็น image ใหม่ (ประมาณ 30 วินาที) ระบบจะเชื่อมต่อใหม่อัตโนมัติ",
     "update.confirm_btn": "ยืนยันติดตั้ง",
     "update.starting": "กำลังเริ่ม…",
+    "reload_watch.unexpected": "เบราว์เซอร์โหลดหน้าใหม่เอง หลังเลื่อนดู {items} รายการ ({minutes} นาที) แจ้งผู้ดูแลได้เลย",
     "update.completed": "อัปเดตเป็น v{version} เรียบร้อย — กำลังโหลดใหม่",
     "update.overlay_title": "กำลังอัปเดต…",
     "update.overlay_body": "กำลังดึง image ใหม่และเริ่ม container ใหม่ หน้า dashboard จะเชื่อมต่อใหม่อัตโนมัติเมื่อเวอร์ชันใหม่ผ่าน healthcheck",

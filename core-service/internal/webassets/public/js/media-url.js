@@ -55,6 +55,14 @@ export function fileTokenQuery() {
 
 // ---- URL builders ---------------------------------------------------------
 
+// Touch devices fetch thumbnails the browser must not keep in its memory
+// cache. iOS Safari otherwise holds every decoded thumbnail of a long
+// gallery scroll and kills (reloads) the tab when memory runs out.
+const LEAN_THUMBS =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse)').matches;
+
 /**
  * Build the thumbnail URL for a gallery row at the requested width.
  * Returns null when the row has no id (sticker / document / placeholder
@@ -67,7 +75,7 @@ export function getThumbUrl(file, width) {
             file.id,
         )}?w=${width}`;
     }
-    return `/api/thumbs/${encodeURIComponent(file.id)}?w=${width}`;
+    return `/api/thumbs/${encodeURIComponent(file.id)}?w=${width}${LEAN_THUMBS ? '&lean=1' : ''}`;
 }
 
 /**

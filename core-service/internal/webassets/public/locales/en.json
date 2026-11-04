@@ -964,6 +964,7 @@
     "update.confirm_body": "Your downloads, sessions, config, and SQLite database are preserved — the data volume is mounted independently of the container, and the database is snapshotted to data/backups/ before the swap. The dashboard will go offline briefly while the new image swaps in (~30 seconds), then reconnect automatically.",
     "update.confirm_btn": "Install update",
     "update.starting": "Starting…",
+    "reload_watch.unexpected": "The page was reloaded by the browser after {items} items ({minutes} min). Please report this.",
     "update.completed": "Updated to v{version} — reloading",
     "update.overlay_title": "Updating…",
     "update.overlay_body": "Pulling the new image and restarting the container. The dashboard will reconnect automatically once the new version passes its healthcheck.",

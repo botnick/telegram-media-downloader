@@ -77,6 +77,7 @@ import { setupDragDropLink } from './dragdrop-link.js';
 import { setupMiniPlayer, shrinkToMini, dismiss as dismissMiniPlayer } from './mini-player.js';
 import { wireChangelogTrigger } from './changelog-viewer.js';
 import * as WakeLock from './wake-lock.js';
+import { startReloadWatch, noteGalleryItems } from './reload-watch.js';
 import {
     setupGalleryToolbar,
     syncGalleryToolbar,
@@ -869,6 +870,7 @@ async function init() {
     // Initialise i18n + the language picker. The fall-through is English so
     // a missing-key during a translation roll-out still renders something.
     await initI18n();
+    startReloadWatch();
     const langSelect = document.getElementById('setting-language');
     if (langSelect) {
         langSelect.value = getLang();
@@ -2267,6 +2269,7 @@ async function _loadGalleryPage(groupId) {
             appendFromIndex = state.files.length;
             state.files = state.files.concat(newFiles);
         }
+        noteGalleryItems(state.files.length);
         // Off-by-one safety: hasMore ALSO requires that the running total
         // is still below the server-reported total. Otherwise a perfectly-
         // packed last page (length === FILES_PER_PAGE) keeps firing a

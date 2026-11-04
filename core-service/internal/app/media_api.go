@@ -340,7 +340,7 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 		writeText(w, r, http.StatusNotFound, "No thumb")
 		return
 	}
-	w.Header().Set("Cache-Control", "private, max-age=3600, stale-while-revalidate=2592000")
+	w.Header().Set("Cache-Control", thumbCacheControl(r))
 	w.Header().Set("Vary", "Cookie")
 	w.Header().Set("Content-Type", "image/webp")
 	etag := `"thumb-` + strconv.FormatInt(id, 10) + `-320-` + strconv.FormatInt(st.ModTime().UnixMilli(), 10) + `"`
@@ -353,6 +353,16 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = front.ServeContent(w, r, f, name)
+}
+
+// thumbCacheControl lets touch dashboards ask for lean thumbnails
+// (?lean=1). WebKit keeps every cacheable image it has decoded in memory,
+// so a long gallery scroll got the iOS tab killed and reloaded.
+func thumbCacheControl(r *http.Request) string {
+	if r.URL.Query().Get("lean") == "1" {
+		return "no-store"
+	}
+	return "private, max-age=3600, stale-while-revalidate=2592000"
 }
 
 func writeThumbNotModified(w http.ResponseWriter) {

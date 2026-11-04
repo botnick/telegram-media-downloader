@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.19] — 2026-11-04
+
+### Fixed
+- **iPhone gallery reloading itself during long scrolls.** Safari kept every gallery thumbnail it had decoded in memory, so a long scroll used up the tab's memory and iOS reloaded the page. Touch devices now request thumbnails that the browser does not keep (`/api/thumbs/{id}?lean=1` answers `Cache-Control: no-store`). In an iPhone WebKit test the page's peak memory over a comparable scroll fell from about 1.25 GB to about 0.98 GB. Desktop browsers keep caching thumbnails as before.
+
+### Added
+- The dashboard notices when the browser reloaded a page that was still in use, and shows how many gallery items and minutes it had been open, so the problem can be reported.
+
+### Service worker
+- `VERSION = 'v34190'`
+
 ## [3.4.18] — 2026-11-01
 
 ### Changed
