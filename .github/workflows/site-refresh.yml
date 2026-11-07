@@ -36,22 +36,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh api -X POST "repos/${{ github.repository }}/pages/builds" --silent
 
+      # GitHub's own Pages builder is sometimes slow (25 minutes on
+      # 2026-11-04, against about one minute normally). Slowness on its side
+      # is only a warning; a build that errors is still a failure.
       - name: Wait for the Pages build
+        id: pages
         env:
           GH_TOKEN: ${{ github.token }}
           STARTED: ${{ github.event.head_commit.timestamp }}
         run: |
           started=$(date -d "${STARTED:-now}" +%s)
-          for _ in $(seq 60); do
+          for _ in $(seq 135); do
             sleep 20
-            read -r status created < <(gh api "repos/${{ github.repository }}/pages/builds/latest" --jq '.status + " " + .created_at')
+            read -r status created < <(gh api "repos/${{ github.repository }}/pages/builds/latest" --jq '.status + " " + .created_at') || continue
             echo "latest build: $status $created"
-            if [ "$status" = built ] && [ "$(date -d "$created" +%s)" -ge "$((started - 60))" ]; then exit 0; fi
+            if [ "$status" = built ] && [ "$(date -d "$created" +%s)" -ge "$((started - 60))" ]; then echo "built=true" >> "$GITHUB_OUTPUT"; exit 0; fi
             if [ "$status" = errored ]; then echo "::error::Pages build failed"; exit 1; fi
           done
-          echo "::error::Pages build did not finish in 20 minutes"; exit 1
+          echo "::warning::GitHub Pages was still building after 45 minutes; skipping IndexNow this time"
 
       - name: Send the sitemap to IndexNow
+        if: steps.pages.outputs.built == 'true'
         run: |
           urls=$(curl -fsSL "$SITE/sitemap.xml" | grep -o '<loc>[^<]*</loc>' | sed 's/<[^>]*>//g' | jq -R . | jq -s .)
           echo "$urls" | jq -r 'length | "\(.) URLs"'
