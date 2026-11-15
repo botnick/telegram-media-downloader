@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -127,6 +128,156 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
         path TEXT PRIMARY KEY NOT NULL, item TEXT NOT NULL, generation INTEGER NOT NULL, sha256 TEXT NOT NULL DEFAULT ''
     )`); err != nil {
 		return 0, fmt.Errorf("create ingest journal: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_processing_attempts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, group_id TEXT NOT NULL, group_name TEXT NOT NULL DEFAULT '', message_id INTEGER NOT NULL,
+		file_name TEXT NOT NULL DEFAULT '', file_size INTEGER NOT NULL DEFAULT 0, origin TEXT NOT NULL DEFAULT '',
+		outcome TEXT NOT NULL DEFAULT 'processing', reason TEXT NOT NULL DEFAULT '', media_hash TEXT NOT NULL DEFAULT '', media_key TEXT NOT NULL DEFAULT '',
+		forward_status TEXT NOT NULL DEFAULT 'not_applicable', forward_reason TEXT NOT NULL DEFAULT '',
+		local_delete_status TEXT NOT NULL DEFAULT 'not_requested', local_delete_reason TEXT NOT NULL DEFAULT '', local_deleted INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL, completed_at INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		return 0, fmt.Errorf("create processing history: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tgdl_processing_attempts_group_id ON tgdl_processing_attempts(group_id,id DESC)`); err != nil {
+		return 0, err
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tgdl_processing_attempts_message ON tgdl_processing_attempts(group_id,message_id,id DESC)`); err != nil {
+		return 0, err
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_forward_queue (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, history_id INTEGER NOT NULL DEFAULT 0, group_id TEXT NOT NULL, group_name TEXT NOT NULL DEFAULT '',
+		message_id INTEGER NOT NULL, file_name TEXT NOT NULL DEFAULT '', topic_id INTEGER NOT NULL DEFAULT 0, caption TEXT NOT NULL DEFAULT '',
+		record_id INTEGER NOT NULL DEFAULT 0, file_path TEXT NOT NULL DEFAULT '', facts_json TEXT NOT NULL DEFAULT '{}', source_message BLOB NOT NULL DEFAULT X'', forward_config_json TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'pending',
+		reason TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, completed_at INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		return 0, fmt.Errorf("create forward queue: %w", err)
+	}
+	columns, err := db.QueryContext(ctx, `PRAGMA table_info(tgdl_forward_queue)`)
+	if err != nil {
+		return 0, err
+	}
+	hasForwardConfig := false
+	hasForwardStage, hasForwardDestinations, hasForwardAttempts, hasForwardRetryAt, hasForwardSourceKind, hasSourceMessage := false, false, false, false, false, false
+	for columns.Next() {
+		var cid, notNull, primaryKey int
+		var name, kind string
+		var defaultValue any
+		if err := columns.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			columns.Close()
+			return 0, err
+		}
+		if name == "forward_config_json" {
+			hasForwardConfig = true
+		}
+		if name == "stage" {
+			hasForwardStage = true
+		}
+		if name == "destinations_json" {
+			hasForwardDestinations = true
+		}
+		if name == "attempts" {
+			hasForwardAttempts = true
+		}
+		if name == "retry_at" {
+			hasForwardRetryAt = true
+		}
+		if name == "source_kind" {
+			hasForwardSourceKind = true
+		}
+		if name == "source_message" {
+			hasSourceMessage = true
+		}
+	}
+	if err := columns.Close(); err != nil {
+		return 0, err
+	}
+	if !hasForwardConfig {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_forward_queue ADD COLUMN forward_config_json TEXT NOT NULL DEFAULT '{}'`); err != nil {
+			return 0, fmt.Errorf("add forward queue config snapshot: %w", err)
+		}
+	}
+	if !hasForwardStage {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_forward_queue ADD COLUMN stage TEXT NOT NULL DEFAULT 'forward'`); err != nil {
+			return 0, err
+		}
+	}
+	if !hasForwardDestinations {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_forward_queue ADD COLUMN destinations_json TEXT NOT NULL DEFAULT '[]'`); err != nil {
+			return 0, err
+		}
+	}
+	if !hasForwardAttempts {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_forward_queue ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return 0, err
+		}
+	}
+	if !hasForwardRetryAt {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_forward_queue ADD COLUMN retry_at INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return 0, err
+		}
+	}
+	if !hasForwardSourceKind {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_forward_queue ADD COLUMN source_kind TEXT NOT NULL DEFAULT ''`); err != nil {
+			return 0, fmt.Errorf("add forward queue source kind: %w", err)
+		}
+	}
+	if !hasSourceMessage {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tgdl_forward_queue ADD COLUMN source_message BLOB NOT NULL DEFAULT X''`); err != nil {
+			return 0, fmt.Errorf("add forward queue source message: %w", err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE tgdl_forward_queue SET source_kind='scan_direct'
+		WHERE id IN (
+			SELECT MIN(id) FROM tgdl_forward_queue
+			WHERE history_id=0 AND record_id=0 AND file_path=''
+			GROUP BY group_id,message_id
+		)
+		AND NOT EXISTS (
+			SELECT 1 FROM tgdl_forward_queue existing
+			WHERE existing.group_id=tgdl_forward_queue.group_id AND existing.message_id=tgdl_forward_queue.message_id AND existing.source_kind='scan_direct'
+		)`); err != nil {
+		return 0, fmt.Errorf("backfill direct scan deduplication keys: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_forward_queue_state (id INTEGER PRIMARY KEY CHECK(id=1), paused INTEGER NOT NULL DEFAULT 0);
+		INSERT INTO tgdl_forward_queue_state(id,paused) VALUES(1,0) ON CONFLICT(id) DO NOTHING;
+		CREATE TABLE IF NOT EXISTS tgdl_forward_queue_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id INTEGER NOT NULL, action TEXT NOT NULL, created_at INTEGER NOT NULL, detail TEXT NOT NULL DEFAULT '');
+		CREATE TABLE IF NOT EXISTS tgdl_forward_account_limits (account_id TEXT PRIMARY KEY NOT NULL, blocked_until INTEGER NOT NULL DEFAULT 0);
+		DROP INDEX IF EXISTS idx_tgdl_forward_scan_once;
+		CREATE UNIQUE INDEX idx_tgdl_forward_scan_once ON tgdl_forward_queue(group_id,message_id) WHERE source_kind='scan_direct';`); err != nil {
+		return 0, fmt.Errorf("create independent forward queue state: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tgdl_forward_queue_status ON tgdl_forward_queue(status,id)`); err != nil {
+		return 0, err
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tgdl_forward_queue_due ON tgdl_forward_queue(status,retry_at,id)`); err != nil {
+		return 0, err
+	}
+	// Match the actionable Queue UI's priority expression and id DESC ordering.
+	// A plain (status,id) index cannot satisfy ORDER BY CASE(status).
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_tgdl_forward_queue_page ON tgdl_forward_queue(
+		(CASE status WHEN 'pending' THEN 0 WHEN 'processing' THEN 1 WHEN 'uncertain' THEN 2 ELSE 3 END), id DESC
+	) WHERE status IN ('pending','processing','failed','interrupted','uncertain')`); err != nil {
+		return 0, fmt.Errorf("create forward queue pagination index: %w", err)
+	}
+	now := time.Now().UnixMilli()
+	if _, err := db.ExecContext(ctx, `UPDATE tgdl_forward_queue SET status='uncertain',reason='server restarted while Telegram delivery outcome was unknown',updated_at=?,completed_at=? WHERE status='processing'`, now, now); err != nil {
+		return 0, err
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE tgdl_processing_attempts SET outcome='interrupted',reason='server restarted before processing completed',completed_at=? WHERE outcome='processing'`, now); err != nil {
+		return 0, err
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE tgdl_processing_attempts SET outcome='interrupted',reason='processing cancelled (context canceled)',completed_at=? WHERE outcome='failed' AND reason IN ('download Telegram media: context canceled','download Telegram media: write output: context canceled')`, now); err != nil {
+		return 0, err
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE tgdl_processing_attempts SET forward_status='uncertain',forward_reason='server restarted while Telegram delivery outcome was unknown',completed_at=?
+		WHERE EXISTS (SELECT 1 FROM tgdl_forward_queue q WHERE q.history_id=tgdl_processing_attempts.id AND q.status='uncertain')`, now); err != nil {
+		return 0, err
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE tgdl_processing_attempts SET forward_status='interrupted',forward_reason='server restarted before forwarding completed',completed_at=?
+		WHERE (forward_status='processing' AND NOT EXISTS (SELECT 1 FROM tgdl_forward_queue q WHERE q.history_id=tgdl_processing_attempts.id AND q.status='uncertain'))
+		OR (forward_status='pending' AND NOT EXISTS (SELECT 1 FROM tgdl_forward_queue q WHERE q.history_id=tgdl_processing_attempts.id AND q.status IN ('pending','processing','uncertain')))`, now); err != nil {
+		return 0, err
 	}
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS tgdl_derived_cleanup (area TEXT NOT NULL,path TEXT NOT NULL,PRIMARY KEY(area,path))`); err != nil {
 		return 0, err

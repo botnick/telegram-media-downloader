@@ -9,7 +9,7 @@ CREATE TABLE downloads (
             file_type TEXT, -- photo, video, document
             file_path TEXT,
             status TEXT DEFAULT 'completed',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, ttl_seconds INTEGER, file_hash TEXT, pinned INTEGER DEFAULT 0, pending_until INTEGER, rescued_at INTEGER, nsfw_score REAL, nsfw_checked_at INTEGER, nsfw_whitelist INTEGER DEFAULT 0, telegram_media_kind TEXT, telegram_media_id TEXT, telegram_media_size INTEGER, ai_indexed_at INTEGER, owner_peer_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, ttl_seconds INTEGER, file_hash TEXT, pinned INTEGER DEFAULT 0, pending_until INTEGER, rescued_at INTEGER, nsfw_score REAL, nsfw_checked_at INTEGER, nsfw_whitelist INTEGER DEFAULT 0, telegram_media_kind TEXT, telegram_media_id TEXT, telegram_media_size INTEGER, ai_indexed_at INTEGER, owner_peer_id TEXT, remote_destination_id INTEGER,
             UNIQUE(group_id, message_id)
         );
 
@@ -44,6 +44,8 @@ CREATE INDEX idx_gallery_pinned_date ON downloads(pinned DESC, created_at DESC, 
 CREATE INDEX idx_telegram_media ON downloads(telegram_media_kind, telegram_media_id, telegram_media_size, id);
 
 CREATE INDEX idx_file_path ON downloads(file_path);
+
+CREATE INDEX idx_remote_media_destination ON downloads(remote_destination_id) WHERE remote_destination_id IS NOT NULL;
 
 CREATE INDEX idx_group_name_size ON downloads(group_id, group_name, file_size);
 
@@ -215,13 +217,15 @@ CREATE TABLE backup_destinations (
             total_bytes     INTEGER NOT NULL DEFAULT 0,
             total_files     INTEGER NOT NULL DEFAULT 0,
             throttle_bps    INTEGER,
-            created_at      INTEGER NOT NULL
+            created_at      INTEGER NOT NULL,
+            delete_after_upload INTEGER NOT NULL DEFAULT 0
         );
 
 CREATE TABLE backup_jobs (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             destination_id  INTEGER NOT NULL,
             download_id     INTEGER,
+            full_snapshot   INTEGER NOT NULL DEFAULT 0,
             snapshot_path   TEXT,
             status          TEXT    NOT NULL DEFAULT 'pending',
             attempts        INTEGER NOT NULL DEFAULT 0,
