@@ -31,6 +31,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 	"github.com/gorilla/websocket"
+	"golang.org/x/sync/singleflight"
 )
 
 type Config struct {
@@ -57,7 +58,8 @@ type App struct {
 	accounts         *accounts.Repository
 	accountWizard    *accounts.Wizard
 	monitorOp        sync.Mutex
-	dialogVersion    uint64 // monitorOp guards confirmed remote removals vs older listings
+	dialogVersion    uint64             // monitorOp guards confirmed remote removals vs older listings
+	dialogListing    singleflight.Group // shares concurrent Telegram listings; never caches settled results
 	historyMu        sync.Mutex
 	historyJobs      map[string]*historyJob
 	historyCancel    map[string]context.CancelFunc

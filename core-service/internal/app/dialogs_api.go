@@ -157,7 +157,36 @@ func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "dialogs": result, "allowDM": allowDM, "accounts": accountList})
 }
 
+// browseDialogs shares active Telegram listings for equivalent session roles.
+// Each caller can cancel its own wait without aborting work needed by others.
+// Results are not retained after a listing finishes.
 func (a *App) browseDialogs(ctx context.Context) ([]engine.Dialog, error) {
+	user, _ := auth.SessionFromContext(ctx)
+	// Admin is allowed to start the engine, unlike a guest; don't let a
+	// guest's listing race suppress an administrator's startup attempt.
+	key := "guest"
+	if user.Role == "admin" {
+		key = "admin"
+	}
+	ch := a.dialogListing.DoChan(key, func() (any, error) {
+		// A bounded context independent of the first request prevents its
+		// disconnect from cancelling every other waiting HTTP request.
+		listCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+		defer cancel()
+		return a.browseDialogsRemote(listCtx)
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-ch:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		return result.Val.([]engine.Dialog), nil
+	}
+}
+
+func (a *App) browseDialogsRemote(ctx context.Context) ([]engine.Dialog, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	// Pair startup with acquiring a run lease. Account changes, purge and the

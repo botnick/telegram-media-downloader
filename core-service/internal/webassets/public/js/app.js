@@ -77,7 +77,6 @@ import { setupDragDropLink } from './dragdrop-link.js';
 import { setupMiniPlayer, shrinkToMini, dismiss as dismissMiniPlayer } from './mini-player.js';
 import { wireChangelogTrigger } from './changelog-viewer.js';
 import * as WakeLock from './wake-lock.js';
-import { startReloadWatch, noteGalleryItems } from './reload-watch.js';
 import {
     setupGalleryToolbar,
     syncGalleryToolbar,
@@ -89,6 +88,19 @@ import {
     pinnedQs,
     getPinnedMode,
 } from './gallery-toolbar.js';
+
+// Share concurrent dialog discovery across bootstrap, chat list, and manual
+// forwarding. This coalesces overlapping Telegram-backed HTTP requests; it
+// does not cache indefinitely or replace explicit refreshes after completion.
+let dialogsInFlight = null;
+function fetchDialogsShared() {
+    if (!dialogsInFlight) {
+        dialogsInFlight = api.get('/api/dialogs').finally(() => {
+            dialogsInFlight = null;
+        });
+    }
+    return dialogsInFlight;
+}
 
 // ============ Lazy page modules ============
 //
@@ -668,6 +680,20 @@ async function init() {
     // route waits for them. Stats (footer counters; may scan the disk on a
     // cold cache) don't shape the first page and no longer delay it.
     await loadGroups();
+    // A full Telegram dialog listing may block on MTProto/network for up to
+    // two minutes. It is useful metadata, but not a prerequisite for routing
+    // or rendering the already-cached groups. Keep boot interactive while it
+    // loads; chat-specific views can request dialogs when actually needed.
+    if (isAdmin) {
+        void fetchDialogsShared()
+            .then((res) => {
+                state.allDialogs = res?.dialogs || res || [];
+                state.dialogsAccounts = Array.isArray(res?.accounts) ? res.accounts : [];
+            })
+            .catch(() => {
+                // Telegram may be unavailable; cached groups still render.
+            });
+    }
     loadStats();
 
     // Federated gallery scope (Layer 1, v2.12+) — boot one-shot. Reads
@@ -870,7 +896,6 @@ async function init() {
     // Initialise i18n + the language picker. The fall-through is English so
     // a missing-key during a translation roll-out still renders something.
     await initI18n();
-    startReloadWatch();
     const langSelect = document.getElementById('setting-language');
     if (langSelect) {
         langSelect.value = getLang();
@@ -921,6 +946,9 @@ function navigateTo(page, opts) {
 }
 
 function renderPage(page, params = {}) {
+    if (state.currentPage === 'settings' && page !== 'settings' && state.role === 'admin') {
+        import('./mcp-control.js').then((m) => m.clearOneTimeSecret()).catch(() => {});
+    }
     // Per-page teardown: stop background tickers/listeners owned by the
     // page we're leaving so they don't keep running invisible.
     if (state.currentPage === 'backfill' && page !== 'backfill') {
@@ -961,6 +989,11 @@ function renderPage(page, params = {}) {
     }
     state.currentPage = page;
     document.body.dataset.page = page;
+    const viewModeControl = document.getElementById('header-view-mode-control');
+    if (viewModeControl) viewModeControl.style.display = page === 'viewer' ? '' : 'none';
+    document.querySelectorAll('#header-overflow-menu [data-vm], #header-overflow-menu [data-view-mode-only]').forEach((el) => {
+        el.style.display = page === 'viewer' ? '' : 'none';
+    });
     _syncChatHeaderActions();
     updateSelectionBar();
     state.currentRouteParams = params;
@@ -1034,11 +1067,22 @@ function renderPage(page, params = {}) {
         _setPageRaw('title', name);
         _setPageText('subtitle', 'chat.details.subtitle', 'Chat settings');
         updateHeaderAvatar(params.groupId, name);
+        const routeHash = location.hash;
         loadChatDetailsModule()
-            .then((m) => {
-                if (state.currentPage !== 'chat') return;
+            .then(async (m) => {
+                if (state.currentPage !== 'chat' || location.hash !== routeHash) return;
+                let forumTopics = [];
+                let topicsUnavailable = false;
+                try {
+                    forumTopics = await m.preloadGroupTopics(params.groupId);
+                } catch {
+                    topicsUnavailable = true;
+                }
+                if (state.currentPage !== 'chat' || location.hash !== routeHash) return;
                 m.showChatDetails({
                     ...params,
+                    forumTopics,
+                    topicsUnavailable,
                     // The page learned the chat's real name (not configured,
                     // nothing downloaded yet): put it in the header too.
                     onName: (n) => {
@@ -1158,6 +1202,11 @@ function renderPage(page, params = {}) {
         import('./maintenance-logs.js')
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-logs', e));
+        if (state.role === 'admin') {
+            import('./mcp-control.js')
+                .then((m) => m.initMCPControl())
+                .catch((e) => console.error('MCP controls', e));
+        }
     } else if (page === 'maintenance-backup') {
         _setPageText('title', 'maintenance.backup.page_title', 'Backup destinations');
         _setPageText(
@@ -2269,7 +2318,6 @@ async function _loadGalleryPage(groupId) {
             appendFromIndex = state.files.length;
             state.files = state.files.concat(newFiles);
         }
-        noteGalleryItems(state.files.length);
         // Off-by-one safety: hasMore ALSO requires that the running total
         // is still below the server-reported total. Otherwise a perfectly-
         // packed last page (length === FILES_PER_PAGE) keeps firing a
@@ -3054,7 +3102,7 @@ function updateSelectionBar() {
     document
         .getElementById('selection-all')
         ?.classList.toggle('hidden', count > 0 && count >= loaded);
-    for (const id of ['selection-clear', 'selection-zip', 'selection-pin', 'selection-delete']) {
+    for (const id of ['selection-clear', 'selection-zip', 'selection-pin', 'selection-delete', 'selection-forward']) {
         const b = document.getElementById(id);
         if (b) b.disabled = count === 0;
     }
@@ -3251,6 +3299,7 @@ async function setupMediaSearch() {
     const selDel = document.getElementById('selection-delete');
     const selClear = document.getElementById('selection-clear');
     const selAll = document.getElementById('selection-all');
+    const selForward = document.getElementById('selection-forward');
 
     selectBtn?.addEventListener('click', () => {
         if (state.selectMode) {
@@ -3288,6 +3337,58 @@ async function setupMediaSearch() {
         // button so mobile/touch users get the same affordance.
         selectAllVisible();
         updateSelectionBar();
+    });
+
+    selForward?.addEventListener('click', async () => {
+        if (!state.selected?.size) return;
+        const form = document.createElement('form');
+        form.className = 'cd-fields';
+        form.innerHTML = `
+            <label class="cd-route-field"><span class="cd-label">${escapeHtml(i18nT('group.fwd.destination','Destination'))}</span>
+                <select name="destination" class="tg-input cd-input" required>
+                    <option value="">${escapeHtml(i18nT('group.fwd.select_destination','Choose destination…'))}</option>
+                    <option value="me">${escapeHtml(i18nT('group.fwd.saved_messages','Saved Messages'))}</option>
+                    <option value="storage">${escapeHtml(i18nT('group.fwd.storage','Telegram Downloader Storage'))}</option>
+                    ${(state.allDialogs || []).map((dialog) => `<option value="${escapeHtml(String(dialog.id))}">${escapeHtml(getGroupName(dialog.id, { fallback: dialog.name || dialog.title || String(dialog.id) }))}</option>`).join('')}
+                </select>
+            </label>
+            <details><summary class="cd-help cursor-pointer">${escapeHtml(i18nT('group.fwd.caption_override','Change caption (optional)'))}</summary>
+                <textarea name="caption" class="tg-input cd-input mt-2" rows="3" placeholder="${escapeHtml(i18nT('group.fwd.caption_override_help','Leave empty to keep Telegram’s native forwarded caption.'))}"></textarea>
+            </details>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" data-forward-cancel class="px-4 py-2 rounded-lg text-tg-textSecondary hover:bg-tg-hover text-sm">${escapeHtml(i18nT('common.cancel','Cancel'))}</button>
+                <button type="submit" class="px-4 py-2 rounded-lg bg-tg-blue text-white font-medium text-sm">${escapeHtml(i18nT('group.fwd.forward','Forward'))}</button>
+            </div>`;
+        const sheet = openSheet({ title: i18nT('group.fwd.title','Forward selected media'), content: form, size: 'sm' });
+        if (!state.allDialogs) {
+            fetchDialogsShared().then((response) => {
+                state.allDialogs = response.dialogs || [];
+                const select = form.querySelector('[name="destination"]');
+                const chosen = select.value;
+                select.insertAdjacentHTML('beforeend', state.allDialogs.map((dialog) => `<option value="${escapeHtml(String(dialog.id))}">${escapeHtml(getGroupName(dialog.id, { fallback: dialog.name || dialog.title || String(dialog.id) }))}</option>`).join(''));
+                select.value = chosen;
+            }).catch(() => {});
+        }
+        form.querySelector('[data-forward-cancel]')?.addEventListener('click', () => sheet.close());
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const values = new FormData(form);
+            const destination = String(values.get('destination') || '').trim();
+            if (!destination) return;
+            const payload = { paths: Array.from(state.selected), destination };
+            const caption = String(values.get('caption') || '');
+            if (caption) payload.caption = caption;
+            const submit = form.querySelector('[type="submit"]');
+            submit.disabled = true;
+            try {
+                await api.post('/api/forward-queue', payload);
+                showToast(i18nT('group.fwd.queued','Selected media added to the forward queue'),'success');
+                state.selected.clear(); exitSelectMode(); updateSelectionBar(); sheet.close();
+            } catch(error) {
+                showToast(error?.data?.error||error?.message||'Forward queue failed','error');
+                submit.disabled = false;
+            }
+        });
     });
 
     selDel?.addEventListener('click', async () => {
@@ -3528,7 +3629,7 @@ async function renderGroupsConfig({ restoreScroll = false } = {}) {
     }
 
     try {
-        const [res] = await Promise.all([api.get('/api/dialogs'), loadAddSheetModule()]);
+        const [res] = await Promise.all([fetchDialogsShared(), loadAddSheetModule()]);
         const dialogs = res.dialogs || res || [];
         // Stash the account directory for chip rendering in renderDialogsList.
         // Only meaningful when 2+ accounts are linked — otherwise chips would
