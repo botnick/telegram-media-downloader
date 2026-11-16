@@ -66,7 +66,9 @@ func TestFloodGuardReturnsLongWaitAndClosesAccountGate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	other := &scriptedInvoker{}
-	if err := g.invoke(ctx, other, nil, nil); !errors.Is(err, context.DeadlineExceeded) || other.calls != 0 {
+	err := g.invoke(ctx, other, nil, nil)
+	wait, flood := tgerr.AsFloodWait(err)
+	if !flood || wait < 29*time.Second || other.calls != 0 {
 		t.Fatalf("gated call err=%v calls=%d", err, other.calls)
 	}
 }
@@ -91,10 +93,9 @@ type scriptedPool struct{ *scriptedInvoker }
 
 func (scriptedPool) Close() error { return nil }
 
-// A file Telegram refuses on every retry must fail its attempt as an ordinary
-// error: left as a flood wait the library retries it forever and each retry
-// closes the account gate for every other download.
-func TestSharedInvokerFailsFileThatKeepsFlooding(t *testing.T) {
+// A repeatedly refused file returns the typed wait so the engine can defer it
+// without spending an attempt, while the shared account gate protects peers.
+func TestSharedInvokerPreservesFloodWaitAfterInlineRetries(t *testing.T) {
 	withFastFlood(t)
 	floodInlineRetries = 1
 	t.Cleanup(func() { floodInlineRetries = 3 })
@@ -102,7 +103,7 @@ func TestSharedInvokerFailsFileThatKeepsFlooding(t *testing.T) {
 	g.limiter = rate.NewLimiter(rate.Inf, 1)
 	next := &scriptedInvoker{errs: []error{floodErr(0), floodErr(0), floodErr(0)}}
 	err := sharedInvoker{scriptedPool{next}, g}.Invoke(context.Background(), nil, nil)
-	if _, flood := tgerr.AsFloodWait(err); err == nil || flood || next.calls != 2 {
+	if _, flood := tgerr.AsFloodWait(err); !flood || next.calls != 2 {
 		t.Fatalf("err=%v calls=%d", err, next.calls)
 	}
 	// A long wait is the account's: it stays a flood wait and is rescheduled.

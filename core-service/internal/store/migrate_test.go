@@ -161,6 +161,76 @@ func TestRunMigrationsAddsDurableQueuePauseState(t *testing.T) {
 	}
 }
 
+func TestForwardQueueMigrationPreservesProcessingAsUncertain(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Writer.Exec(`INSERT INTO tgdl_forward_queue(group_id,message_id,status,stage,created_at,updated_at) VALUES('-1001',44,'processing','native_forward',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Reader.Close()
+	_ = db.Writer.Close()
+	db, err = Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Reader.Close()
+	defer db.Writer.Close()
+	var status, reason string
+	if err = db.Reader.QueryRow(`SELECT status,reason FROM tgdl_forward_queue WHERE group_id='-1001' AND message_id=44`).Scan(&status, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if status != "uncertain" || !strings.Contains(reason, "outcome was unknown") {
+		t.Fatalf("recovered job status=%q reason=%q", status, reason)
+	}
+	var paused int
+	if err = db.Reader.QueryRow(`SELECT paused FROM tgdl_forward_queue_state WHERE id=1`).Scan(&paused); err != nil || paused != 0 {
+		t.Fatalf("forward pause state=%d err=%v", paused, err)
+	}
+}
+
+func TestForwardQueueMigrationKeepsCompletedScanDedupeAndHistory(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Reader.Close()
+	defer db.Writer.Close()
+	if _, err = db.Writer.Exec(`DROP INDEX idx_tgdl_forward_scan_once;
+		ALTER TABLE tgdl_forward_queue DROP COLUMN source_kind;
+		CREATE UNIQUE INDEX idx_tgdl_forward_scan_once ON tgdl_forward_queue(group_id,message_id) WHERE stage='scan_direct';
+		INSERT INTO tgdl_forward_queue(group_id,message_id,status,stage,created_at,updated_at) VALUES('-1001',44,'forwarded','complete',1,2),('-1001',44,'forwarded','complete',3,4),('-1001',45,'pending','scan_direct',5,6)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = RunMigrations(ctx, db.Writer); err != nil {
+		t.Fatal(err)
+	}
+	var rows, marked, completed int
+	if err = db.Reader.QueryRow(`SELECT COUNT(*),SUM(source_kind='scan_direct'),SUM(stage='complete') FROM tgdl_forward_queue`).Scan(&rows, &marked, &completed); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 3 || marked != 2 || completed != 2 {
+		t.Fatalf("migration changed legacy history: rows=%d marked=%d completed=%d", rows, marked, completed)
+	}
+	result, err := db.Writer.Exec(`INSERT INTO tgdl_forward_queue(group_id,message_id,status,stage,source_kind,created_at,updated_at) VALUES('-1001',44,'pending','scan_direct','scan_direct',7,7) ON CONFLICT(group_id,message_id) WHERE source_kind='scan_direct' DO NOTHING`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inserted, err := result.RowsAffected(); err != nil || inserted != 0 {
+		t.Fatalf("completed legacy scan was not deduped: inserted=%d err=%v", inserted, err)
+	}
+	if _, err = RunMigrations(ctx, db.Writer); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Reader.QueryRow(`SELECT COUNT(*) FROM tgdl_forward_queue`).Scan(&rows); err != nil || rows != 3 {
+		t.Fatalf("repeated migration changed queue history: rows=%d err=%v", rows, err)
+	}
+}
+
 func TestRunMigrationsPreservesQueueWhenAddingRefreshRequirement(t *testing.T) {
 	db, err := Open(context.Background(), t.TempDir())
 	if err != nil {

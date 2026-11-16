@@ -84,6 +84,72 @@ CREATE TABLE IF NOT EXISTS tgdl_update_recovery_state (
 CREATE TABLE IF NOT EXISTS tgdl_account_ops (
  id TEXT PRIMARY KEY NOT NULL,payload TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS tgdl_mcp_agents (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('read-only','operator','admin','custom')),
+    client_id TEXT NOT NULL UNIQUE,
+    client_secret_hash TEXT NOT NULL,
+    scopes_json TEXT NOT NULL DEFAULT '[]',
+    account_ids_json TEXT NOT NULL DEFAULT '[]',
+    chat_ids_json TEXT NOT NULL DEFAULT '[]',
+    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    revoked_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS tgdl_mcp_tokens (
+    token_hash TEXT PRIMARY KEY NOT NULL,
+    agent_id TEXT NOT NULL REFERENCES tgdl_mcp_agents(id),
+    scopes_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    revoked_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_tgdl_mcp_tokens_agent ON tgdl_mcp_tokens(agent_id, expires_at);
+
+CREATE TABLE IF NOT EXISTS tgdl_mcp_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurred_at INTEGER NOT NULL,
+    actor_type TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target TEXT NOT NULL DEFAULT '',
+    change_summary TEXT NOT NULL DEFAULT '',
+    payload_hash TEXT NOT NULL DEFAULT '',
+    outcome TEXT NOT NULL,
+    approval_id TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_tgdl_mcp_audit_time ON tgdl_mcp_audit(occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tgdl_mcp_audit_actor ON tgdl_mcp_audit(actor_id, occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS tgdl_mcp_approvals (
+    id TEXT PRIMARY KEY NOT NULL,
+    requester_agent_id TEXT NOT NULL REFERENCES tgdl_mcp_agents(id),
+    operation TEXT NOT NULL,
+    target TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    payload_hash TEXT NOT NULL,
+    payload_ciphertext BLOB NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected','expired','executed','partial','failed')),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    decided_at INTEGER,
+    decided_by TEXT NOT NULL DEFAULT '',
+    result_json TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_tgdl_mcp_approvals_status ON tgdl_mcp_approvals(status, expires_at);
+
+CREATE TABLE IF NOT EXISTS tgdl_mcp_idempotency (
+    agent_id TEXT NOT NULL REFERENCES tgdl_mcp_agents(id),
+    idempotency_key TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY(agent_id, idempotency_key)
+);
 CREATE TABLE IF NOT EXISTS tgdl_purge_jobs (
  id TEXT PRIMARY KEY NOT NULL,payload TEXT NOT NULL
 );

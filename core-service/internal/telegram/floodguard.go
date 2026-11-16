@@ -74,6 +74,12 @@ func (g *floodGuard) wait(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+			if ctx.Err() == context.DeadlineExceeded {
+				if remaining := time.Until(g.FloodWaitUntil()); remaining > 0 {
+					seconds := int((remaining + time.Second - 1) / time.Second)
+					return &tgerr.Error{Code: 420, Type: "FLOOD_WAIT", Argument: seconds, Message: "FLOOD_WAIT"}
+				}
+			}
 			return ctx.Err()
 		case <-timer.C:
 		}
