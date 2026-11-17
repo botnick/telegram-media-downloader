@@ -136,7 +136,7 @@ func (a *App) refreshTelegramGroups(ctx context.Context, photos bool, epoch uint
 		index, err = a.monitor.OpenRecoveryIndex(ctx)
 	}
 	a.monitorOp.Unlock()
-	defer a.startHistoryDrain(false)
+	defer a.startHistoryDrain(true)
 	if err != nil {
 		return nil, err
 	}

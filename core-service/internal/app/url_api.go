@@ -81,7 +81,7 @@ func (a *App) handleDownloadURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Also covers all-error batches that started a jobs-only account pool.
-	defer a.startHistoryDrain(false)
+	defer a.startHistoryDrain(true)
 	results := make([]map[string]any, 0, len(list))
 	for _, raw := range list {
 		result := map[string]any{"url": raw, "ok": false}

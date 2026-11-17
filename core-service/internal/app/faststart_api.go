@@ -32,7 +32,7 @@ func (a *App) videoRows(ctx context.Context) ([]struct {
 	id   int64
 	path string
 }, error) {
-	rows, err := a.db.Reader.QueryContext(ctx, "SELECT id,file_path FROM downloads WHERE file_type='video' ORDER BY id")
+	rows, err := a.db.Reader.QueryContext(ctx, "SELECT id,file_path FROM downloads WHERE file_type='video' AND file_path IS NOT NULL AND file_path<>'' ORDER BY id")
 	if err != nil {
 		return nil, err
 	}

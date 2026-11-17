@@ -22,6 +22,9 @@ type Account interface {
 	Fingerprint() string
 	RefreshMessage(context.Context, *tg.Message) (*telegram.RefreshedMessage, error)
 }
+type NativeForwardAccount interface {
+	ForwardMessage(context.Context, telegram.ForwardMessageRequest) (int, error)
+}
 type historyRecoverable interface{ SupportsHistoryRecovery() bool }
 
 // historyRepairer repairs recovery markers while the account keeps running.
@@ -54,6 +57,23 @@ type Factory func(AccountConfig, *telegram.UpdateState, func(context.Context, tg
 type Target struct{ ID, Name string }
 type Filter func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error)
 type Sink func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error
+type ForwardSink func(context.Context, *Work, *tg.Message, telegram.MediaDownloader, func(context.Context, telegram.ForwardMessageRequest) error) error
+type ForwardSinkAdapter struct{ ForwardSink }
+
+// WorkSink ingests one claimed message. Sink and ForwardSinkAdapter both
+// implement it, so a mistyped sink fails to compile instead of failing every
+// download at runtime.
+type WorkSink interface {
+	Invoke(context.Context, *Work, *tg.Message, telegram.MediaDownloader, func(context.Context, telegram.ForwardMessageRequest) error) error
+}
+
+func (s Sink) Invoke(ctx context.Context, work *Work, message *tg.Message, transport telegram.MediaDownloader, _ func(context.Context, telegram.ForwardMessageRequest) error) error {
+	return s(ctx, work, message, transport)
+}
+
+func (s ForwardSinkAdapter) Invoke(ctx context.Context, work *Work, message *tg.Message, transport telegram.MediaDownloader, forward func(context.Context, telegram.ForwardMessageRequest) error) error {
+	return s.ForwardSink(ctx, work, message, transport, forward)
+}
 
 // UpdateObserver must persist its effects before returning. Any error prevents
 // acknowledgement of the Telegram update, just like durable queue ingestion.
@@ -67,7 +87,8 @@ type Controller struct {
 	dataDir        string
 	factory        Factory
 	filter         Filter
-	sink           Sink
+	route          LiveRoute
+	sink           WorkSink
 	observer       UpdateObserver
 	notify         func(string, error)
 	opMu           sync.Mutex
@@ -80,6 +101,17 @@ type Controller struct {
 	bandwidth      bandwidthLimiter
 	received       atomic.Int64 // media bytes received by all workers
 	scaling        Scaling
+}
+
+// LiveRoute runs after filtering and before download enqueue. It must persist
+// idempotently before returning; an error prevents Telegram update ack.
+// Return skipDownload for forward-only routes.
+type LiveRoute func(context.Context, string, Target, *tg.Message) (skipDownload bool, err error)
+
+func (c *Controller) SetLiveRoute(route LiveRoute) {
+	c.mu.Lock()
+	c.route = route
+	c.mu.Unlock()
 }
 
 // Scaling adapts how many workers download at once, as 2.x did: a long
@@ -101,6 +133,35 @@ func (c *Controller) SetScaling(s Scaling) {
 // BytesReceived grows while any download is transferring; history
 // backpressure uses it to tell slow large files from a stuck queue.
 func (c *Controller) BytesReceived() int64 { return c.received.Load() }
+
+func (c *Controller) DefaultAccountID() string {
+	c.mu.Lock()
+	run := c.run
+	c.mu.Unlock()
+	if run == nil || len(run.ids) == 0 {
+		return ""
+	}
+	return run.ids[0]
+}
+
+// AccountFloodWaitUntil reports the FloodWait gate for one account, if open
+// runtime work is currently waiting for Telegram to reopen that account.
+func (c *Controller) AccountFloodWaitUntil(accountID string) time.Time {
+	c.mu.Lock()
+	run := c.run
+	c.mu.Unlock()
+	if run == nil {
+		return time.Time{}
+	}
+	if accountID == "" && len(run.ids) > 0 {
+		accountID = run.ids[0]
+	}
+	gated, ok := run.accounts[accountID].(interface{ FloodWaitUntil() time.Time })
+	if !ok {
+		return time.Time{}
+	}
+	return gated.FloodWaitUntil()
+}
 
 func (c *Controller) SetUpdateObserver(observer UpdateObserver) {
 	c.mu.Lock()
@@ -128,7 +189,7 @@ type running struct {
 	progress        map[int64]*transferStats
 }
 
-func New(writer, reader *sql.DB, dataDir string, factory Factory, filter Filter, sink Sink, notify func(string, error)) *Controller {
+func New(writer, reader *sql.DB, dataDir string, factory Factory, filter Filter, sink WorkSink, notify func(string, error)) *Controller {
 	if factory == nil {
 		factory = func(cfg AccountConfig, state *telegram.UpdateState, handler func(context.Context, tg.UpdatesClass) error, gap func(int64)) (Account, error) {
 			return telegram.NewAccount(cfg.Telegram, state, handler, gap)
@@ -283,7 +344,8 @@ func (s *DialogSession) ForumTopics(ctx context.Context, groupID string) ([]tele
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	for _, id := range s.run.ids {
+	var failures []error
+	for index, id := range s.run.ids {
 		account, ok := s.run.accounts[id].(interface {
 			ForumTopics(context.Context, string) ([]telegram.ForumTopic, error)
 		})
@@ -294,8 +356,25 @@ func (s *DialogSession) ForumTopics(ctx context.Context, groupID string) ([]tele
 		if err == nil {
 			return topics, nil
 		}
+		// Preserve each underlying cause for server diagnostics without
+		// including account identifiers or the requested chat ID.
+		failures = append(failures, fmt.Errorf("account position %d: %w", index+1, err))
 	}
-	return nil, errors.New("no connected account can read topics for this group")
+	if len(failures) == 0 {
+		return nil, errors.New("no connected account supports forum topics")
+	}
+	return nil, fmt.Errorf("no connected account can read topics for this group: %w", errors.Join(failures...))
+}
+
+func (s *DialogSession) ChatAccount(ctx context.Context, accountID string) (telegram.ChatOperator, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	account, ok := s.run.accounts[accountID].(telegram.ChatOperator)
+	if !ok {
+		return nil, errors.New("selected connected account does not support chat operations")
+	}
+	return account, nil
 }
 
 func dialogAccessPriority(state string) int {
@@ -896,6 +975,20 @@ func (c *Controller) accept(ctx context.Context, run *running, accountID string,
 		if !allowed {
 			continue
 		}
+		if !telegram.IsHistoryRecovery(ctx) {
+			c.mu.Lock()
+			route := c.route
+			c.mu.Unlock()
+			if route != nil {
+				skipDownload, err := route(ctx, accountID, target, message)
+				if err != nil {
+					return err
+				}
+				if skipDownload {
+					continue
+				}
+			}
+		}
 		id, changed, err := c.work.Enqueue(ctx, accountID, target, message, pts)
 		if err != nil {
 			return err
@@ -1004,7 +1097,17 @@ func (c *Controller) worker(run *running, index int) {
 			}
 		}
 		if err == nil {
-			err = c.sink(attemptCtx, work, message, trackedTransport{MediaDownloader: run.accounts[work.AccountID], stats: progress, total: &c.received, bandwidth: &c.bandwidth, budget: budget})
+			transport := trackedTransport{MediaDownloader: run.accounts[work.AccountID], stats: progress, total: &c.received, bandwidth: &c.bandwidth, budget: budget}
+			account := run.accounts[work.AccountID]
+			forward := func(ctx context.Context, req telegram.ForwardMessageRequest) error {
+				sender, ok := account.(NativeForwardAccount)
+				if !ok {
+					return errors.New("account cannot forward messages")
+				}
+				_, err := sender.ForwardMessage(ctx, req)
+				return err
+			}
+			err = c.sink.Invoke(attemptCtx, work, message, transport, forward)
 		}
 		if err != nil && attemptCtx.Err() != nil {
 			err = context.Cause(attemptCtx)

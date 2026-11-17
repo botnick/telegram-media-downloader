@@ -413,7 +413,7 @@
                         data-i18n-title="header.stories" title="Download Telegram Stories">
                         <i class="ri-camera-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
                     </button>
-                    <div class="relative hidden sm:block">
+                    <div id="header-view-mode-control" class="relative hidden sm:block">
                         <button id="view-mode-btn" type="button"
                             class="w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center"
                             aria-haspopup="menu" aria-expanded="false"
@@ -438,15 +438,20 @@
                             </button>
                         </div>
                     </div>
-                    <button id="refresh-btn" type="button"
-                        class="hidden sm:flex w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover items-center justify-center"
-                        data-i18n-aria-label="header.refresh" aria-label="Refresh"
-                        onclick="refreshCurrentPage()">
-                        <i class="ri-refresh-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
-                    </button>
+                    <div class="hidden sm:flex items-center gap-1" role="group" data-i18n-aria-label="header.monitor_actions" aria-label="Engine controls">
+                        <button id="monitor-start-btn" type="button" class="hidden w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover items-center justify-center text-tg-green focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tg-green" data-monitor-action="start" data-admin-only data-i18n-title="header.monitor_start" title="Start engine" aria-label="Start engine">
+                            <i class="ri-play-line text-xl" aria-hidden="true"></i>
+                        </button>
+                        <button id="monitor-restart-btn" type="button" class="hidden w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover items-center justify-center text-tg-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tg-blue" data-monitor-action="restart" data-admin-only data-i18n-title="header.monitor_restart" title="Restart engine" aria-label="Restart engine">
+                            <i class="ri-refresh-line text-xl" aria-hidden="true"></i>
+                        </button>
+                        <button id="monitor-stop-btn" type="button" class="hidden w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover items-center justify-center text-tg-red focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tg-red" data-monitor-action="stop" data-admin-only data-i18n-title="header.monitor_stop" title="Stop all work" aria-label="Stop all work">
+                            <i class="ri-stop-line text-xl" aria-hidden="true"></i>
+                        </button>
+                    </div>
 
                     <!-- Mobile-only overflow ⋮ menu — hosts paste-link / stories
-                         / view-mode-{grid,compact,list} / refresh. Each entry
+                         / view-mode-{grid,compact,list} / monitor quick actions. Each entry
                          delegates to the desktop button via .click() so the
                          business logic lives in one place. -->
                     <div class="relative sm:hidden">
@@ -469,7 +474,7 @@
                                 <i class="ri-history-line"></i>
                                 <span class="vm-label" data-i18n="backfill.sheet.menu_item">Backfill this chat</span>
                             </button>
-                            <div class="border-t border-tg-border my-1"></div>
+                            <div class="border-t border-tg-border my-1" data-view-mode-only></div>
                             <button type="button" data-overflow="vm-grid" role="menuitem">
                                 <i class="ri-layout-grid-line"></i>
                                 <span class="vm-label" data-i18n="header.view_mode.grid">Grid</span>
@@ -482,10 +487,18 @@
                                 <i class="ri-list-check-2"></i>
                                 <span class="vm-label" data-i18n="header.view_mode.list">List</span>
                             </button>
-                            <div class="border-t border-tg-border my-1"></div>
-                            <button type="button" data-overflow="refresh" role="menuitem">
+                            <div class="border-t border-tg-border my-1" data-view-mode-only></div>
+                            <button type="button" data-overflow="monitor-start" data-monitor-action="start" data-admin-only role="menuitem" class="hidden">
+                                <i class="ri-play-line"></i>
+                                <span class="vm-label" data-i18n="header.monitor_start">Start engine</span>
+                            </button>
+                            <button type="button" data-overflow="monitor-restart" data-monitor-action="restart" data-admin-only role="menuitem" class="hidden">
                                 <i class="ri-refresh-line"></i>
-                                <span class="vm-label" data-i18n="header.refresh">Refresh</span>
+                                <span class="vm-label" data-i18n="header.monitor_restart">Restart engine</span>
+                            </button>
+                            <button type="button" data-overflow="monitor-stop" data-monitor-action="stop" data-admin-only role="menuitem" class="hidden">
+                                <i class="ri-stop-line"></i>
+                                <span class="vm-label" data-i18n="header.monitor_stop">Stop all work</span>
                             </button>
                         </div>
                     </div>
@@ -796,13 +809,15 @@
                             <div class="engine-title-group">
                                 <span id="engine-state-dot" class="engine-state-dot" data-state="stopped" aria-hidden="true"></span>
                                 <i class="ri-pulse-line text-tg-blue text-lg" aria-hidden="true"></i>
-                                <h3 class="engine-title" data-i18n="settings.engine.title">Realtime monitor</h3>
+                                <h3 class="engine-title" data-i18n="settings.engine.title">Download engine</h3>
                             </div>
                             <span id="engine-pill" class="engine-state-pill engine-state-stopped">
                                 <i class="ri-stop-circle-line"></i>
                                 <span data-i18n="settings.engine.stopped">Stopped</span>
                             </span>
                         </header>
+
+                        <p class="text-sm text-tg-textSecondary mt-2 mb-4" data-i18n="settings.engine.scope">Controls live monitoring, queued downloads, backfill, and forwarding together. Stop pauses active work; Start resumes pending work.</p>
 
                         <div class="engine-stats">
                             <div class="engine-stat-tile" data-stat="queue">
@@ -837,13 +852,13 @@
 
                         <div class="engine-actions">
                             <button type="button" id="engine-start" class="tg-btn-input inline-flex items-center gap-1.5">
-                                <i class="ri-play-fill"></i><span data-i18n="settings.engine.start">Start monitor</span>
+                                <i class="ri-play-fill"></i><span data-i18n="settings.engine.start">Start engine</span>
                             </button>
                             <button type="button" id="engine-stop" class="tg-btn-input-secondary hidden inline-flex items-center gap-1.5">
-                                <i class="ri-stop-fill"></i><span data-i18n="settings.engine.stop">Stop monitor</span>
+                                <i class="ri-stop-fill"></i><span data-i18n="settings.engine.stop">Stop all work</span>
                             </button>
                             <button type="button" id="engine-restart" class="tg-btn-input-secondary inline-flex items-center gap-1.5">
-                                <i class="ri-restart-line"></i><span data-i18n="settings.engine.restart">Restart</span>
+                                <i class="ri-restart-line"></i><span data-i18n="settings.engine.restart">Restart engine</span>
                             </button>
                             <a href="#/queue" class="engine-link" data-i18n="settings.engine.view_queue">View full queue →</a>
                         </div>
@@ -885,6 +900,10 @@
                         </summary>
                         <div id="settings-card-advanced" data-settings-section="card-advanced" class="px-4 pb-4 pt-0">
                         <p class="text-xs text-tg-textSecondary mb-4" data-i18n="settings.advanced.subtitle">Hot-path tunables. Defaults match the original hardcoded values — only change these if you know what you are doing.</p>
+                        <div class="mb-4 flex flex-wrap items-center gap-3">
+                            <button id="setting-low-resource-profile" type="button" class="tg-btn tg-btn-secondary text-sm" data-i18n="settings.resource_profile.apply">Use low-resource profile</button>
+                            <p class="text-xs text-tg-textSecondary" data-i18n="settings.resource_profile.help">Limits downloads and backfill; disables automatic seekbar and AI work. Existing queued jobs and files are kept.</p>
+                        </div>
 
                         <div class="space-y-4">
                             <!-- Downloader -->
@@ -910,6 +929,37 @@
                                         <label for="setting-adv-idle-sleep-ms" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.idle_sleep">Idle sleep (ms)</label>
                                         <input id="setting-adv-idle-sleep-ms" type="number" min="50" max="10000" class="tg-input w-full text-sm" placeholder="200">
                                         <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.idle_sleep_help">Worker pause when no job is queued. Lower = snappier.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-t border-tg-border/50 pt-4">
+                                <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="settings.advanced.forwarder">Forwarder</h4>
+                                <section class="mb-4" aria-labelledby="settings-forward-protection-title">
+                                    <h5 id="settings-forward-protection-title" class="text-tg-text text-xs font-medium mb-2" data-i18n="settings.forward.protection">Forward protection</h5>
+                                    <label class="cd-topic-option"><input id="setting-forward-protect-default" type="checkbox" class="cd-checkbox-input"><span class="cd-checkbox-control" aria-hidden="true"><i class="ri-check-line"></i></span><span class="cd-topic-name" data-i18n="settings.forward.protect_default">Protect forwarded copies by default</span></label>
+                                    <p class="text-xs text-tg-textSecondary mt-2" data-i18n="settings.forward.protection_help">Protected copies are downloaded and uploaded. Groups can override this default.</p>
+                                </section>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label for="setting-adv-forward-concurrency" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.forward_concurrency">Concurrent forwards</label>
+                                        <input id="setting-adv-forward-concurrency" type="number" min="1" max="5" class="tg-input w-full text-sm" placeholder="1">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.forward_concurrency_help">Forward worker limit. Start at 1; higher values send several files at once and can trigger Telegram flood limits.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-forward-queue-size" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.forward_queue_size">Forward queue capacity</label>
+                                        <input id="setting-adv-forward-queue-size" type="number" min="1" max="10000" class="tg-input w-full text-sm" placeholder="256">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.forward_queue_size_help">Maximum pending and active jobs. Jobs over the limit are recorded as failed.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-forward-interval-sec" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.forward_interval">Start interval (seconds)</label>
+                                        <input id="setting-adv-forward-interval-sec" type="number" min="0" max="3600" class="tg-input w-full text-sm" placeholder="1">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.forward_interval_help">Minimum gap between forward starts across all workers. 0 means no added delay.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-forward-flood-attempts" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.forward_flood_attempts">FloodWait attempts</label>
+                                        <input id="setting-adv-forward-flood-attempts" type="number" min="1" max="10" class="tg-input w-full text-sm" placeholder="3">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.forward_flood_attempts_help">Total sends for a job when Telegram asks this account to wait.</p>
                                     </div>
                                 </div>
                             </div>
@@ -1301,6 +1351,7 @@
                             <option value="auto" data-i18n="settings.language.auto">Auto-detect</option>
                             <option value="en">English</option>
                             <option value="th">ไทย</option>
+                            <option value="id">Indonesia</option>
                         </select>
 
                         <label for="setting-font" class="text-tg-text text-sm block mb-2 flex items-center gap-2">
@@ -1680,12 +1731,14 @@
                      visible rows + a small over-scroll buffer (see
                      js/queue.js for the math). -->
                 <div id="page-queue" class="hidden max-w-5xl mx-auto px-3 sm:px-4">
+                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
+                        <div id="queue-chips" class="queue-chip-row" role="toolbar" data-i18n-aria-label="queue.chips_label" aria-label="Filter queue jobs"></div>
+                    </section>
                     <!-- Top toolbar — status chips (one scrollable row; the default
                          "Active" view shows downloading + queued + paused), then
                          search, sort and the ⋮ menu (speed limit, and the global
                          actions below 1280 px — js/queue.js moves them). -->
                     <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div id="queue-chips" class="queue-chip-row" role="toolbar" data-i18n-aria-label="queue.chips_label" aria-label="Show downloads"></div>
                         <div class="flex items-center gap-2 mt-3">
                             <div class="relative flex-1 min-w-0">
                                 <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary" aria-hidden="true"></i>
@@ -1706,7 +1759,68 @@
                             </select>
                             </div>
                             <div id="queue-actions-inline" class="shrink-0">
-                                <div id="queue-global-actions" class="queue-global-actions">
+                                <div id="queue-bucket-actions" class="queue-bucket-actions">
+                                  <div data-queue-bucket="download" class="flex items-center gap-1.5">
+                                    <button id="queue-download-pause" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5">
+                                        <span data-i18n="queue.download.pause">Pause downloads</span>
+                                    </button>
+                                    <button id="queue-download-resume" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5">
+                                        <span data-i18n="queue.download.resume">Resume downloads</span>
+                                    </button>
+                                  </div>
+                                  <div data-queue-bucket="forward" class="hidden flex items-center gap-1.5">
+                                    <button id="queue-forward-pause" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
+                                        data-forward-pause>
+                                        <span data-i18n="queue.forward.pause">Pause forward</span>
+                                    </button>
+                                    <button id="queue-forward-resume" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
+                                        data-forward-resume>
+                                        <span data-i18n="queue.forward.resume">Resume forward</span>
+                                    </button>
+                                    <button id="queue-forward-retry-all" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        data-forward-retry-all disabled>
+                                        <i class="ri-restart-line" aria-hidden="true"></i><span data-i18n="queue.forward.retry_all_button">Retry failed &amp; interrupted (0)</span>
+                                    </button>
+                                    <p id="queue-forward-worker-state" class="text-[10px] text-tg-textSecondary" role="note"></p>
+                                    <details class="relative basis-full">
+                                        <summary class="cursor-pointer text-xs text-tg-blue hover:underline" data-i18n="queue.forward.backfill.title">Forward download history…</summary>
+                                        <form id="queue-forward-backfill-form" class="mt-2 grid grid-cols-1 sm:grid-cols-5 gap-2 p-3 rounded-lg bg-tg-bg/50 border border-tg-border/50">
+                                            <input name="groupId" class="tg-input text-xs" placeholder="Source group ID" aria-label="Source group ID" required>
+                                            <input name="destination" class="tg-input text-xs" placeholder="Destination ID or @username" aria-label="Destination ID or @username" required>
+                                            <input name="beforeMessageId" type="number" min="1" class="tg-input text-xs" placeholder="Before message ID (optional)" aria-label="Before message ID (optional)">
+                                            <input name="limit" type="number" min="1" max="100" value="50" class="tg-input text-xs" aria-label="Batch size">
+                                            <button type="submit" class="tg-btn tg-btn-sm min-h-10" data-i18n="queue.forward.backfill.submit">Queue batch</button>
+                                            <p class="sm:col-span-5 text-[10px] text-tg-textSecondary" data-i18n="queue.forward.backfill.help">Direct forward is tried first. If needed, the app downloads from Telegram or uses the local file. Start the monitor for download fallback. Repeat batches with the returned cursor.</p>
+                                            <p id="queue-forward-backfill-result" class="sm:col-span-5 text-xs text-tg-textSecondary" role="status" aria-live="polite"></p>
+                                        </form>
+                                    </details>
+                                  </div>
+                                </div>
+                            </div>
+                            <div class="relative shrink-0">
+                                <button id="queue-more-btn" type="button"
+                                    class="w-11 h-11 rounded-lg bg-tg-bg/60 hover:bg-tg-hover flex items-center justify-center"
+                                    aria-haspopup="menu" aria-expanded="false" aria-controls="queue-more-menu"
+                                    data-i18n-aria-label="queue.more" aria-label="More queue actions"
+                                    data-i18n-title="queue.more" title="More queue actions">
+                                    <i class="ri-more-2-fill text-lg text-tg-textSecondary" aria-hidden="true"></i>
+                                </button>
+                                <div id="queue-more-menu" class="view-mode-menu queue-more-menu" role="menu" aria-labelledby="queue-more-btn">
+                                    <div data-menu-slot class="queue-menu-sort">
+                                        <label for="queue-sort" class="text-xs text-tg-textSecondary flex items-center gap-1.5 mb-1">
+                                            <i class="ri-sort-desc" aria-hidden="true"></i><span data-i18n="queue.sort.label">Sort by</span>
+                                        </label>
+                                        <div id="queue-sort-menu-slot"></div>
+                                    </div>
+                                    <div data-menu-slot><div id="queue-bucket-actions-menu-slot"></div></div>
+                                    <div data-menu-slot>
+                                      <div id="queue-actions-menu-slot">
+                                        <div id="queue-global-actions" class="queue-global-actions">
                                     <button id="queue-pause-all" type="button"
                                         class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
                                         data-i18n-title="queue.action.pause_all" title="Pause all">
@@ -1732,24 +1846,10 @@
                                         data-i18n-title="queue.action.cancel_all" title="Cancel all queued">
                                         <i class="ri-close-circle-line" aria-hidden="true"></i><span data-i18n="queue.action.cancel_all">Cancel queued</span>
                                     </button>
-                                </div>
-                            </div>
-                            <div class="relative shrink-0">
-                                <button id="queue-more-btn" type="button"
-                                    class="w-11 h-11 rounded-lg bg-tg-bg/60 hover:bg-tg-hover flex items-center justify-center"
-                                    aria-haspopup="menu" aria-expanded="false" aria-controls="queue-more-menu"
-                                    data-i18n-aria-label="queue.more" aria-label="More queue actions"
-                                    data-i18n-title="queue.more" title="More queue actions">
-                                    <i class="ri-more-2-fill text-lg text-tg-textSecondary" aria-hidden="true"></i>
-                                </button>
-                                <div id="queue-more-menu" class="view-mode-menu queue-more-menu" role="menu" aria-labelledby="queue-more-btn">
-                                    <div data-menu-slot class="queue-menu-sort">
-                                        <label for="queue-sort" class="text-xs text-tg-textSecondary flex items-center gap-1.5 mb-1">
-                                            <i class="ri-sort-desc" aria-hidden="true"></i><span data-i18n="queue.sort.label">Sort by</span>
-                                        </label>
-                                        <div id="queue-sort-menu-slot"></div>
+                                        </div>
+                                        <p id="queue-global-scope" class="mt-1 text-[10px] text-tg-textSecondary" role="note" data-i18n="queue.action.global_scope">Global pause and resume control both download and forward buckets.</p>
+                                      </div>
                                     </div>
-                                    <div data-menu-slot><div id="queue-actions-menu-slot"></div></div>
                                     <div class="queue-throttle" role="group" aria-labelledby="queue-throttle-label">
                                         <div class="flex items-center justify-between gap-2 mb-1">
                                             <label id="queue-throttle-label" for="queue-throttle" class="text-xs text-tg-textSecondary flex items-center gap-1.5">
@@ -1758,6 +1858,14 @@
                                             <span id="queue-throttle-value" class="text-xs text-tg-text tabular-nums" data-i18n="queue.throttle.unlimited">Unlimited</span>
                                         </div>
                                         <input id="queue-throttle" type="range" min="0" max="52428800" step="262144" value="0" class="w-full accent-tg-blue">
+                                    </div>
+                                    <div class="queue-throttle border-t border-tg-border/50 pt-2" role="group" aria-labelledby="queue-forward-interval-label">
+                                        <div class="flex items-center justify-between gap-2 mb-1">
+                                            <label id="queue-forward-interval-label" for="queue-forward-interval" class="text-xs text-tg-textSecondary flex items-center gap-1.5" data-i18n="settings.advanced.forward_interval">Start interval (seconds)</label>
+                                            <span id="queue-forward-interval-value" class="text-xs text-tg-text tabular-nums">1s</span>
+                                        </div>
+                                        <input id="queue-forward-interval" type="number" min="0" max="3600" step="1" value="1" class="tg-input w-24 text-sm" aria-describedby="queue-forward-interval-help">
+                                        <p id="queue-forward-interval-help" class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.forward_interval_help">Minimum gap between forward starts across all workers. 0 means no added delay.</p>
                                     </div>
                                 </div>
                             </div>
@@ -3587,6 +3695,40 @@
                         </div>
                     </section>
 
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3" aria-labelledby="processing-history-title">
+                        <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+                            <div>
+                                <h3 id="processing-history-title" class="text-tg-text text-sm font-semibold" data-i18n="maintenance.logs.history.title">Download processing history</h3>
+                                <p class="text-xs text-tg-textSecondary" data-i18n="maintenance.logs.history.help">Persistent attempts, deduplication and forwarding results. Clear a group's history with its existing Group Monitor cleanup action.</p>
+                            </div>
+                            <label class="text-xs text-tg-textSecondary"><span data-i18n="maintenance.logs.history.group">Group</span>
+                                <select id="processing-history-group" class="tg-input ml-1 py-1.5"><option value="" data-i18n="maintenance.logs.history.all_groups">All groups</option></select>
+                            </label>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-10 gap-2 mb-4">
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.attempts">Attempts</div><strong id="history-stat-attempts">0</strong></div>
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.downloaded">Downloaded</div><strong id="history-stat-downloaded">0</strong></div>
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.reused">Reused</div><strong id="history-stat-reused">0</strong></div>
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.duplicates">Duplicate skips</div><strong id="history-stat-duplicates">0</strong></div>
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.unique">Unique files</div><strong id="history-stat-unique">0</strong></div>
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.failed">Failed</div><strong id="history-stat-failed">0</strong></div>
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.forwarded">Forwarded</div><strong id="history-stat-forwarded">0</strong></div>
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.forward_failed">Forward failed</div><strong id="history-stat-forward-failed">0</strong></div>
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.deleted">Local deletes</div><strong id="history-stat-deleted">0</strong></div>
+                            <div class="rounded-lg bg-tg-bg/60 p-2"><div class="text-[10px] text-tg-textSecondary" data-i18n="maintenance.logs.history.delete_failed">Delete failed</div><strong id="history-stat-delete-failed">0</strong></div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs text-left">
+                                <thead class="text-tg-textSecondary"><tr><th class="py-2 pr-3" data-i18n="maintenance.logs.history.time">Time</th><th class="py-2 pr-3" data-i18n="maintenance.logs.history.group_message">Group / message</th><th class="py-2 pr-3" data-i18n="maintenance.logs.history.file">File</th><th class="py-2 pr-3" data-i18n="maintenance.logs.history.result">Result</th><th class="py-2 pr-3" data-i18n="maintenance.logs.history.forward">Forward</th><th class="py-2" data-i18n="maintenance.logs.history.local_file">Local file</th></tr></thead>
+                                <tbody id="processing-history-rows"></tbody>
+                            </table>
+                        </div>
+                        <div class="flex items-center justify-between gap-2 mt-3">
+                            <span id="processing-history-count" class="text-xs text-tg-textSecondary"></span>
+                            <button id="processing-history-more" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 hidden" data-i18n="maintenance.logs.history.load_more">Load more</button>
+                        </div>
+                    </section>
+
                     <!-- Filters sub-card — source chips + level radios + search box. -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3">
                         <div class="flex flex-col gap-3">
@@ -4071,6 +4213,9 @@
             data-i18n-title="viewer.selection.zip" title="Download ZIP">
             <i class="ri-archive-line" aria-hidden="true"></i> <span data-i18n="viewer.selection.zip">Download ZIP</span>
         </button>
+        <button id="selection-forward" type="button" class="selection-action px-3 py-1 rounded-full bg-green-500/20 text-green-300 hover:bg-green-500/30" data-admin-only title="Forward selected media">
+            <i class="ri-send-plane-line" aria-hidden="true"></i> <span>Forward</span>
+        </button>
         <button id="selection-pin" type="button" class="selection-action px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30" data-admin-only
             data-i18n-title="favorites.pin" title="Pin">
             <i class="ri-pushpin-2-line" aria-hidden="true"></i> <span data-i18n="favorites.pin">Pin</span>
@@ -4132,20 +4277,28 @@
         <!-- Separator between guest and admin sections (hidden on mobile to save space) -->
         <span class="hidden md:inline text-tg-textSecondary/40 select-none" data-admin-only aria-hidden="true">|</span>
 
-        <!-- Admin-only section: engine state · queue · active -->
+        <!-- Admin-only section: engine state · queue · downloads · backfill · forward -->
         <span class="flex items-center gap-1.5 status-chip" data-admin-only>
             <span id="status-dot" class="w-2 h-2 rounded-full bg-gray-500 shrink-0"></span>
             <span id="status-state" class="text-tg-textSecondary" data-i18n="status.idle">Idle</span>
         </span>
         <span class="status-chip hidden md:inline-flex" data-admin-only>
             <i class="ri-download-cloud-2-line text-tg-textSecondary" aria-hidden="true"></i>
-            <span class="text-tg-textSecondary" data-i18n="status.queue">Q:</span>
+            <span class="text-tg-textSecondary" data-i18n="status.queue">Queue:</span>
             <span class="status-chip-val" id="status-queue">0</span>
         </span>
         <span class="status-chip hidden md:inline-flex" data-admin-only>
             <i class="ri-loader-2-line text-tg-textSecondary" aria-hidden="true"></i>
-            <span class="text-tg-textSecondary" data-i18n="status.active">A:</span>
+            <span class="text-tg-textSecondary" data-i18n="status.download">Download:</span>
             <span class="status-chip-val" id="status-active">0</span>
+        </span>
+        <span class="status-chip hidden md:inline-flex" data-admin-only>
+            <span class="text-tg-textSecondary" data-i18n="status.backfill">Backfill:</span>
+            <span class="status-chip-val" id="status-backfill">0</span>
+        </span>
+        <span class="status-chip hidden md:inline-flex" data-admin-only>
+            <span class="text-tg-textSecondary" data-i18n="status.forward">Forward:</span>
+            <span class="status-chip-val" id="status-forward">0</span>
         </span>
 
         <!-- Right cluster: WS indicator · update badge · version (admin, desktop) -->

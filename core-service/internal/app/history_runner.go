@@ -11,6 +11,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 )
 
 func (a *App) startHistoryWorker(id string) {
@@ -68,9 +69,19 @@ func (a *App) runHistory(ctx context.Context, id string) error {
 		return err
 	}
 	defer session.Close()
-	dialog, err := session.Resolve(j.query)
-	if err != nil {
-		return err
+	var dialog telegram.Dialog
+	for {
+		dialog, err = session.Resolve(j.query)
+		if err == nil {
+			break
+		}
+		waited, waitErr := waitHistoryFlood(ctx, err)
+		if waitErr != nil {
+			return waitErr
+		}
+		if !waited {
+			return err
+		}
 	}
 	if err = a.initializeHistory(ctx, id, session.AccountID, dialog); err != nil {
 		return err
@@ -82,10 +93,19 @@ func (a *App) runHistory(ctx context.Context, id string) error {
 	history := objectAt(cfg, "advanced", "history")
 	cap := max(1, min(10000, int(number(history["backpressureCap"], 500))))
 	stall := time.Duration(max(1, min(86400000, number(history["backpressureMaxWaitMs"], 15*60*1000)))) * time.Millisecond
+	_, forwardAccount, scanRoute := scanRouteSettings(cfg, j.GroupID)
+	forwardLimit := 0
+	if scanRoute == "direct" || scanRoute == "both" {
+		forwardLimit = a.forwarderConfig(ctx).queueSize
+		if forwardAccount == "" {
+			forwardAccount = a.monitor.DefaultAccountID()
+		}
+	}
 	shortEvery := max(0, int(number(history["shortBreakEveryN"], 100)))
 	longEvery := max(0, int(number(history["longBreakEveryN"], 1000)))
 	lastProgress := time.Now()
 	lastPending := -1
+	lastForwardPending := -1
 	lastReceived := a.monitor.BytesReceived()
 	for {
 		if err := ctx.Err(); err != nil {
@@ -102,17 +122,39 @@ func (a *App) runHistory(ctx context.Context, id string) error {
 		if err != nil {
 			return err
 		}
+		forwardPending := 0
+		if forwardLimit > 0 {
+			if err := a.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM tgdl_forward_queue WHERE status IN ('pending','processing')`).Scan(&forwardPending); err != nil {
+				return err
+			}
+		}
 		// Progress is a shrinking queue or bytes still arriving: several
 		// backfills feeding one queue with large files can keep it full for
 		// longer than the stall window while downloads are healthy.
 		received := a.monitor.BytesReceived()
-		if pending < lastPending || pending < cap || received != lastReceived {
+		limit := cap
+		if forwardLimit > 0 {
+			limit = min(limit, forwardLimit)
+		}
+		if pending < lastPending || forwardPending < lastForwardPending || pending+forwardPending < limit || received != lastReceived {
 			lastProgress = time.Now()
 		}
-		lastPending, lastReceived = pending, received
-		if pending >= cap {
+		lastPending, lastForwardPending, lastReceived = pending, forwardPending, received
+		if pending+forwardPending >= limit {
 			if time.Since(lastProgress) > stall {
-				return errors.New("history queue made no progress before the stall deadline")
+				floodWaitUntil := a.monitor.AccountFloodWaitUntil(session.AccountID)
+				if forwardAccount != "" {
+					var blockedUntil int64
+					_ = a.db.Reader.QueryRowContext(ctx, `SELECT COALESCE((SELECT blocked_until FROM tgdl_forward_account_limits WHERE account_id=?),0)`, forwardAccount).Scan(&blockedUntil)
+					if waitUntil := time.UnixMilli(blockedUntil); waitUntil.After(floodWaitUntil) {
+						floodWaitUntil = waitUntil
+					}
+				}
+				if floodWaitUntil.After(time.Now()) {
+					lastProgress = time.Now()
+				} else {
+					return errors.New("history queue made no progress before the stall deadline")
+				}
 			}
 			select {
 			case <-ctx.Done():
@@ -121,13 +163,24 @@ func (a *App) runHistory(ctx context.Context, id string) error {
 				continue
 			}
 		}
-		limit := min(100, cap-pending)
+		pageLimit := min(100, limit-pending-forwardPending)
 		if j.Limit != nil {
-			limit = min(limit, *j.Limit-j.Processed)
+			pageLimit = min(pageLimit, *j.Limit-j.Processed)
 		}
-		page, err := session.Page(dialog, telegram.HistoryRequest{OffsetID: j.cursor, MinID: j.minID, Limit: limit, OffsetDate: int(j.OffsetDate), MinDate: int(j.MinDate)})
-		if err != nil {
-			return err
+		var page telegram.HistoryPage
+		for {
+			page, err = session.Page(dialog, telegram.HistoryRequest{OffsetID: j.cursor, MinID: j.minID, Limit: pageLimit, OffsetDate: int(j.OffsetDate), MinDate: int(j.MinDate)})
+			if err == nil {
+				break
+			}
+			waited, waitErr := waitHistoryFlood(ctx, err)
+			if waitErr != nil {
+				return waitErr
+			}
+			if !waited {
+				return err
+			}
+			lastProgress = time.Now()
 		}
 		for _, raw := range page.Messages {
 			var target engine.Target
@@ -168,6 +221,24 @@ func (a *App) runHistory(ctx context.Context, id string) error {
 		if len(page.Messages) == 0 {
 			return errors.New("history page did not advance")
 		}
+	}
+}
+
+func waitHistoryFlood(ctx context.Context, err error) (bool, error) {
+	wait, flood := tgerr.AsFloodWait(err)
+	if !flood {
+		return false, nil
+	}
+	if wait <= 0 {
+		wait = time.Second
+	}
+	timer := time.NewTimer(wait + time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return true, ctx.Err()
+	case <-timer.C:
+		return true, nil
 	}
 }
 
@@ -299,23 +370,42 @@ func (a *App) checkpointHistory(ctx context.Context, id string, session *engine.
 	}
 	j.cursor = cursor
 	j.Processed++
+	cfg, err := a.config.Load(ctx)
+	if err != nil {
+		return err
+	}
+	directSettings, accountID, scanRoute := scanRouteSettings(cfg, j.GroupID)
+	directOnly := scanRoute == "direct"
+	forwardLimit := 0
+	if scanRoute == "direct" || scanRoute == "both" {
+		forwardLimit = a.forwarderConfig(ctx).queueSize
+	}
 	tx, err := a.db.Writer.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var workID int64
+	var queuedForward bool
 	if allowed {
 		if target.ID != j.GroupID {
 			return errors.New("history filter selected another group")
 		}
-		var changed bool
-		workID, changed, err = session.QueueTx(ctx, tx, target, message, j.Mode == "rescan")
-		if err != nil {
-			return err
+		if scanRoute == "direct" || scanRoute == "both" {
+			queuedForward, err = insertDirectScanTx(ctx, tx, target.ID, target.Name, accountID, directSettings, cfg, forwardLimit, message)
+			if err != nil {
+				return err
+			}
 		}
-		if changed {
-			j.Downloaded++
+		if !directOnly {
+			var changed bool
+			workID, changed, err = session.QueueTx(ctx, tx, target, message, j.Mode == "rescan")
+			if err != nil {
+				return err
+			}
+			if changed {
+				j.Downloaded++
+			}
 		}
 	}
 	if err = historySaveTx(ctx, tx, j); err != nil {
@@ -326,6 +416,13 @@ func (a *App) checkpointHistory(ctx context.Context, id string, session *engine.
 	}
 	*current = j
 	session.Wake(workID)
+	if queuedForward {
+		a.notifyForwardQueue()
+		select {
+		case a.forwards <- struct{}{}:
+		default:
+		}
+	}
 	a.hub.Broadcast(ws.Event{Type: "history_progress", Flat: true, Payload: map[string]any{"jobId": j.ID, "processed": j.Processed, "downloaded": j.Downloaded, "skipped": j.Processed - j.Downloaded, "urls": 0, "group": j.Group, "groupId": j.GroupID, "limit": j.Limit, "startedAt": j.StartedAt, "mode": j.Mode, "currentId": cursor}})
 	return nil
 }

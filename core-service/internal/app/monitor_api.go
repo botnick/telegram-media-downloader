@@ -196,6 +196,10 @@ func (a *App) handleMonitorRestart(w http.ResponseWriter, r *http.Request) {
 	a.writeMonitorResult(w, r, a.startMonitorDetached(r, true))
 }
 func (a *App) ingestWork(ctx context.Context, work *engine.Work, message *tg.Message, transport telegram.MediaDownloader) error {
+	return a.ingestWorkWithForward(ctx, work, message, transport, nil)
+}
+
+func (a *App) ingestWorkWithForward(ctx context.Context, work *engine.Work, message *tg.Message, transport telegram.MediaDownloader, directForward func(context.Context, telegram.ForwardMessageRequest) error) error {
 	cfg, err := a.config.Load(ctx)
 	if err != nil {
 		return err
@@ -211,6 +215,16 @@ func (a *App) ingestWork(ctx context.Context, work *engine.Work, message *tg.Mes
 	if !allowed {
 		return engine.ErrFiltered
 	}
+	if work.Origin == "live" || work.Origin == "history" {
+		if settings, accountID, mode := scanRouteSettings(cfg, work.GroupID); mode == "direct" || mode == "both" {
+			if err := a.queueDirectScan(ctx, work.GroupID, work.GroupName, accountID, settings, cfg, message); err != nil {
+				return err
+			}
+			if mode == "direct" {
+				return nil
+			}
+		}
+	}
 	if work.Origin == "url" || work.Origin == "stories" {
 		_, allowed, err = a.monitorFilterConfig(engine.WithOrigin(ctx, work.Origin), cfg, work.AccountID, message, nil)
 		if err != nil {
@@ -220,7 +234,7 @@ func (a *App) ingestWork(ctx context.Context, work *engine.Work, message *tg.Mes
 			return engine.ErrFiltered
 		}
 	}
-	_, err = a.ingestTelegram(ctx, message, work.GroupID, work.GroupName, work.AccountID, transport)
+	_, err = a.ingestTelegramWithForward(ctx, message, work.GroupID, work.GroupName, work.AccountID, transport, directForward)
 	return err
 }
 func (a *App) monitorEvent(state string, err error) {
@@ -241,6 +255,10 @@ func (a *App) monitorEvent(state string, err error) {
 		a.restartMu.Lock()
 		a.monitorRunningSince = time.Now()
 		a.restartMu.Unlock()
+		select {
+		case a.forwards <- struct{}{}:
+		default:
+		}
 	case "error":
 		a.scheduleMonitorRestart()
 	}

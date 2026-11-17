@@ -10,6 +10,8 @@ import (
 )
 
 func registerQueueRoutes(mux *http.ServeMux, a *App) {
+	mux.Handle("POST /api/queue/download/pause", a.requireAdmin(http.HandlerFunc(a.handleDownloadQueuePause)))
+	mux.Handle("POST /api/queue/download/resume", a.requireAdmin(http.HandlerFunc(a.handleDownloadQueueResume)))
 	mux.Handle("POST /api/queue/pause-all", a.requireAdmin(http.HandlerFunc(a.handleQueuePauseAll)))
 	mux.Handle("POST /api/queue/resume-all", a.requireAdmin(http.HandlerFunc(a.handleQueueResumeAll)))
 	mux.Handle("POST /api/queue/cancel-all", a.requireAdmin(http.HandlerFunc(a.handleQueueCancelAll)))
@@ -20,6 +22,24 @@ func registerQueueRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("POST /api/queue/{key}/retry", a.requireAdmin(http.HandlerFunc(a.handleQueueRetry)))
 	mux.Handle("POST /api/queue/batch", a.requireAdmin(http.HandlerFunc(a.handleQueueBatch)))
 	mux.Handle("POST /api/queue/retry-all", a.requireAdmin(http.HandlerFunc(a.handleQueueRetryAll)))
+}
+
+func (a *App) handleDownloadQueuePause(w http.ResponseWriter, r *http.Request) {
+	if err := a.monitor.PauseAll(r.Context()); err != nil {
+		writeQueueError(w, err)
+		return
+	}
+	queueChanged(a, map[string]any{"op": "download-pause"})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "bucket": "download", "paused": true})
+}
+
+func (a *App) handleDownloadQueueResume(w http.ResponseWriter, r *http.Request) {
+	if err := a.monitor.ResumeAll(r.Context()); err != nil {
+		writeQueueError(w, err)
+		return
+	}
+	queueChanged(a, map[string]any{"op": "download-resume"})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "bucket": "download", "paused": false})
 }
 
 func writeQueueError(w http.ResponseWriter, err error) {
@@ -39,12 +59,20 @@ func (a *App) handleQueuePauseAll(w http.ResponseWriter, r *http.Request) {
 		writeQueueError(w, err)
 		return
 	}
+	if err := a.setForwardQueuePaused(r.Context(), true); err != nil {
+		writeQueueError(w, err)
+		return
+	}
 	queueChanged(a, map[string]any{"op": "pause-all"})
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func (a *App) handleQueueResumeAll(w http.ResponseWriter, r *http.Request) {
 	if err := a.monitor.ResumeAll(r.Context()); err != nil {
+		writeQueueError(w, err)
+		return
+	}
+	if err := a.setForwardQueuePaused(r.Context(), false); err != nil {
 		writeQueueError(w, err)
 		return
 	}

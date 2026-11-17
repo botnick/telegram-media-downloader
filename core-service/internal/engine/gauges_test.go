@@ -15,7 +15,7 @@ func TestGaugesReportRunAndQueue(t *testing.T) {
 		return &readyAccount{}, nil
 	}, func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error) {
 		return Target{}, false, nil
-	}, func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error { return nil }, nil)
+	}, Sink(func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error { return nil }), nil)
 	if err := s.SetQueuePaused(ctx, true); err != nil {
 		t.Fatal(err)
 	}

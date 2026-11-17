@@ -15,6 +15,7 @@
 
 import { ws } from './ws.js';
 import { api } from './api.js';
+import { subscribe as subscribeMonitorStatus } from './monitor-status.js';
 import { showToast, escapeHtml, formatBytes, getFileIcon } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { getGroupName } from './store.js';
@@ -38,6 +39,7 @@ import { confirmSheet } from './sheet.js';
 //     instead of "everything appears at once on heavy filter change".
 const INITIAL_RENDER = 50;
 const PAGE_SIZE = 50;
+const FORWARD_PAGE_SIZE = 50;
 const RENDER_COALESCE_MS = 60; // collapse WS bursts into one rAF tick
 
 // Filter chip definitions. Order matters — also drives the keyboard tab order.
@@ -45,13 +47,12 @@ const RENDER_COALESCE_MS = 60; // collapse WS bursts into one rAF tick
 // downloader flagged as duplicates) — surfaces the rows that produced no
 // new bytes on disk, so the operator can see "what got skipped today".
 const STATUS_FILTERS = [
-    // Default view: everything that still has work to do. Finished rows
-    // (done / failed / duplicates) are one tap away.
+    // Download statuses stay separate from the durable forward queue.
     {
         id: 'current',
         i18n: 'queue.chip.current',
         fallback: 'Active',
-        match: (j) => j.status === 'active' || j.status === 'queued' || j.status === 'paused',
+        match: (j) => j.status === 'active' || j.status === 'queued',
     },
     {
         id: 'failed',
@@ -59,15 +60,27 @@ const STATUS_FILTERS = [
         fallback: 'Failed',
         match: (j) => j.status === 'failed',
     },
-    { id: 'done', i18n: 'queue.chip.done', fallback: 'Done', match: (j) => j.status === 'done' },
+    {
+        id: 'done',
+        i18n: 'queue.chip.done',
+        fallback: 'Done',
+        match: (j) => j.status === 'done' && !['pending', 'processing'].includes(j.forwardStatus),
+    },
     { id: 'all', i18n: 'queue.chip.all', fallback: 'All', match: () => true },
     // Narrower views, after a divider.
+    {
+        id: 'forward',
+        i18n: 'queue.forward.group',
+        fallback: 'Forward',
+        match: () => true,
+        secondary: true,
+        forwardView: true,
+    },
     {
         id: 'active',
         i18n: 'queue.chip.active',
         fallback: 'Downloading',
         match: (j) => j.status === 'active',
-        secondary: true,
     },
     {
         id: 'queued',
@@ -114,10 +127,15 @@ let _finishedCount = 0;
 let globalPaused = false;
 let engineRunning = false;
 let maxSpeedConfig = null;
+let forwardIntervalConfig = 1;
+let forwardQueueData = {};
+let forwardQueuePage = 1;
+let monitorCounts = { queue: 0, active: 0 };
+let forwardOnly = false;
 
 // View state — survives across navigations to the same page.
 const view = {
-    filter: 'current', // default: downloading + queued + paused
+    filter: 'current', // active/queued downloads
     sort: 'addedAt', // 'addedAt' | 'size' | 'progress' | 'group' | 'filename'
     sortDir: 'desc',
     search: '',
@@ -437,6 +455,17 @@ async function runRetryAll() {
     }
 }
 
+async function runBucketControl(bucket, paused) {
+    try {
+        await api.post(`/api/queue/${bucket}/${paused ? 'pause' : 'resume'}`);
+        globalPaused = paused;
+        renderChips();
+        showToast(`${bucket === 'download' ? 'Download' : 'Forward'} bucket ${paused ? 'paused' : 'resumed'}`, 'success');
+    } catch (error) {
+        showToast(error?.message || 'Queue control failed', 'error');
+    }
+}
+
 function patchProgress(payload) {
     if (!payload?.key) return;
     const prev = store.get(payload.key);
@@ -466,7 +495,21 @@ function patchProgress(payload) {
 }
 
 // ============ Bootstrap ============
-async function loadSnapshot() {
+// A badge preload and a route entry can happen in the same event loop.
+// Share the pending request rather than resetting state with two responses.
+let _snapshotInFlight = null;
+function loadSnapshot() {
+    if (_snapshotInFlight) return _snapshotInFlight;
+    const request = fetchAndApplySnapshot();
+    _snapshotInFlight = request;
+    const clear = () => {
+        if (_snapshotInFlight === request) _snapshotInFlight = null;
+    };
+    void request.then(clear, clear);
+    return request;
+}
+
+async function fetchAndApplySnapshot() {
     try {
         const snap = await api.get('/api/queue/snapshot');
         // Wipe local state and rebuild from the authoritative server snapshot.
@@ -477,13 +520,17 @@ async function loadSnapshot() {
         globalPaused = !!snap.globalPaused;
         engineRunning = !!snap.engineRunning;
         maxSpeedConfig = snap.maxSpeed ?? null;
+        forwardIntervalConfig = Number(snap.forwardQueue?.intervalSec ?? 1);
         for (const j of snap.active || []) upsert({ ...j });
         for (const j of snap.queued || []) upsert({ ...j });
         for (const j of snap.recent || []) upsert({ ...j });
+        renderForwardQueue(snap.forwardQueue || {});
+        renderChips();
         view.booted = true;
         scheduleStructuralRender();
     } catch (e) {
         if (e.status !== 401) {
+            forwardQueueData = { error: true };
             showToast(
                 i18nTf(
                     'queue.toast.snapshot_failed',
@@ -492,9 +539,222 @@ async function loadSnapshot() {
                 ),
                 'error',
             );
+            renderForwardQueue(forwardQueueData);
         }
     }
 }
+
+function renderForwardQueue(data) {
+    forwardQueueData = data;
+    const rows = document.getElementById('queue-rows');
+    const empty = document.getElementById('queue-empty');
+    const sentinel = document.getElementById('queue-load-more');
+    const workerState = document.getElementById('queue-forward-worker-state');
+    const intervalSec = Number(data.intervalSec ?? forwardIntervalConfig);
+    const status = `${data.workerStatus || (data.paused ? 'paused' : 'running')} · ${Number(data.concurrency || 0)} workers · ${intervalSec}s between starts · ${Number(data.capacity || 0)} queue capacity`;
+    if (workerState && workerState.textContent !== status) workerState.textContent = status;
+    syncForwardIntervalControl(intervalSec);
+    const retryAll = document.getElementById('queue-forward-retry-all');
+    const retryableCount = Number(data.failed || 0) + Number(data.interrupted || 0);
+    if (retryAll) {
+        retryAll.disabled = retryableCount === 0;
+        const label = i18nTf('queue.forward.retry_all_button', { count: retryableCount }, `Retry failed & interrupted (${retryableCount})`);
+        const text = retryAll.querySelector('span');
+        if (text && text.textContent !== label) text.textContent = label;
+        retryAll.setAttribute('aria-label', label);
+    }
+    const pause = document.getElementById('queue-forward-pause');
+    const resume = document.getElementById('queue-forward-resume');
+    if (pause) pause.classList.toggle('hidden', !!data.paused);
+    if (resume) resume.classList.toggle('hidden', !data.paused);
+    if (!forwardOnly || !rows) return;
+
+    const showRows = (html) => {
+        if (rows.innerHTML !== html) rows.innerHTML = html;
+        if (empty) empty.classList.add('hidden');
+        if (sentinel) sentinel.classList.add('hidden');
+        view.rendered = 0;
+    };
+    const items = (data.items || []).filter((item) => item.status !== 'not_applicable');
+    const recentItems = data.recent || [];
+    const actionableCount = Number(data.pending || 0) + Number(data.active || 0) + Number(data.failed || 0) + Number(data.interrupted || 0) + Number(data.uncertain || 0);
+    const pageCount = Math.max(1, Math.ceil(actionableCount / FORWARD_PAGE_SIZE));
+    forwardQueuePage = Math.min(Math.max(1, Number(data.page) || forwardQueuePage), pageCount);
+    if (data.loading) {
+        showRows(`<div class="px-3 py-4 text-sm text-tg-textSecondary" role="status">${escapeHtml(i18nT('queue.forward.loading', 'Loading forward queue…'))}</div>`);
+        return;
+    }
+    if (data.error) {
+        showRows(`<div class="flex flex-col items-start gap-2 px-3 py-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
+            <p class="text-sm text-tg-text">${escapeHtml(i18nT('queue.forward.load_error', 'Could not load forward jobs.'))}</p>
+            <button type="button" class="tg-btn tg-btn-sm min-h-11" data-forward-reload>${escapeHtml(i18nT('queue.forward.reload', 'Try loading again'))}</button>
+        </div>`);
+        return;
+    }
+    if (!items.length && !recentItems.length) {
+        if (rows.innerHTML !== '') rows.innerHTML = '';
+        if (empty) empty.classList.remove('hidden');
+        if (sentinel) sentinel.classList.add('hidden');
+        view.rendered = 0;
+        _renderEmpty();
+        return;
+    }
+    const start = (forwardQueuePage - 1) * FORWARD_PAGE_SIZE;
+    const statuses = {
+        pending: 'queue.forward.status.pending',
+        processing: 'queue.forward.status.active',
+        forwarded: 'queue.forward.status.forwarded',
+        failed: 'queue.forward.status.failed',
+        interrupted: 'queue.forward.status.interrupted',
+        uncertain: 'queue.forward.status.uncertain',
+        not_applicable: 'queue.forward.status.not_applicable',
+    };
+    const slice = [...items.slice(0, FORWARD_PAGE_SIZE), ...recentItems];
+    const html = slice.map((item) => {
+        const group = item.groupName || item.groupId || '?';
+        const destinations = (item.destinations || []).join(', ') || '—';
+        const statusKey = statuses[item.status];
+        const status = statusKey ? i18nT(statusKey, item.status) : (item.status || '—');
+        const stage = item.stage === 'fallback_download'
+            ? i18nT('queue.forward.stage.fallback_download', 'Downloading fallback')
+            : item.stage === 'fallback_upload'
+                ? i18nT('queue.forward.stage.fallback_upload', 'Uploading fallback')
+                : item.stage === 'manual_direct'
+                    ? i18nT('queue.forward.stage.manual_direct', 'Trying direct forward')
+                : (item.stage || '—');
+        const reason = item.reason ? `<span class="text-red-400/80 truncate" title="${escapeHtml(item.reason)}">${escapeHtml(item.reason)}</span>` : '';
+        const retryAt = Number(item.retryAt || 0) > Date.now() ? ` · retry ${escapeHtml(new Date(Number(item.retryAt)).toLocaleTimeString())}` : '';
+        const destinationStates = item.destinationStates || [];
+        const sentCount = destinationStates.filter((destination) => destination.status === 'forwarded').length;
+        const destinationCount = Math.max(destinationStates.length, (item.destinations || []).length);
+        const progress = item.status === 'forwarded' ? 100 : destinationCount ? Math.round((sentCount / destinationCount) * 100) : 0;
+        const targetProgress = destinationCount ? `${sentCount}/${destinationCount}` : '—';
+        const destinationsDetail = destinationStates.length
+            ? destinationStates.map((d) => `${d.settings?.destinationGroupId || d.settings?.destination || i18nT('queue.forward.destination', 'Destination')} · ${d.method || '—'} · ${d.status || 'pending'}${d.settings?.protect ? ' · protected' : ''}${d.directFailed ? ` · ${i18nT('queue.forward.direct_failed', 'Direct failed')}` : ''}${d.fallbackReason ? ` · ${d.fallbackReason}` : ''}${d.reason ? ` · ${d.reason}` : ''}`).join('; ')
+            : '';
+        const retry = ['failed', 'interrupted'].includes(item.status)
+            ? `<button type="button" class="tg-btn-secondary tg-btn-sm min-h-11 md:min-h-8" data-forward-retry="${escapeHtml(item.id)}">${escapeHtml(i18nT('queue.forward.retry', 'Retry'))}</button>`
+            : '';
+        const uncertainDestinations = destinationStates
+            .map((destination, index) => ({ destination, index }))
+            .filter(({ destination }) => ['uncertain', 'processing'].includes(destination.status));
+        const reconcile = item.status === 'uncertain'
+            ? uncertainDestinations.length
+                ? uncertainDestinations.map(({ destination, index }) => {
+                    const target = destination.settings?.destinationGroupId || destination.settings?.destination || `${index + 1}`;
+                    return `<div class="flex flex-wrap items-center gap-1"><span class="text-[10px] text-tg-textSecondary">${escapeHtml(target)}</span><button type="button" class="tg-btn-secondary tg-btn-sm min-h-11 md:min-h-8" aria-label="${escapeHtml(`${i18nT('queue.forward.confirm_sent', 'Confirm sent')}: ${target}`)}" data-forward-reconcile="sent" data-destination-index="${index}" data-id="${escapeHtml(item.id)}">${escapeHtml(i18nT('queue.forward.confirm_sent', 'Confirm sent'))}</button><button type="button" class="tg-btn-secondary tg-btn-sm min-h-11 md:min-h-8" aria-label="${escapeHtml(`${i18nT('queue.forward.resend', 'Resend')}: ${target}`)}" data-forward-reconcile="resend" data-destination-index="${index}" data-id="${escapeHtml(item.id)}">${escapeHtml(i18nT('queue.forward.resend', 'Resend…'))}</button></div>`;
+                }).join('')
+                : `<div class="flex flex-wrap gap-1"><button type="button" class="tg-btn-secondary tg-btn-sm min-h-11 md:min-h-8" data-forward-reconcile="sent" data-id="${escapeHtml(item.id)}">${escapeHtml(i18nT('queue.forward.confirm_sent', 'Confirm sent'))}</button><button type="button" class="tg-btn-secondary tg-btn-sm min-h-11 md:min-h-8" data-forward-reconcile="resend" data-id="${escapeHtml(item.id)}">${escapeHtml(i18nT('queue.forward.resend', 'Resend…'))}</button></div>`
+            : '';
+        const statusClass = {
+            failed: 'bg-red-500/20 text-red-400',
+            interrupted: 'bg-tg-orange/20 text-tg-orange',
+            processing: 'bg-tg-blue/20 text-tg-blue',
+            pending: 'bg-gray-700/40 text-gray-300',
+            forwarded: 'bg-tg-green/20 text-tg-green',
+            uncertain: 'bg-tg-orange/20 text-tg-orange',
+        }[item.status] || 'bg-gray-700/40 text-gray-300';
+        const meta = [
+            `<span>${escapeHtml(group)}</span>`,
+            `<span>#${escapeHtml(item.messageId)}</span>`,
+            `<span class="truncate" title="${escapeHtml(destinations)}">${escapeHtml(i18nT('queue.forward.destination', 'To'))}: ${escapeHtml(destinations)}</span>`,
+            destinationsDetail ? `<span class="truncate" title="${escapeHtml(destinationsDetail)}">${escapeHtml(destinationsDetail)}</span>` : '',
+            reason ? `<span class="text-red-400/80 truncate">${reason}</span>` : '',
+            Number(item.attempts || 0) ? `<span>${escapeHtml(i18nT('queue.forward.attempts', 'attempt'))} ${Number(item.attempts)}</span>` : '',
+            retryAt ? `<span>${retryAt}</span>` : '',
+            stage && stage !== '—' ? `<span>${escapeHtml(stage)}</span>` : '',
+        ].filter(Boolean).join('<span class="text-tg-textSecondary/40" aria-hidden="true"> · </span>');
+        return `<div data-forward-job="${escapeHtml(item.id)}" class="md:grid md:grid-cols-[32px_40px_minmax(0,2.5fr)_90px_minmax(140px,1.4fr)_80px_70px_90px_120px] items-center gap-2 px-3 py-2 hover:bg-tg-hover/40">
+            <span class="hidden md:block"></span>
+            <span class="w-9 h-9 rounded bg-tg-blue/15 text-tg-blue flex items-center justify-center" aria-hidden="true"><i class="ri-send-plane-line"></i></span>
+            <div class="min-w-0 md:contents">
+                <div class="min-w-0">
+                    <p class="truncate text-sm text-tg-text" title="${escapeHtml(item.fileName || `#${item.messageId}`)}">${escapeHtml(item.fileName || `#${item.messageId}`)}</p>
+                    <p class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11px] text-tg-textSecondary">${meta}</p>
+                </div>
+                <span class="hidden md:block text-xs text-tg-textSecondary text-right">—</span>
+                <div class="mt-1.5 md:mt-0">
+                    <div class="flex items-center gap-2">
+                        <span class="md:hidden text-[10px] text-tg-textSecondary">${escapeHtml(i18nT('queue.forward.destinations_sent', 'Destinations'))} ${targetProgress}</span>
+                        <div class="h-1.5 flex-1 bg-tg-bg/60 rounded overflow-hidden" title="${escapeHtml(i18nT('queue.forward.destinations_sent', 'Destinations'))} ${targetProgress}"><div class="h-full bg-tg-blue" style="width:${progress}%"></div></div>
+                        <span class="hidden md:inline text-xs text-tg-textSecondary tabular-nums">${targetProgress}</span>
+                    </div>
+                    <span class="hidden md:block text-[10px] text-tg-textSecondary mt-0.5">${escapeHtml(stage)}</span>
+                </div>
+                <span class="hidden md:block text-xs text-tg-textSecondary text-right">—</span>
+                <span class="hidden md:block text-xs text-tg-textSecondary text-right">—</span>
+                <div class="mt-1 md:mt-0"><span class="whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${statusClass}">${escapeHtml(status)}</span></div>
+                <div class="mt-2 md:mt-0 flex flex-wrap items-center justify-start md:justify-end gap-1">${retry}${reconcile}</div>
+            </div>
+        </div>`;
+    }).join('');
+    let htmlWithPagination = html;
+    if (pageCount > 1) {
+        htmlWithPagination += `<div class="flex items-center justify-between gap-3 px-3 py-3 text-xs text-tg-textSecondary">
+            <span>${escapeHtml(i18nTf('queue.forward.page', { start: start + 1, end: Math.min(start + FORWARD_PAGE_SIZE, actionableCount), total: actionableCount }, `${start + 1}–${Math.min(start + FORWARD_PAGE_SIZE, actionableCount)} of ${actionableCount}`))}</span>
+            <div class="flex gap-2">
+                <button type="button" class="tg-btn tg-btn-sm min-h-11" data-forward-page="prev" ${forwardQueuePage <= 1 ? 'disabled' : ''}>${escapeHtml(i18nT('common.prev', 'Prev'))}</button>
+                <button type="button" class="tg-btn tg-btn-sm min-h-11" data-forward-page="next" ${forwardQueuePage >= pageCount ? 'disabled' : ''}>${escapeHtml(i18nT('common.next', 'Next'))}</button>
+            </div>
+        </div>`;
+    }
+    showRows(htmlWithPagination);
+    view.rendered = slice.length;
+    if (sentinel) sentinel.classList.add('hidden');
+}
+
+document.addEventListener('click', async (event) => {
+    const pause = event.target.closest('[data-forward-pause]');
+    const resume = event.target.closest('[data-forward-resume]');
+    const reconcile = event.target.closest('[data-forward-reconcile]');
+    if (pause || resume) {
+        const button = pause || resume;
+        button.disabled = true;
+        try {
+            await api.post(`/api/forward-queue/${pause ? 'pause' : 'resume'}`);
+            await loadSnapshot();
+        } catch (error) {
+            showToast(error?.message || 'Forward queue control failed', 'error');
+            button.disabled = false;
+        }
+        return;
+    }
+    if (reconcile) {
+        const action = reconcile.dataset.forwardReconcile;
+        const accepted = await confirmSheet({
+            title: action === 'resend' ? i18nT('queue.forward.resend_title', 'Resend uncertain forward?') : i18nT('queue.forward.sent_title', 'Confirm forward was sent?'),
+            message: action === 'resend'
+                ? i18nT('queue.forward.resend_warning', 'Telegram may already have accepted this forward. Resending can create a duplicate.')
+                : i18nT('queue.forward.sent_warning', 'Confirm only if you verified the destination message exists.'),
+            confirmLabel: action === 'resend' ? i18nT('queue.forward.resend_confirm', 'Resend anyway') : i18nT('queue.forward.sent_confirm', 'Confirm sent'),
+        });
+        if (!accepted) return;
+        reconcile.disabled = true;
+        try {
+            await api.post(`/api/forward-queue/${encodeURIComponent(reconcile.dataset.id)}/reconcile`, {
+                action,
+                confirmDuplicateRisk: action === 'resend',
+                ...(reconcile.dataset.destinationIndex === undefined ? {} : { destinationIndex: Number(reconcile.dataset.destinationIndex) }),
+            });
+            await loadSnapshot();
+        } catch (error) {
+            showToast(error?.message || 'Forward reconciliation failed', 'error');
+            reconcile.disabled = false;
+        }
+        return;
+    }
+    const button = event.target.closest('[data-forward-page]');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    const nextPage = forwardQueuePage + (button.dataset.forwardPage === 'next' ? 1 : -1);
+    try {
+        const data = await api.get(`/api/forward-queue?page=${nextPage}`);
+        renderForwardQueue(data);
+    } catch (error) {
+        showToast(error?.message || 'Failed to load forward queue', 'error');
+        button.disabled = false;
+    }
+});
 
 // ============ WS handlers ============
 //
@@ -502,6 +762,10 @@ async function loadSnapshot() {
 //   - structural change (add/remove a row, mass status flip)  → scheduleStructuralRender()
 //   - per-row update (progress, speed, single status change)   → scheduleRender() (in-place patch)
 function handleWs(msg) {
+    if (msg.type === 'forward_queue_changed') {
+        loadSnapshot();
+        return;
+    }
     if (msg.type === 'monitor_state') {
         engineRunning = msg.state === 'running';
         if (msg.state === 'stopped' || msg.state === 'error') {
@@ -518,6 +782,12 @@ function handleWs(msg) {
     }
     if (msg.type === 'queue_changed') {
         const p = msg.payload || {};
+        if (p.op === 'download-pause' || p.op === 'download-resume') {
+            globalPaused = p.op === 'download-pause';
+            renderChips();
+            scheduleRender();
+            return;
+        }
         if (p.op === 'pause-all') {
             globalPaused = true;
             scheduleStructuralRender();
@@ -686,6 +956,97 @@ function handleWs(msg) {
     }
 }
 
+document.addEventListener('click', async (event) => {
+    const retryAll = event.target.closest('[data-forward-retry-all]');
+    if (retryAll) {
+        const count = Number(forwardQueueData?.failed || 0) + Number(forwardQueueData?.interrupted || 0);
+        if (!count) return;
+        retryAll.disabled = true;
+        if (!(await confirmSheet({
+            title: i18nT('queue.forward.retry_all_title', 'Retry failed or interrupted forward jobs?'),
+            message: i18nTf(
+                'queue.forward.retry_all_confirm',
+                { count },
+                `This will return ${count} failed or interrupted jobs to the forward queue. Make sure the engine is running first.`,
+            ),
+            confirmLabel: i18nT('queue.forward.retry_all_confirm_button', 'Retry all'),
+        }))) {
+            retryAll.disabled = false;
+            return;
+        }
+        try {
+            const result = await api.post('/api/forward-queue/retry-all', {});
+            const retried = Number(result?.retried || 0);
+            showToast(i18nTf('queue.forward.retry_all_done', { count: retried }, `Queued ${retried} forward retries`), 'success');
+            await loadSnapshot();
+        } catch (error) {
+            showToast(error?.message || 'Retry failed', 'error');
+            retryAll.disabled = false;
+        }
+        return;
+    }
+    const reloadForward = event.target.closest('[data-forward-reload]');
+    if (reloadForward) {
+        renderForwardQueue({ loading: true });
+        await loadSnapshot();
+        return;
+    }
+    const button = event.target.closest('[data-forward-retry]');
+    if (!button) return;
+    button.disabled = true;
+    try {
+        await api.post(`/api/forward-queue/${encodeURIComponent(button.dataset.forwardRetry)}/retry`, {});
+        loadSnapshot();
+    } catch (error) {
+        showToast(error?.message || 'Retry failed', 'error');
+        button.disabled = false;
+    }
+});
+
+document.addEventListener('submit', async (event) => {
+    const form = event.target.closest('#queue-forward-backfill-form');
+    if (!form) return;
+    event.preventDefault();
+    const values = new FormData(form);
+    const payload = {
+        groupId: String(values.get('groupId') || '').trim(),
+        destination: String(values.get('destination') || '').trim(),
+        beforeMessageId: Number(values.get('beforeMessageId') || 0),
+        limit: Number(values.get('limit') || 50),
+    };
+    const button = form.querySelector('[type="submit"]');
+    const result = document.getElementById('queue-forward-backfill-result');
+    button.disabled = true;
+    try {
+        const response = await api.post('/api/forward-queue/backfill', payload);
+        const cursor = form.querySelector('[name="beforeMessageId"]');
+        if (response.hasMore) {
+            cursor.value = String(response.nextBeforeMessageId || '');
+            button.disabled = false;
+        } else if (result) {
+            button.disabled = true;
+        }
+        if (result) result.textContent = i18nTf(
+            response.hasMore ? 'queue.forward.backfill.result_more' : 'queue.forward.backfill.result_done',
+            { scanned: response.scanned, queued: response.queued, skipped: response.skipped, cursor: response.nextBeforeMessageId || '—' },
+            `Scanned ${response.scanned}; queued ${response.queued}; skipped ${response.skipped}. ${response.hasMore ? `Continue before message ${response.nextBeforeMessageId}.` : 'No more older records.'}`,
+        );
+        await loadSnapshot();
+    } catch (error) {
+        if (result) result.textContent = error?.data?.error || error?.message || 'Backfill failed';
+        button.disabled = false;
+    }
+});
+
+document.getElementById('queue-forward-backfill-form')?.addEventListener('input', (event) => {
+    const form = event.currentTarget;
+    if (event.target.name === 'groupId' || event.target.name === 'destination') {
+        form.querySelector('[name="beforeMessageId"]').value = '';
+        document.getElementById('queue-forward-backfill-result').textContent = '';
+    }
+    form.querySelector('[type="submit"]').disabled = false;
+});
+
 // ============ Filtering / sorting / search ============
 let _filteredCache = null;
 let _filteredCacheTag = '';
@@ -758,52 +1119,85 @@ function _chipCounts() {
     // (O(n), n bounded by MAX_FINISHED + live jobs). Without this the
     // "Duplicate" chip always showed 0 even when rows carried the badge.
     let dupe = 0;
+    let done = 0;
     for (const j of store.values()) {
         if (j.deduped === true) dupe += 1;
+        if (j.status === 'done' && !['pending', 'processing'].includes(j.forwardStatus)) done += 1;
     }
-    const active = statusCounts.get('active') || 0;
-    const queued = statusCounts.get('queued') || 0;
-    const paused = statusCounts.get('paused') || 0;
+    const active = monitorCounts.active;
+    const queued = monitorCounts.queue;
     return {
-        current: active + queued + paused,
+        current: active + queued,
         all: store.size,
         active,
         queued,
-        paused,
+        forwarding: Number(forwardQueueData.pending || 0) + Number(forwardQueueData.active || 0) + Number(forwardQueueData.failed || 0) + Number(forwardQueueData.interrupted || 0),
+        paused: statusCounts.get('paused') || 0,
         failed: statusCounts.get('failed') || 0,
-        done: statusCounts.get('done') || 0,
+        done,
         dupe,
     };
 }
 
 function renderChips() {
+    const downloadPause = document.getElementById('queue-download-pause');
+    const downloadResume = document.getElementById('queue-download-resume');
+    const downloadControls = document.querySelector('[data-queue-bucket="download"]');
+    const forwardControls = document.querySelector('[data-queue-bucket="forward"]');
+    if (downloadControls) downloadControls.classList.toggle('hidden', forwardOnly);
+    if (forwardControls) forwardControls.classList.toggle('hidden', !forwardOnly);
+    if (downloadPause) downloadPause.classList.toggle('hidden', !!globalPaused);
+    if (downloadResume) downloadResume.classList.toggle('hidden', !globalPaused);
+    const bothPaused = !!globalPaused && !!forwardQueueData.paused;
+    const pauseAll = document.getElementById('queue-pause-all');
+    const resumeAll = document.getElementById('queue-resume-all');
+    if (pauseAll) pauseAll.classList.toggle('hidden', bothPaused);
+    if (resumeAll) resumeAll.classList.toggle('hidden', !bothPaused);
     const host = document.getElementById('queue-chips');
     if (!host) return;
     const lang = i18nT('queue.chip.all', 'All');
-    if (_chipsLang !== lang || host.children.length !== STATUS_FILTERS.length) {
+    if (
+        _chipsLang !== lang ||
+        host.querySelectorAll('[data-chip]').length !== STATUS_FILTERS.filter((f) => !f.forwardView).length ||
+        host.querySelectorAll('[data-forward-view]').length !== 1
+    ) {
         _chipsLang = lang;
-        host.innerHTML = STATUS_FILTERS.map(
-            (f) => `<button type="button" data-chip="${f.id}" aria-pressed="false"
+        const downloadChips = STATUS_FILTERS.map(
+            (f) => `<button type="button" ${f.forwardView ? 'data-forward-view' : `data-chip="${f.id}"`} aria-pressed="false"
             class="queue-chip${f.secondary ? ' queue-chip--divider' : ''} px-3 text-xs rounded-full border flex items-center gap-1.5 shrink-0">
             <span>${escapeHtml(i18nT(f.i18n, f.fallback))}</span>
             <span data-chip-count class="tabular-nums opacity-80">0</span>
         </button>`,
         ).join('');
+        host.innerHTML = downloadChips;
     }
     if (!_chipsWired) {
         _chipsWired = true;
         host.addEventListener('click', (ev) => {
+            const forwardBtn = ev.target.closest('[data-forward-view]');
+            if (forwardBtn && host.contains(forwardBtn)) {
+                forwardOnly = true;
+                selectionClear();
+                if (view.filter !== 'current') {
+                    view.filter = 'current';
+                    invalidateFilterCache();
+                }
+                renderRows();
+                const target = '#/queue/forward';
+                if (location.hash !== target) history.pushState(null, '', target);
+                renderChips();
+                return;
+            }
             const btn = ev.target.closest('[data-chip]');
             if (!btn || !host.contains(btn)) return;
+            forwardOnly = false;
             view.filter = btn.dataset.chip;
             invalidateFilterCache();
-            // Update the URL without re-dispatching the route handler so
-            // back/forward still work but we don't churn the page.
             const target =
                 view.filter === 'current'
-                    ? '#/queue'
-                    : `#/queue/${encodeURIComponent(view.filter)}`;
-            if (location.hash !== target) history.replaceState(null, '', target);
+                    ? '#/queue/active'
+                    : `#/queue/${encodeURIComponent(view.filter === 'active' ? 'downloading' : view.filter)}`;
+            if (location.hash !== target) history.pushState(null, '', target);
             renderChips();
             // Filter changed → row set changed → full re-render. Reset
             // the rendered window so the user sees the first page of
@@ -816,14 +1210,23 @@ function renderChips() {
         });
     }
     const counts = _chipCounts();
-    for (const btn of host.children) {
+    for (const btn of host.querySelectorAll('[data-chip]')) {
         const id = btn.dataset.chip;
-        const active = view.filter === id;
+        const active = !forwardOnly && view.filter === id;
         for (const c of CHIP_ACTIVE_CLS) btn.classList.toggle(c, active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
         for (const c of CHIP_IDLE_CLS) btn.classList.toggle(c, !active);
         const countEl = btn.querySelector('[data-chip-count]');
         const n = String(counts[id] ?? 0);
+        if (countEl && countEl.textContent !== n) countEl.textContent = n;
+    }
+    for (const btn of host.querySelectorAll('[data-forward-view]')) {
+        const active = forwardOnly;
+        for (const c of CHIP_ACTIVE_CLS) btn.classList.toggle(c, active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        for (const c of CHIP_IDLE_CLS) btn.classList.toggle(c, !active);
+        const countEl = btn.querySelector('[data-chip-count]');
+        const n = String(counts.forwarding ?? 0);
         if (countEl && countEl.textContent !== n) countEl.textContent = n;
     }
 }
@@ -838,7 +1241,15 @@ function _renderEmpty() {
     let t;
     let b;
     let showAll = view.filter !== 'all' && store.size > 0;
-    if (store.size === 0) {
+    const forwardWork = (forwardQueueData.pending || 0) + (forwardQueueData.active || 0);
+    if (forwardOnly) {
+        t = i18nT('queue.forward.empty_title', 'No forward jobs recorded');
+        b = i18nT('queue.forward.empty_body', 'Forward jobs from scanned messages will appear here.');
+        showAll = false;
+    } else if (view.filter === 'current' && forwardWork > 0) {
+        t = i18nT('queue.forward.only_title', 'Downloads are idle');
+        b = i18nT('queue.forward.only_body', 'Forward jobs are listed above and continue independently.');
+    } else if (store.size === 0) {
         t = i18nT('queue.empty.title', 'Queue is empty');
         b = i18nT(
             'queue.empty.body',
@@ -884,6 +1295,12 @@ function renderRows() {
     const empty = document.getElementById('queue-empty');
     const sentinel = document.getElementById('queue-load-more');
     if (!viewport || !rowsHost) return;
+
+    if (forwardOnly) {
+        _renderedKeys.clear();
+        renderForwardQueue(forwardQueueData);
+        return;
+    }
 
     const rows = getFilteredSorted();
     _renderedKeys.clear();
@@ -1209,6 +1626,22 @@ function renderRow(j) {
         }[j.status] || 'bg-gray-700/40 text-gray-300';
     const pillLabel = i18nT(`queue.status.${j.status}`, j.status);
 
+    const originLabel = j.origin
+        ? i18nT(`queue.origin.${j.origin}`, j.origin)
+        : '';
+    const forwardLabels = {
+        pending: i18nT('queue.forward.pending', 'Forward pending'),
+        forwarded: i18nT('queue.forward.forwarded', 'Forwarded'),
+        failed: i18nT('queue.forward.failed', 'Forward failed'),
+        interrupted: i18nT('queue.forward.interrupted', 'Forward interrupted by restart'),
+    };
+    const lifecycle = [
+        originLabel ? `<span title="${escapeHtml(i18nT('queue.origin.tooltip', 'Queue source'))}">${escapeHtml(originLabel)}</span>` : '',
+        forwardLabels[j.forwardStatus] ? `<span title="${escapeHtml(i18nT('queue.forward.tooltip', 'Auto-forward status'))}">${escapeHtml(forwardLabels[j.forwardStatus])}</span>` : '',
+        j.localDeleted ? `<span title="${escapeHtml(i18nT('queue.deleted.tooltip', 'Local file deleted after forwarding'))}">${escapeHtml(i18nT('queue.deleted', 'Deleted after forward'))}</span>` : '',
+        j.deleteStatus === 'pending' ? `<span title="${escapeHtml(i18nT('queue.deleted.pending_tooltip', 'Local file will be deleted after forwarding succeeds'))}">${escapeHtml(i18nT('queue.deleted.pending', 'Delete after forward'))}</span>` : '',
+    ].filter(Boolean);
+
     // "Duplicate" tag — emitted when the downloader finished but the file
     // hash matched an existing on-disk row. The file isn't downloaded
     // again (`bytesAddedToDisk = 0`) but the (group, msg) → file mapping
@@ -1326,6 +1759,9 @@ function renderRow(j) {
                       ? `<span class="tabular-nums" title="${escapeHtml(i18nT('queue.row.duration_tooltip', 'Time taken'))}">${escapeHtml(_fmtDuration(j.finishedAt - j.addedAt))}</span>`
                       : ''
               }`
+            : '',
+        lifecycle.length
+            ? `<span class="inline-flex items-center gap-1">${lifecycle.join('<span class="text-tg-textSecondary/40">·</span>')}</span>`
             : '',
     ].filter(Boolean);
 
@@ -1463,13 +1899,15 @@ function renderAggregate() {
     }
     _pushSpeed(totalBps);
     const speed = totalBps ? `${formatBytes(totalBps)}/s` : '0 B/s';
-    host.innerHTML = `
+    const html = `
         <span><i class="ri-loader-2-line text-tg-blue"></i> ${i18nTf('queue.agg.active', { n: active }, `${active} active`)}</span>
         <span><i class="ri-time-line"></i> ${i18nTf('queue.agg.queued', { n: queued }, `${queued} queued`)}</span>
+        <span><i class="ri-send-plane-line"></i> ${i18nTf('queue.agg.forwarding', { n: (forwardQueueData.pending || 0) + (forwardQueueData.active || 0) }, `${(forwardQueueData.pending || 0) + (forwardQueueData.active || 0)} forwarding`)}</span>
         <span><i class="ri-flashlight-line"></i> ${escapeHtml(speed)}${_speedSparkline()}</span>
         ${globalPaused ? `<span class="text-tg-orange">· ${escapeHtml(i18nT('queue.agg.paused_global', 'Globally paused'))}</span>` : ''}
         ${!engineRunning ? `<span class="text-tg-textSecondary">· ${escapeHtml(i18nT('queue.agg.engine_stopped', 'Engine stopped'))}</span>` : ''}
     `;
+    if (host.innerHTML !== html) host.innerHTML = html;
 }
 
 function updateNavBadge() {
@@ -1611,6 +2049,35 @@ function bindThrottleSlider() {
     }
 }
 
+function syncForwardIntervalControl(raw) {
+    const input = document.getElementById('queue-forward-interval');
+    const value = document.getElementById('queue-forward-interval-value');
+    const seconds = Math.min(3600, Math.max(0, Number.parseInt(raw, 10) || 0));
+    forwardIntervalConfig = seconds;
+    if (input && document.activeElement !== input) input.value = String(seconds);
+    if (value) value.textContent = `${seconds}s`;
+}
+
+function bindForwardIntervalControl() {
+    const input = document.getElementById('queue-forward-interval');
+    if (!input || input.dataset.wired === '1') return;
+    input.dataset.wired = '1';
+    syncForwardIntervalControl(forwardIntervalConfig);
+    input.addEventListener('change', async () => {
+        const seconds = Math.min(3600, Math.max(0, Number.parseInt(input.value, 10) || 0));
+        input.value = String(seconds);
+        try {
+            await api.post('/api/config', { advanced: { forwarder: { intervalSec: seconds } } });
+            forwardIntervalConfig = seconds;
+            syncForwardIntervalControl(seconds);
+            showToast(i18nT('queue.forward.interval_saved', 'Forward spacing updated'), 'success');
+        } catch (error) {
+            input.value = String(forwardIntervalConfig);
+            showToast(error?.message || 'Failed to update forward spacing', 'error');
+        }
+    });
+}
+
 // ============ Page lifecycle ============
 let _wired = false;
 
@@ -1618,6 +2085,14 @@ export function initQueue() {
     if (_wired) return;
     _wired = true;
     ws.on('*', handleWs);
+    subscribeMonitorStatus((status) => {
+        if (!status) return;
+        monitorCounts = {
+            queue: Number(status.queue) || 0,
+            active: Number(status.active) || 0,
+        };
+        renderChips();
+    });
     // Load the snapshot eagerly so the bottom-nav badge is accurate
     // before the user ever opens the page.
     loadSnapshot();
@@ -1625,13 +2100,43 @@ export function initQueue() {
 
 export async function showQueuePage(params = {}) {
     view.visible = true;
-    if (params?.status && STATUS_FILTERS.some((f) => f.id === params.status)) {
-        view.filter = params.status;
-        invalidateFilterCache();
+    const isForwardRoute = params.status === 'forward' || params.status?.startsWith('forward_');
+    forwardOnly = isForwardRoute;
+    forwardQueuePage = 1;
+    if (isForwardRoute) {
+        if (view.filter !== 'current') {
+            view.filter = 'current';
+            invalidateFilterCache();
+        }
+    } else {
+        const status = params?.status === 'active'
+            ? 'current'
+            : params?.status === 'downloading'
+              ? 'active'
+              : params?.status;
+        if (status && STATUS_FILTERS.some((f) => f.id === status)) {
+            view.filter = status;
+            invalidateFilterCache();
+        } else if (!status) {
+            view.filter = 'current';
+            invalidateFilterCache();
+        }
     }
-    if (!view.booted) await loadSnapshot();
+    if (forwardOnly) selectionClear();
+    if (!view.booted) {
+        if (forwardOnly) renderForwardQueue({ loading: true });
+        await loadSnapshot();
+    }
+    else if (isForwardRoute && Number(forwardQueueData.page) > 1) {
+        try {
+            renderForwardQueue(await api.get('/api/forward-queue?page=1'));
+        } catch (error) {
+            showToast(error?.message || 'Failed to load forward queue', 'error');
+        }
+    }
     wireOnce();
     bindThrottleSlider();
+    bindForwardIntervalControl();
     renderChips();
     renderAggregate();
     renderRows();
@@ -1660,7 +2165,7 @@ function wireMoreMenu() {
     });
     // A tap on an action runs it and closes the menu; the slider stays.
     menu.addEventListener('click', (e) => {
-        if (e.target.closest('#queue-global-actions button')) close();
+        if (e.target.closest('#queue-global-actions button, #queue-bucket-actions button')) close();
     });
     document.addEventListener('click', (e) => {
         if (!menu.classList.contains('open')) return;
@@ -1676,9 +2181,9 @@ function wireMoreMenu() {
     const moves = [
         // [element id, inline slot, menu slot, media query for "inline"]
         [
-            'queue-global-actions',
+            'queue-bucket-actions',
             'queue-actions-inline',
-            'queue-actions-menu-slot',
+            'queue-bucket-actions-menu-slot',
             '(min-width: 1440px)',
         ],
         ['queue-sort', 'queue-sort-inline', 'queue-sort-menu-slot', '(min-width: 640px)'],
@@ -1733,6 +2238,8 @@ function wireOnce() {
     document
         .getElementById('queue-resume-all')
         ?.addEventListener('click', () => runGlobalAction('resume-all'));
+    document.getElementById('queue-download-pause')?.addEventListener('click', () => runBucketControl('download', true));
+    document.getElementById('queue-download-resume')?.addEventListener('click', () => runBucketControl('download', false));
     document
         .getElementById('queue-cancel-all')
         ?.addEventListener('click', () => runGlobalAction('cancel-all'));

@@ -1601,21 +1601,13 @@ html.theme-light .notify-source-chip {
     background: rgba(0, 0, 0, 0.06);
 }
 
-/* Engine status pill: compact further on tiny screens (<400px) so
-   it doesn't push the bell + select-mode + overflow trio into
-   overflow-x scroll. Pill goes icon-only at 420px (existing rule
-   at line ~1166) — at 380px we also drop the dot's outer glow. */
+/* Keep a short, readable Engine state in the topbar on narrow screens. */
 @media (max-width: 380px) {
     .engine-status-pill {
-        padding: 0 4px;
-        min-width: 28px;
+        gap: 4px;
+        padding: 0 5px;
     }
-    #engine-status-pill {
-        font-size: 0;
-    }
-    /* Keep the queue-count badge legible after the parent pill collapses
-       its label to font-size: 0 — without this, an admin with 12 jobs
-       in flight saw an empty 8 px dot on a 320 px iPhone. */
+    /* Keep the queue-count badge readable beside the compact state label. */
     #engine-status-pill .nav-badge {
         font-size: 10px;
     }
@@ -2807,9 +2799,12 @@ input[type="range"].tg-range::-moz-range-track,
 }
 @media (max-width: 420px) {
     .engine-status-pill .engine-status-label {
-        display: none;
+        display: inline;
+        font-size: 10px;
+        white-space: nowrap;
     }
     .engine-status-pill {
+        gap: 4px;
         padding: 0 6px;
     }
 }
@@ -6902,7 +6897,7 @@ body:not(.in-chat) [data-chat-only] {
     min-width: 0;
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     align-items: end;
     gap: 10px 16px;
     padding: 12px;
@@ -6910,6 +6905,9 @@ body:not(.in-chat) [data-chat-only] {
     border-radius: 12px;
     background: var(--tg-panel);
     box-sizing: border-box;
+}
+.cd-forward-route:has([data-route-source-topic-wrap]:not(.hidden)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .cd-forward-route:has([data-route-destination-topic-wrap]:not(.hidden)) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6996,6 +6994,14 @@ body:not(.in-chat) [data-chat-only] {
     color: #fff;
     border-color: var(--tg-red);
 }
+.cd-route-remove:disabled,
+.cd-route-remove:disabled:hover {
+    background: rgba(235, 87, 87, 0.08);
+    color: var(--tg-red);
+    border-color: rgba(235, 87, 87, 0.18);
+    opacity: 0.45;
+    cursor: not-allowed;
+}
 .cd-route-empty,
 .cd-legacy-destination {
     margin: 0;
@@ -7063,6 +7069,25 @@ body:not(.in-chat) [data-chat-only] {
     cursor: pointer;
     box-sizing: border-box;
     transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+@media (max-width: 640px) {
+    .cd-forward-route,
+    .cd-forward-route:has([data-route-source-topic-wrap]:not(.hidden)),
+    .cd-forward-route:has([data-route-destination-topic-wrap]:not(.hidden)) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cd-route-heading {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .cd-route-add {
+        align-self: flex-start;
+        max-width: 100%;
+    }
 }
 .cd-select-trigger > span {
     min-width: 0;
@@ -7211,6 +7236,14 @@ body:not(.in-chat) [data-chat-only] {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px 14px;
+}
+.cd-caption-regex > .cd-subheading,
+.cd-caption-regex > .cd-help {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+.cd-caption-regex > .cd-route-field {
+    align-self: start;
 }
 .cd-topic-toolbar {
     display: flex;
@@ -8528,6 +8561,14 @@ html.theme-light .cr-chips .account-chip {
     min-height: 36px;
     white-space: nowrap;
 }
+.queue-bucket-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+#queue-empty-show-all.hidden {
+    display: none;
+}
 /* Inside the ⋮ menu the actions become a labelled list. */
 .queue-more-menu {
     min-width: 240px;
@@ -8550,11 +8591,44 @@ html.theme-light .cr-chips .account-chip {
     border-radius: 6px;
     background: transparent;
 }
+#queue-actions-menu-slot .queue-global-actions button.hidden,
+#queue-bucket-actions-menu-slot button.hidden {
+    display: none;
+}
 #queue-actions-menu-slot .queue-global-actions button i {
     font-size: 18px;
 }
 #queue-actions-menu-slot .queue-global-actions button:hover {
     background: rgba(255, 255, 255, 0.06);
+}
+#queue-bucket-actions-menu-slot .queue-bucket-actions,
+#queue-bucket-actions-menu-slot [data-queue-bucket] {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+}
+#queue-bucket-actions-menu-slot .queue-bucket-actions {
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--tg-border);
+}
+#queue-bucket-actions-menu-slot button {
+    min-height: 44px;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 10px;
+    font-size: 14px;
+    border-radius: 6px;
+    background: transparent;
+}
+#queue-bucket-actions-menu-slot button:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+#queue-bucket-actions-menu-slot #queue-forward-worker-state {
+    padding: 4px 10px;
+}
+html.theme-light #queue-bucket-actions-menu-slot button:hover {
+    background: rgba(0, 0, 0, 0.04);
 }
 html.theme-light #queue-actions-menu-slot .queue-global-actions button:hover {
     background: rgba(0, 0, 0, 0.04);

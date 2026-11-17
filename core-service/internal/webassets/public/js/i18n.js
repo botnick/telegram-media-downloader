@@ -4,7 +4,7 @@
 // reloading.
 
 const LS_KEY = 'tgdl-lang';
-const SUPPORTED = ['auto', 'en', 'th'];
+const SUPPORTED = ['auto', 'en', 'th', 'id'];
 const FALLBACK = 'en';
 
 let dict = {};

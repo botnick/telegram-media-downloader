@@ -53,7 +53,7 @@ func TestJobsConnectionPromotionWaitsForRecoveryAndKeepsLease(t *testing.T) {
 				return a, nil
 			}, func(context.Context, string, *tg.Message, tg.UpdatesClass) (Target, bool, error) {
 				return Target{}, false, nil
-			}, func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error { return nil }, nil)
+			}, Sink(func(context.Context, *Work, *tg.Message, telegram.MediaDownloader) error { return nil }), nil)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := c.StartJobs(ctx, ctx, []AccountConfig{{ID: "one"}}, 1, 1); err != nil {

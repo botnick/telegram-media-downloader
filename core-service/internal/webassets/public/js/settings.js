@@ -10,6 +10,7 @@ import { wireJobButton } from './job-buttons.js';
 // loadSettings() open is harmless (sets innerHTML to identical markup)
 // but the listener flag prevents stacking duplicate change handlers.
 let _fontPickerWired = false;
+let _forwardingConfig = {};
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { openSheet, confirmSheet, promptSheet } from './sheet.js';
 import { fileTokenQuery } from './media-url.js';
@@ -75,6 +76,7 @@ export async function loadSettings() {
         if (!isGuest) {
             config = await api.get('/api/config');
         }
+        _forwardingConfig = config.forwarding || {};
 
         // Defensive: ensure the font picker is populated every time the
         // user opens the Settings page. The boot-time wire in app.js
@@ -598,6 +600,7 @@ export async function loadSettings() {
             // hardcoded constant the consumer uses, so a missing `advanced` block
             // (older config.json) renders defaults that match current behaviour.
             loadAdvanced(config);
+            wireLowResourceProfile();
 
             // Guest password sub-block (lives inside Dashboard Security).
             wireGuestPassword();
@@ -892,6 +895,7 @@ const ADVANCED_DEFAULTS = {
         scalerIntervalSec: 5,
         idleSleepMs: 200,
     },
+    forwarder: { concurrency: 1, queueSize: 256, intervalSec: 1, floodWaitAttempts: 3 },
     history: {
         backpressureCap: 500,
         backpressureMaxWaitMs: 15 * 60 * 1000,
@@ -964,6 +968,13 @@ export function loadAdvanced(config) {
     set('setting-adv-max-concurrency', dl.maxConcurrency);
     set('setting-adv-scaler-sec', dl.scalerIntervalSec);
     set('setting-adv-idle-sleep-ms', dl.idleSleepMs);
+
+    const f = { ...ADVANCED_DEFAULTS.forwarder, ...(adv.forwarder || {}) };
+    set('setting-adv-forward-concurrency', f.concurrency);
+    set('setting-adv-forward-queue-size', f.queueSize);
+    set('setting-adv-forward-interval-sec', f.intervalSec);
+    set('setting-adv-forward-flood-attempts', f.floodWaitAttempts);
+    set('setting-forward-protect-default', config.forwarding?.protect === true);
 
     const h = { ...ADVANCED_DEFAULTS.history, ...(adv.history || {}) };
     set('setting-adv-backpressure', h.backpressureCap);
@@ -1141,6 +1152,12 @@ function gatherAdvanced() {
                 ADVANCED_DEFAULTS.downloader.scalerIntervalSec,
             ),
             idleSleepMs: num('setting-adv-idle-sleep-ms', ADVANCED_DEFAULTS.downloader.idleSleepMs),
+        },
+        forwarder: {
+            concurrency: num('setting-adv-forward-concurrency', ADVANCED_DEFAULTS.forwarder.concurrency),
+            queueSize: num('setting-adv-forward-queue-size', ADVANCED_DEFAULTS.forwarder.queueSize),
+            intervalSec: num('setting-adv-forward-interval-sec', ADVANCED_DEFAULTS.forwarder.intervalSec),
+            floodWaitAttempts: num('setting-adv-forward-flood-attempts', ADVANCED_DEFAULTS.forwarder.floodWaitAttempts),
         },
         history: {
             backpressureCap: num(
@@ -1603,6 +1620,7 @@ function _gatherSettingsPayload() {
             sweepIntervalMin: rescueSweep,
         },
         advanced: gatherAdvanced(),
+        forwarding: { ..._forwardingConfig, protect: document.getElementById('setting-forward-protect-default')?.checked === true },
         allowDmDownloads: dmActive,
     };
 }
@@ -1640,6 +1658,7 @@ export function setupAutoSave() {
     // attribute (newer modules). The closure bundles both checks.
     const isAutosaveInput = (t) => {
         if (!t) return false;
+        if (t.id === 'setting-api-id' || t.id === 'setting-api-hash') return false;
         if (t.id && t.id.startsWith('setting-')) return true;
         if (typeof t.closest === 'function' && t.closest('[data-autosave]')) return true;
         return false;
@@ -1727,6 +1746,7 @@ export async function saveSettings() {
         // working config. Sending the full block keeps the on-disk shape
         // self-documenting (see DEFAULT_CONFIG.advanced in src/config/manager.js).
         advanced: gatherAdvanced(),
+        forwarding: { ..._forwardingConfig, protect: document.getElementById('setting-forward-protect-default')?.checked === true },
         allowDmDownloads: dmActive,
     };
 
@@ -1755,6 +1775,64 @@ export function applyPreset(type) {
     }
 
     document.getElementById('setting-concurrent').dispatchEvent(new Event('input'));
+}
+
+function wireLowResourceProfile() {
+    const button = document.getElementById('setting-low-resource-profile');
+    if (!button || button.dataset.wired) return;
+    button.dataset.wired = '1';
+    button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+            if (_autoSaveTimer) await _autoSaveFlush();
+            await api.post('/api/config', {
+                download: { concurrent: 2 },
+                advanced: {
+                    downloader: { minConcurrency: 1, maxConcurrency: 2 },
+                    history: { backpressureCap: 100, batchInsertSize: 25 },
+                    seekbar: { autoOnDownload: false, concurrency: 1 },
+                    nsfw: { enabled: false, preload: false },
+                    ai: { enabled: false },
+                },
+            });
+            for (const [id, value] of [
+                ['setting-concurrent', 2],
+                ['setting-adv-min-concurrency', 1],
+                ['setting-adv-max-concurrency', 2],
+                ['setting-adv-backpressure', 100],
+                ['setting-adv-batch-insert', 25],
+                ['setting-adv-seekbar-concurrency', 1],
+            ]) {
+                const input = document.getElementById(id);
+                if (input) input.value = String(value);
+            }
+            const concurrentValue = document.getElementById('concurrent-value');
+            if (concurrentValue) concurrentValue.textContent = '2';
+            const seekbarAuto = document.getElementById('setting-adv-seekbar-autoOnDownload');
+            if (seekbarAuto) {
+                seekbarAuto.classList.remove('active');
+                seekbarAuto.setAttribute('aria-checked', 'false');
+            }
+            showToast(
+                i18nT(
+                    'settings.resource_profile.applied',
+                    'Low-resource profile applied. Existing queue preserved.',
+                ),
+                'success',
+            );
+        } catch (e) {
+            showToast(
+                i18nTf(
+                    'settings.autosave.failed',
+                    { msg: e?.message || String(e) },
+                    `Save failed: ${e?.message || e}`,
+                ),
+                'error',
+            );
+        } finally {
+            button.disabled = false;
+        }
+    });
 }
 
 // ====== Proxy ===============================================================

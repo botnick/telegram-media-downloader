@@ -34,6 +34,11 @@ func sanitizeAdvancedConfig(a map[string]any) {
 	}
 	d["scalerIntervalSec"] = clampConfigInt(d["scalerIntervalSec"], 1, 600, 5)
 	d["idleSleepMs"] = clampConfigInt(d["idleSleepMs"], 50, 10000, 200)
+	f := configBlock(a, "forwarder")
+	f["concurrency"] = clampConfigInt(f["concurrency"], 1, 5, 1)
+	f["queueSize"] = clampConfigInt(f["queueSize"], 1, 10000, 256)
+	f["intervalSec"] = clampConfigInt(f["intervalSec"], 0, 3600, 1)
+	f["floodWaitAttempts"] = clampConfigInt(f["floodWaitAttempts"], 1, 10, 3)
 
 	h := configBlock(a, "history")
 	h["backpressureCap"] = clampConfigInt(h["backpressureCap"], 10, 100000, 500)

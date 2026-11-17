@@ -1,7 +1,7 @@
 // Header mobile chrome — overflow ⋮ menu + notification bell.
 //
 // Overflow menu (visible only at <640px): hosts paste-link / stories /
-// view-mode-{grid,compact,list} / refresh. Each row is delegated to the
+// view-mode-{grid,compact,list} / monitor quick actions. Each row is delegated to the
 // corresponding desktop button via .click() so the action lives in one
 // place and the mobile menu is purely a remote control.
 //
@@ -91,7 +91,9 @@ function setupOverflowMenu() {
         'paste-url': () => document.getElementById('paste-url-btn')?.click(),
         stories: () => document.getElementById('stories-btn')?.click(),
         'backfill-chat': () => document.getElementById('backfill-chat-btn')?.click(),
-        refresh: () => document.getElementById('refresh-btn')?.click(),
+        'monitor-start': () => document.getElementById('monitor-start-btn')?.click(),
+        'monitor-restart': () => document.getElementById('monitor-restart-btn')?.click(),
+        'monitor-stop': () => document.getElementById('monitor-stop-btn')?.click(),
         'vm-grid': () => document.querySelector('#view-mode-menu [data-vm="grid"]')?.click(),
         'vm-compact': () => document.querySelector('#view-mode-menu [data-vm="compact"]')?.click(),
         'vm-list': () => document.querySelector('#view-mode-menu [data-vm="list"]')?.click(),

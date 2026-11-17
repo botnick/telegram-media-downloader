@@ -59,7 +59,7 @@ func (h *Handler) AllDownloads(w http.ResponseWriter, r *http.Request) {
 		h.unavailable(w, err)
 		return
 	}
-	where := "1 = 1"
+	where := "d.file_path IS NOT NULL AND d.file_path<>''"
 	args := make([]any, 0, 2)
 	typeMap := map[string]string{
 		"images": "photo", "videos": "video", "documents": "document", "audio": "audio",

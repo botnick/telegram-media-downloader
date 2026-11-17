@@ -21,13 +21,25 @@ type dialogAppAccount struct {
 	fixtureAccount
 	active, archived []telegram.Dialog
 	archiveErr       error
+	dialogCalls      atomic.Int64
+	topics           []telegram.ForumTopic
+	firstTopicError  error
+	topicCalls       atomic.Int64
 }
 
 func (a *dialogAppAccount) Dialogs(_ context.Context, _ int, archived bool) ([]telegram.Dialog, error) {
+	a.dialogCalls.Add(1)
 	if archived {
 		return a.archived, a.archiveErr
 	}
 	return a.active, nil
+}
+
+func (a *dialogAppAccount) ForumTopics(_ context.Context, _ string) ([]telegram.ForumTopic, error) {
+	if a.topicCalls.Add(1) == 1 && a.firstTopicError != nil {
+		return nil, a.firstTopicError
+	}
+	return a.topics, nil
 }
 
 func TestDialogsHTTPReturnsNativeMultiAccountProjection(t *testing.T) {
@@ -141,6 +153,81 @@ func TestDialogsHTTPConnectsSavedAccountWithoutStartingMonitor(t *testing.T) {
 	cfg, err = a.config.Load(context.Background())
 	if err != nil || ensureMap(cfg, "monitor")["autoStart"] != autoStart {
 		t.Fatalf("browsing changed autoStart: %v", err)
+	}
+}
+
+func TestDialogTopicsUsesLoadedAccountPeersWithoutRelistingDialogs(t *testing.T) {
+	var account *dialogAppAccount
+	factory := func(_ engine.AccountConfig, _ *telegram.UpdateState, handler func(context.Context, tg.UpdatesClass) error, _ func(int64)) (engine.Account, error) {
+		account = &dialogAppAccount{
+			fixtureAccount: fixtureAccount{handle: handler},
+			topics:         []telegram.ForumTopic{{ID: 17, Name: "General"}},
+		}
+		return account, nil
+	}
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountFactory: factory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	configureMonitor(t, a)
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/dialogs/-1000000000042/topics", nil)
+	req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	rec := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("topics=%d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Topics []telegram.ForumTopic `json:"topics"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Topics) != 1 || body.Topics[0].ID != 17 || body.Topics[0].Name != "General" {
+		t.Fatalf("topics=%+v", body.Topics)
+	}
+	if calls := account.dialogCalls.Load(); calls != 0 {
+		t.Fatalf("loaded cached topic names after listing %d dialog folders", calls)
+	}
+	if calls := account.topicCalls.Load(); calls != 1 {
+		t.Fatalf("requested topics %d times", calls)
+	}
+}
+
+func TestDialogTopicsRefreshesPeerIndexWhenCachedLookupFails(t *testing.T) {
+	var account *dialogAppAccount
+	factory := func(_ engine.AccountConfig, _ *telegram.UpdateState, handler func(context.Context, tg.UpdatesClass) error, _ func(int64)) (engine.Account, error) {
+		account = &dialogAppAccount{
+			fixtureAccount:  fixtureAccount{handle: handler},
+			topics:          []telegram.ForumTopic{{ID: 19, Name: "Support"}},
+			firstTopicError: errors.New("channel access hash is missing"),
+		}
+		return account, nil
+	}
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountFactory: factory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	configureMonitor(t, a)
+	token, err := a.sessions.Create(context.Background(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/dialogs/-1000000000042/topics", nil)
+	req.AddCookie(&http.Cookie{Name: a.sessions.CookieName(), Value: token})
+	rec := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("topics=%d %s", rec.Code, rec.Body.String())
+	}
+	if dialogs, topics := account.dialogCalls.Load(), account.topicCalls.Load(); dialogs != 2 || topics != 2 {
+		t.Fatalf("dialog calls=%d topic calls=%d; want one index refresh then one retry", dialogs, topics)
 	}
 }
 

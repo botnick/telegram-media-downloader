@@ -31,138 +31,151 @@ import (
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 	"github.com/gorilla/websocket"
+	"golang.org/x/sync/singleflight"
 )
 
 type Config struct {
-	HTTP                HTTPOptions
-	AccountFactory      engine.Factory
-	AccountLoginFactory telegram.LoginFactory
-	DataDir             string
-	DownloadsDir        string // empty: <DataDir>/downloads
-	Port                int
-	Static              fs.FS
-	CookieName          string
-	SessionTTL          time.Duration
-	SecureCookies       bool
-	Output              io.Writer
+	HTTP                   HTTPOptions
+	AccountFactory         engine.Factory
+	AccountLoginFactory    telegram.LoginFactory
+	DataDir                string
+	DownloadsDir           string // empty: <DataDir>/downloads
+	Port                   int
+	Static                 fs.FS
+	CookieName             string
+	SessionTTL             time.Duration
+	SecureCookies          bool
+	Output                 io.Writer
+	RequireMonitorForwards bool
 }
 type App struct {
-	httpOptions      HTTPOptions
-	proxyPolicy      proxyPolicy
-	webPolicy        webPolicyCache
-	apiRL            *rateLimiter
-	monitor          *engine.Controller
-	forwarder        forwardSender
-	forwards         chan forwardJob
-	accounts         *accounts.Repository
-	accountWizard    *accounts.Wizard
-	monitorOp        sync.Mutex
-	dialogVersion    uint64 // monitorOp guards confirmed remote removals vs older listings
-	historyMu        sync.Mutex
-	historyJobs      map[string]*historyJob
-	historyCancel    map[string]context.CancelFunc
-	historyDrain     bool
-	ctx              context.Context
-	cancel           context.CancelFunc
-	bootWG           sync.WaitGroup
-	ambientWG        sync.WaitGroup
-	rescueWake       chan struct{}
-	rescueMu         sync.Mutex
-	releaseOwnership func()
-	closeOnce        sync.Once
-	closeErr         error
+	historyNotifyPending atomic.Bool
+	httpOptions          HTTPOptions
+	proxyPolicy          proxyPolicy
+	webPolicy            webPolicyCache
+	apiRL                *rateLimiter
+	monitor              *engine.Controller
+	gateForwards         bool
+	forwarder            forwardSender
+	forwardActivityMu    sync.Mutex
+	manualForwardMu      sync.Mutex
+	activeForwards       map[string]int
+	forwards             chan struct{}
+	accounts             *accounts.Repository
+	accountWizard        *accounts.Wizard
+	monitorOp            sync.Mutex
+	dialogVersion        uint64             // monitorOp guards confirmed remote removals vs older listings
+	dialogListing        singleflight.Group // shares concurrent Telegram listings; never caches settled results
+	remoteBlocks         singleflight.Group
+	historyMu            sync.Mutex
+	historyJobs          map[string]*historyJob
+	historyCancel        map[string]context.CancelFunc
+	historyDrain         bool // historyMu guards the global Engine pause gate.
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	bootWG               sync.WaitGroup
+	ambientWG            sync.WaitGroup
+	rescueWake           chan struct{}
+	rescueMu             sync.Mutex
+	releaseOwnership     func()
+	closeOnce            sync.Once
+	closeErr             error
 
-	backups             *backup.Manager
-	db                  *store.DB
-	library             *download.Library
-	sessions            *auth.SessionStore
-	webSockets          webSocketRegistry
-	hub                 *ws.Hub
-	read                *dbread.Handler
-	config              auth.ConfigStore
-	jobs                *jobs.Tracker
-	dataDir             string
-	cluster             cluster.Store
-	clusterHTTP         *cluster.Client
-	clusterMu           sync.Mutex
-	clusterWG           sync.WaitGroup
-	clusterClosed       bool
-	clusterSyncMu       sync.Mutex
-	clusterWake         chan struct{}
-	clusterSockets      *clusterSockets
-	clusterSweep        clusterSweepState
-	loginRL             *rateLimiter
-	handler             http.Handler
-	configMu            sync.Mutex
-	dedupMu             sync.Mutex
-	dedupWG             sync.WaitGroup
-	dedupClosed         bool
-	mediaMu             sync.RWMutex
-	purgeMu             sync.Mutex
-	purgeEpoch          uint64 // guarded by purgeMu; invalidates unresolved URL requests
-	purgeWG             sync.WaitGroup
-	purgeClosed         bool
-	purgeResume         bool
-	recoveryWriting     bool
-	recoveryMu          sync.Mutex
-	recoveryStatus      map[string]any
-	purges              map[string]purgeRecord
-	maintenanceJobMu    sync.Mutex
-	maintenanceJobWG    sync.WaitGroup
-	maintenanceClosed   bool
-	dedupLastScan       map[string]any
-	dedupScanStatus     map[string]any
-	dedupScanCancel     context.CancelFunc
-	dedupDeleteStatus   map[string]any
-	downloadsDir        string
-	restartMu           sync.Mutex
-	restartPending      bool
-	restartAttempt      int
-	monitorRunningSince time.Time
-	updateMu            sync.Mutex
-	updateStatus        map[string]any
-	leaveBatchMu        sync.Mutex
-	leaveBatchStatus    map[string]any
-	faststartMu         sync.Mutex
-	faststartStatus     map[string]any
-	faststartLastRun    map[string]any
-	thumbMu             sync.Mutex
-	thumbMisses         thumbMissCache
-	thumbBuildStatus    map[string]any
-	thumbBuildLastRun   map[string]any
-	thumbRebuildStatus  map[string]any
-	thumbBuildCancel    context.CancelFunc
-	seekbar             *seekbarState
-	maintenanceMu       sync.Mutex
-	telegramMaintenance map[string]map[string]any
-	storiesOp           sync.Mutex
-	dbIntegrityStatus   map[string]any
-	filesVerifyStatus   map[string]any
-	filesVerifyLastRun  map[string]any
-	filesSweeping       atomic.Bool // one integrity pass at a time, manual or periodic
-	diskRotatorMu       sync.Mutex  // one rotation pass at a time
-	diskRotatorWake     chan struct{}
-	diskRotatorStatus   map[string]any // guarded by maintenanceMu
-	reindexStatus       map[string]any
-	reindexLastRun      map[string]any
-	vacuumStatus        map[string]any
-	setupRL             *rateLimiter
-	secureCookies       bool
-	output              io.Writer
-	resetMu             sync.Mutex
-	resetTokens         map[string]time.Time
-	chatRecheckMu       sync.Mutex
-	chatRecheck         chatRecheckState
-	chatRecheckWG       sync.WaitGroup
-	chatRecheckClosed   bool
-	groupRefreshMu      sync.Mutex
-	groupRefreshInfo    groupRefreshState
-	groupRefreshPhotos  groupRefreshState
-	groupRefreshWG      sync.WaitGroup
-	groupRefreshClosed  bool
-	dialogPhotos        dialogPhotoCache
-	nsfw                *nsfwRuntime
-	faces               *facesService
+	backups              *backup.Manager
+	fullOperationMu      sync.Mutex
+	fullOperationRunning bool
+	fullOperationStatus  map[string]any
+	fullRestorePassword  []byte
+	db                   *store.DB
+	library              *download.Library
+	sessions             *auth.SessionStore
+	webSockets           webSocketRegistry
+	hub                  *ws.Hub
+	read                 *dbread.Handler
+	config               auth.ConfigStore
+	jobs                 *jobs.Tracker
+	dataDir              string
+	cluster              cluster.Store
+	clusterHTTP          *cluster.Client
+	clusterMu            sync.Mutex
+	clusterWG            sync.WaitGroup
+	clusterClosed        bool
+	clusterSyncMu        sync.Mutex
+	clusterWake          chan struct{}
+	clusterSockets       *clusterSockets
+	clusterSweep         clusterSweepState
+	loginRL              *rateLimiter
+	handler              http.Handler
+	configMu             sync.Mutex
+	dedupMu              sync.Mutex
+	dedupWG              sync.WaitGroup
+	dedupClosed          bool
+	mediaMu              sync.RWMutex
+	purgeMu              sync.Mutex
+	purgeEpoch           uint64 // guarded by purgeMu; invalidates unresolved URL requests
+	purgeWG              sync.WaitGroup
+	purgeClosed          bool
+	purgeResume          bool
+	recoveryWriting      bool
+	recoveryMu           sync.Mutex
+	recoveryStatus       map[string]any
+	purges               map[string]purgeRecord
+	maintenanceJobMu     sync.Mutex
+	maintenanceJobWG     sync.WaitGroup
+	maintenanceClosed    bool
+	dedupLastScan        map[string]any
+	dedupScanStatus      map[string]any
+	dedupScanCancel      context.CancelFunc
+	dedupDeleteStatus    map[string]any
+	downloadsDir         string
+	restartMu            sync.Mutex
+	restartPending       bool
+	restartAttempt       int
+	monitorRunningSince  time.Time
+	updateMu             sync.Mutex
+	updateStatus         map[string]any
+	leaveBatchMu         sync.Mutex
+	leaveBatchStatus     map[string]any
+	faststartMu          sync.Mutex
+	faststartStatus      map[string]any
+	faststartLastRun     map[string]any
+	thumbMu              sync.Mutex
+	thumbMisses          thumbMissCache
+	thumbBuildStatus     map[string]any
+	thumbBuildLastRun    map[string]any
+	thumbRebuildStatus   map[string]any
+	thumbBuildCancel     context.CancelFunc
+	seekbar              *seekbarState
+	maintenanceMu        sync.Mutex
+	telegramMaintenance  map[string]map[string]any
+	storiesOp            sync.Mutex
+	dbIntegrityStatus    map[string]any
+	filesVerifyStatus    map[string]any
+	filesVerifyLastRun   map[string]any
+	filesSweeping        atomic.Bool // one integrity pass at a time, manual or periodic
+	diskRotatorMu        sync.Mutex  // one rotation pass at a time
+	diskRotatorWake      chan struct{}
+	diskRotatorStatus    map[string]any // guarded by maintenanceMu
+	reindexStatus        map[string]any
+	reindexLastRun       map[string]any
+	vacuumStatus         map[string]any
+	setupRL              *rateLimiter
+	secureCookies        bool
+	output               io.Writer
+	resetMu              sync.Mutex
+	resetTokens          map[string]time.Time
+	chatRecheckMu        sync.Mutex
+	chatRecheck          chatRecheckState
+	chatRecheckWG        sync.WaitGroup
+	chatRecheckClosed    bool
+	groupRefreshMu       sync.Mutex
+	groupRefreshInfo     groupRefreshState
+	groupRefreshPhotos   groupRefreshState
+	groupRefreshWG       sync.WaitGroup
+	groupRefreshClosed   bool
+	dialogPhotos         dialogPhotoCache
+	nsfw                 *nsfwRuntime
+	faces                *facesService
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -209,6 +222,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	}
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
 	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), leaveBatchStatus: dedupIdleStatus("chatLeaveBatch"), updateStatus: dedupIdleStatus("autoUpdate"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum"), nsfw: newNSFWRuntime()}
+	a.gateForwards = cfg.RequireMonitorForwards
 	a.httpOptions, a.proxyPolicy, a.apiRL = cfg.HTTP, proxy, newRateLimiter(10000, time.Minute)
 	a.seekbar = newSeekbarState()
 	a.faces = newFacesService(a)
@@ -246,9 +260,10 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	if err := a.drainFileCleanup(ctx); err != nil && cfg.Output != nil {
 		fmt.Fprintf(cfg.Output, "Media cleanup remains pending: %v\n", err)
 	}
-	a.monitor = engine.New(db.Writer, db.Reader, cfg.DataDir, cfg.AccountFactory, a.monitorFilter, a.ingestWork, a.monitorEvent)
+	a.monitor = engine.New(db.Writer, db.Reader, cfg.DataDir, cfg.AccountFactory, a.monitorFilter, engine.ForwardSinkAdapter{ForwardSink: engine.ForwardSink(a.ingestWorkWithForward)}, a.monitorEvent)
+	a.monitor.SetLiveRoute(a.routeLiveScan)
 	a.monitor.SetUpdateObserver(a.observeRescueUpdate)
-	a.forwarder, a.forwards = a.monitor, make(chan forwardJob, forwardQueueSize)
+	a.forwarder, a.forwards = a.monitor, make(chan struct{}, 1)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -264,6 +279,14 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	mux.Handle("POST /api/auth/reset/confirm", a.loginRL.middleware(http.HandlerFunc(a.handleResetConfirm)))
 	mux.Handle("POST /api/downloads/pin", a.requireAdmin(http.HandlerFunc(a.handleBatchPin)))
 	mux.Handle("POST /api/downloads/{id}/pin", a.requireAdmin(http.HandlerFunc(a.handlePin)))
+	mux.Handle("POST /api/forward-queue", a.requireAdmin(http.HandlerFunc(a.handleManualForwardEnqueue)))
+	mux.Handle("POST /api/forward-queue/backfill", a.requireAdmin(http.HandlerFunc(a.handleForwardBackfill)))
+	mux.Handle("POST /api/forward-queue/pause", a.requireAdmin(http.HandlerFunc(a.handleForwardQueuePause)))
+	mux.Handle("POST /api/forward-queue/resume", a.requireAdmin(http.HandlerFunc(a.handleForwardQueueResume)))
+	mux.Handle("POST /api/forward-queue/retry-all", a.requireAdmin(http.HandlerFunc(a.handleForwardQueueRetryAll)))
+	mux.Handle("POST /api/forward-queue/{id}/retry", a.requireAdmin(http.HandlerFunc(a.handleForwardQueueRetry)))
+	mux.Handle("POST /api/forward-queue/{id}/reconcile", a.requireAdmin(http.HandlerFunc(a.handleForwardQueueReconcile)))
+	mux.Handle("PUT /api/forwarding/default-protection", a.requireAdmin(http.HandlerFunc(a.handleGlobalForwardProtection)))
 	mux.Handle("GET /api/jobs", a.requireSession(http.HandlerFunc(a.handleJobs)))
 	mux.Handle("GET /api/jobs/{id}", a.requireSession(http.HandlerFunc(a.handleJob)))
 	mux.Handle("POST /api/jobs/{id}/cancel", a.requireAdmin(http.HandlerFunc(a.handleJobCancel)))
@@ -303,6 +326,11 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerPublicAPIRoutes(mux, a)
 
 	a.handler = a.transportPolicy(newCompressionPool(level).middleware(a.gateway(mux)))
+	stored, err := a.config.Load(ctx)
+	if err != nil {
+		a.Close()
+		return nil, err
+	}
 	if err := a.recoverPurges(ctx); err != nil {
 		a.Close()
 		return nil, fmt.Errorf("recover purge jobs: %w", err)
@@ -310,11 +338,6 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	if err := a.recoverHistoryJobs(ctx); err != nil {
 		a.Close()
 		return nil, fmt.Errorf("recover history jobs: %w", err)
-	}
-	stored, err := a.config.Load(ctx)
-	if err != nil {
-		a.Close()
-		return nil, err
 	}
 	a.applyDownloadSpeed(stored)
 	a.backups, err = backup.NewManager(a.ctx, backup.Options{

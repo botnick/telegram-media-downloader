@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +22,22 @@ import (
 type fixtureAccount struct {
 	handle   func(context.Context, tg.UpdatesClass) error
 	download mediaTransport
+}
+
+type fallbackFixtureAccount struct {
+	*fixtureAccount
+	uploaded chan string
+}
+
+func (a *fallbackFixtureAccount) ForwardMessage(context.Context, telegram.ForwardMessageRequest) (int, error) {
+	return 0, errors.New("Telegram rejected native forwarding")
+}
+func (a *fallbackFixtureAccount) SendFile(_ context.Context, req telegram.SendFileRequest) (int, error) {
+	body, err := io.ReadAll(req.Body)
+	if err == nil {
+		a.uploaded <- string(body)
+	}
+	return 75, err
 }
 
 func (a *fixtureAccount) Run(ctx context.Context, ready func()) error {
@@ -137,6 +154,131 @@ func TestMonitorHTTPStartsRealQueueAndDownloadsUpdate(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("duplicate transferred %d times", calls.Load())
+	}
+}
+
+func TestLiveScanRoutesQueueForwardWhileDownloadBucketPaused(t *testing.T) {
+	for _, mode := range []string{"direct", "both"} {
+		t.Run(mode, func(t *testing.T) {
+			made := make(chan *fixtureAccount, 1)
+			factory := func(_ engine.AccountConfig, _ *telegram.UpdateState, handler func(context.Context, tg.UpdatesClass) error, _ func(int64)) (engine.Account, error) {
+				account := &fixtureAccount{handle: handler, download: func(_ context.Context, _ telegram.Attachment, w io.Writer) error {
+					t.Errorf("direct-only route downloaded local media")
+					return nil
+				}}
+				made <- account
+				return account, nil
+			}
+			a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountFactory: factory})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer a.Close()
+			configureMonitor(t, a)
+			cfg, err := a.config.Load(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			groups := cfg["groups"].([]any)
+			groups[0].(map[string]any)["autoForward"] = map[string]any{"enabled": true, "destination": "@Archive", "captionMode": "native", "scanRoute": mode}
+			if err = a.config.Save(context.Background(), cfg); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = a.db.Writer.Exec(`UPDATE tgdl_queue_state SET paused=1 WHERE id=1`); err != nil {
+				t.Fatal(err)
+			}
+			if rec := monitorRequest(t, a, "/api/monitor/start"); rec.Code != 200 {
+				t.Fatalf("start=%d %s", rec.Code, rec.Body.String())
+			}
+			account := <-made
+			if err = account.handle(context.Background(), updateFixture()); err != nil {
+				t.Fatal(err)
+			}
+			if err = account.handle(context.Background(), updateFixture()); err != nil {
+				t.Fatal(err)
+			}
+			var forwardJobs, downloadJobs, localFiles int
+			if err = a.db.Reader.QueryRow(`SELECT COUNT(*) FROM tgdl_forward_queue WHERE group_id='-1000000000042' AND message_id=10 AND source_kind='scan_direct'`).Scan(&forwardJobs); err != nil {
+				t.Fatal(err)
+			}
+			if err = a.db.Reader.QueryRow(`SELECT COUNT(*) FROM tgdl_work WHERE group_id='-1000000000042' AND message_id=10`).Scan(&downloadJobs); err != nil {
+				t.Fatal(err)
+			}
+			if err = a.db.Reader.QueryRow(`SELECT COUNT(*) FROM downloads WHERE group_id='-1000000000042' AND message_id=10`).Scan(&localFiles); err != nil {
+				t.Fatal(err)
+			}
+			wantDownloadJobs := 0
+			if mode == "both" {
+				wantDownloadJobs = 1
+			}
+			if forwardJobs != 1 || downloadJobs != wantDownloadJobs || localFiles != 0 {
+				t.Fatalf("forward jobs=%d download jobs=%d want=%d local files=%d", forwardJobs, downloadJobs, wantDownloadJobs, localFiles)
+			}
+		})
+	}
+}
+
+func TestLiveDirectScanFallbackIsLibraryAndQueueVisible(t *testing.T) {
+	made := make(chan *fallbackFixtureAccount, 1)
+	factory := func(_ engine.AccountConfig, _ *telegram.UpdateState, handler func(context.Context, tg.UpdatesClass) error, _ func(int64)) (engine.Account, error) {
+		base := &fixtureAccount{handle: handler, download: func(_ context.Context, _ telegram.Attachment, w io.Writer) error {
+			_, err := w.Write([]byte("live"))
+			return err
+		}}
+		account := &fallbackFixtureAccount{fixtureAccount: base, uploaded: make(chan string, 1)}
+		made <- account
+		return account, nil
+	}
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountFactory: factory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	configureMonitor(t, a)
+	cfg, err := a.config.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups := cfg["groups"].([]any)
+	groups[0].(map[string]any)["autoForward"] = map[string]any{"enabled": true, "destination": "@Archive", "captionMode": "native", "scanRoute": "direct"}
+	groups[0].(map[string]any)["forwardAccount"] = "one"
+	if err := a.config.Save(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if rec := monitorRequest(t, a, "/api/monitor/start"); rec.Code != 200 {
+		t.Fatalf("start=%d %s", rec.Code, rec.Body.String())
+	}
+	account := <-made
+	if err := account.handle(context.Background(), updateFixture()); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "direct fallback completed", func() bool {
+		var status string
+		return a.db.Reader.QueryRow(`SELECT status FROM tgdl_forward_queue WHERE group_id='-1000000000042' AND message_id=10 AND source_kind='scan_direct'`).Scan(&status) == nil && status == "forwarded"
+	})
+	select {
+	case body := <-account.uploaded:
+		if body != "live" {
+			t.Fatalf("uploaded fallback body=%q", body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("fallback upload did not reach Telegram account")
+	}
+	var files int
+	if err := a.db.Reader.QueryRow(`SELECT COUNT(*) FROM downloads WHERE group_id='-1000000000042' AND message_id=10`).Scan(&files); err != nil || files != 1 {
+		t.Fatalf("library fallback rows=%d err=%v", files, err)
+	}
+	snapshot, err := a.forwardQueueSnapshot(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recent := snapshot["recent"].([]map[string]any)
+	if len(recent) != 1 || recent[0]["status"] != "forwarded" {
+		t.Fatalf("completed forward missing from Queue UI snapshot: %#v", recent)
+	}
+	states := recent[0]["destinationStates"].([]forwardDestination)
+	if len(states) != 1 || !strings.Contains(states[0].FallbackReason, "Direct forward was rejected") {
+		t.Fatalf("fallback reason not persisted: %#v", states)
 	}
 }
 

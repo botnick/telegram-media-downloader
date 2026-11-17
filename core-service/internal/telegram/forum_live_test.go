@@ -128,6 +128,7 @@ func TestForumLiveAcceptance(t *testing.T) {
 			return err
 		}
 		checked := 0
+		sourceMessageIDs := make([]int, 0, 2)
 		for _, topic := range topics {
 			if topic.Name != "Route A" && topic.Name != "Route B" {
 				continue
@@ -140,6 +141,7 @@ func TestForumLiveAcceptance(t *testing.T) {
 			if messageID <= 0 {
 				return fmt.Errorf("send returned no message ID")
 			}
+			sourceMessageIDs = append(sourceMessageIDs, messageID)
 			messages, err := client.API().ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{Channel: input, ID: []tg.InputMessageClass{&tg.InputMessageID{ID: messageID}}})
 			if err != nil {
 				return err
@@ -171,6 +173,99 @@ func TestForumLiveAcceptance(t *testing.T) {
 		}
 		if checked != 2 {
 			return fmt.Errorf("expected 2 topic routes, verified %d", checked)
+		}
+		var storageChannelID int64
+		for _, folder := range []int{0, 1} {
+			storageDialogs, err := fetchDialogs(ctx, client.API(), -1, folder)
+			if err != nil {
+				return fmt.Errorf("list storage destinations: %w", err)
+			}
+			for _, dialog := range storageDialogs {
+				if dialog.Name == StorageChannelTitle {
+					if peer, ok := dialog.peer.(*tg.InputPeerChannel); ok {
+						storageChannelID = peer.ChannelID
+						break
+					}
+				}
+			}
+			if storageChannelID != 0 {
+				break
+			}
+		}
+		var storageInput *tg.InputChannel
+		createdStorageForTest := storageChannelID == 0
+		if createdStorageForTest {
+			sender := &fileSender{api: client.API(), resolve: account.ResolveDialog, scan: account.RecoveryDialogs}
+			peer, err := sender.destination(ctx, "storage")
+			if err != nil {
+				return fmt.Errorf("create temporary storage test channel: %w", err)
+			}
+			channel, ok := peer.(*tg.InputPeerChannel)
+			if !ok {
+				return fmt.Errorf("temporary storage peer has type %T", peer)
+			}
+			storageChannelID = channel.ChannelID
+			storageInput = &tg.InputChannel{ChannelID: channel.ChannelID, AccessHash: channel.AccessHash}
+		}
+		storageMessageIDs := make([]int, 0, len(sourceMessageIDs))
+		defer func() {
+			if storageInput == nil {
+				return
+			}
+			cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 25*time.Second)
+			defer cleanCancel()
+			if len(storageMessageIDs) > 0 {
+				if _, e := client.API().ChannelsDeleteMessages(cleanCtx, &tg.ChannelsDeleteMessagesRequest{Channel: storageInput, ID: storageMessageIDs}); e != nil {
+					t.Errorf("cleanup storage test messages: %v", e)
+				} else {
+					t.Log("deleted only the temporary storage test messages")
+				}
+			}
+			if createdStorageForTest {
+				if _, e := client.API().ChannelsDeleteChannel(cleanCtx, storageInput); e != nil {
+					t.Errorf("cleanup temporary storage test channel: %v", e)
+				} else {
+					t.Log("deleted temporary storage test channel")
+				}
+			}
+		}()
+		for _, sourceMessageID := range sourceMessageIDs {
+			// A new sender per content simulates a fresh worker and proves the
+			// existing storage target is found again instead of recreated.
+			sender := &fileSender{api: client.API(), resolve: account.ResolveDialog, scan: account.RecoveryDialogs}
+			target, err := sender.destination(ctx, "storage")
+			if err != nil {
+				return fmt.Errorf("resolve existing storage channel: %w", err)
+			}
+			targetPeer, ok := target.(*tg.InputPeerChannel)
+			if !ok || targetPeer.ChannelID != storageChannelID {
+				return fmt.Errorf("storage channel changed between contents: expected %d, got %#v", storageChannelID, target)
+			}
+			storageInput = &tg.InputChannel{ChannelID: targetPeer.ChannelID, AccessHash: targetPeer.AccessHash}
+			forwardedID, err := sender.forward(ctx, ForwardMessageRequest{Source: destination, Destination: "storage", MessageID: sourceMessageID})
+			if err != nil {
+				return fmt.Errorf("forward live fixture to storage: %w", err)
+			}
+			if forwardedID <= 0 {
+				return fmt.Errorf("storage forward returned no message ID")
+			}
+			storageMessageIDs = append(storageMessageIDs, forwardedID)
+			messages, err := client.API().ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{Channel: storageInput, ID: []tg.InputMessageClass{&tg.InputMessageID{ID: forwardedID}}})
+			if err != nil {
+				return err
+			}
+			page, ok := messages.(*tg.MessagesChannelMessages)
+			if !ok || len(page.Messages) != 1 {
+				return fmt.Errorf("storage readback returned %T with %d messages", messages, len(page.Messages))
+			}
+			stored, ok := page.Messages[0].(*tg.Message)
+			if !ok {
+				return fmt.Errorf("storage readback is not a Telegram message")
+			}
+			if _, hasForwardHeader := stored.GetFwdFrom(); hasForwardHeader {
+				return fmt.Errorf("storage message still includes source attribution: %#v", page.Messages[0])
+			}
+			t.Logf("PASS storage reused channel=%d message=%d without source attribution", storageChannelID, forwardedID)
 		}
 		return nil
 	})

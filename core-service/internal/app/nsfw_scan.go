@@ -202,7 +202,7 @@ func (a *App) nsfwScanLoop(ctx context.Context, cfg nsfwConfig) error {
 func (a *App) nsfwBatch(ctx context.Context, in string, cfg nsfwConfig, cursor int64) ([]nsfwRow, error) {
 	args := append(cfg.fileTypeArgs(), cursor, cfg.BatchSize)
 	rows, err := a.db.Reader.QueryContext(ctx, `SELECT id, COALESCE(file_path,''), COALESCE(file_type,'') FROM downloads
-		WHERE file_type IN (`+in+`) AND nsfw_checked_at IS NULL AND nsfw_whitelist = 0 AND id > ?
+		WHERE file_type IN (`+in+`) AND nsfw_checked_at IS NULL AND nsfw_whitelist = 0 AND file_path IS NOT NULL AND file_path<>'' AND id > ?
 		ORDER BY id LIMIT ?`, args...)
 	if err != nil {
 		return nil, err

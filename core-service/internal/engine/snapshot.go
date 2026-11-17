@@ -77,7 +77,10 @@ func (c *Controller) Snapshot(ctx context.Context) (map[string]any, error) {
 	c.mu.Unlock()
 	active, queued, recent := []map[string]any{}, []map[string]any{}, []map[string]any{}
 	// Active workers <=64; pending and history views are independently bounded.
-	rows, err := c.reader.QueryContext(ctx, `SELECT id,group_id,group_name,message_id,media_type,file_name,file_size,account_id,status,paused,created_at,updated_at,error,
+	rows, err := c.reader.QueryContext(ctx, `SELECT id,group_id,group_name,message_id,media_type,file_name,file_size,account_id,status,paused,created_at,updated_at,error,origin,
+ (SELECT forward_status FROM tgdl_processing_attempts WHERE group_id=tgdl_work.group_id AND message_id=tgdl_work.message_id ORDER BY id DESC LIMIT 1),
+ (SELECT local_delete_status FROM tgdl_processing_attempts WHERE group_id=tgdl_work.group_id AND message_id=tgdl_work.message_id ORDER BY id DESC LIMIT 1),
+ (SELECT local_deleted FROM tgdl_processing_attempts WHERE group_id=tgdl_work.group_id AND message_id=tgdl_work.message_id ORDER BY id DESC LIMIT 1),
  (SELECT file_path FROM downloads WHERE group_id=tgdl_work.group_id AND message_id=tgdl_work.message_id LIMIT 1)
  FROM tgdl_work WHERE status='processing' OR id IN (SELECT id FROM tgdl_work WHERE status='pending' ORDER BY id LIMIT 1000)
  OR id IN (SELECT id FROM tgdl_work WHERE status IN ('completed','failed','skipped') ORDER BY updated_at DESC LIMIT 100)
@@ -88,13 +91,25 @@ func (c *Controller) Snapshot(ctx context.Context) (map[string]any, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var id, msg, size, added, updated int64
-		var group, name, media, file, account, state string
+		var group, name, media, file, account, state, origin string
 		var paused bool
-		var detail, filePath sql.NullString
-		if err = rows.Scan(&id, &group, &name, &msg, &media, &file, &size, &account, &state, &paused, &added, &updated, &detail, &filePath); err != nil {
+		var detail, forwardStatus, deleteStatus, filePath sql.NullString
+		var locallyDeleted sql.NullInt64
+		if err = rows.Scan(&id, &group, &name, &msg, &media, &file, &size, &account, &state, &paused, &added, &updated, &detail, &origin, &forwardStatus, &deleteStatus, &locallyDeleted, &filePath); err != nil {
 			return nil, err
 		}
-		item := map[string]any{"key": group + "_" + strconv.FormatInt(msg, 10), "groupId": group, "groupName": name, "mediaType": media, "messageId": msg, "fileName": file, "fileSize": size, "accountId": account, "accountName": nil, "addedAt": added, "progress": 0, "received": 0, "total": size, "bps": 0, "eta": nil}
+		item := map[string]any{"key": group + "_" + strconv.FormatInt(msg, 10), "groupId": group, "groupName": name, "mediaType": media, "messageId": msg, "fileName": file, "fileSize": size, "accountId": account, "accountName": nil, "addedAt": added, "origin": origin, "progress": 0, "received": 0, "total": size, "bps": 0, "eta": nil}
+		if forwardStatus.Valid {
+			item["forwardStatus"] = forwardStatus.String
+		} else if origin == "live" {
+			item["forwardStatus"] = "not_applicable"
+		}
+		if deleteStatus.Valid {
+			item["deleteStatus"] = deleteStatus.String
+		}
+		if locallyDeleted.Valid {
+			item["localDeleted"] = locallyDeleted.Int64 != 0
+		}
 		if filePath.Valid {
 			item["filePath"] = filePath.String
 		}

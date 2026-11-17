@@ -20,8 +20,8 @@ func seekbarTestApp(t *testing.T) *App {
 	if bin == "" {
 		t.Skip("ffmpeg not installed")
 	}
-	if out, err := exec.Command(bin, "-hide_banner", "-encoders").Output(); err != nil || !bytes.Contains(out, []byte("libwebp")) {
-		t.Skip("ffmpeg without libwebp")
+	if !testWebPEncoderAvailable(bin) {
+		t.Skip("ffmpeg without libwebp or cwebp")
 	}
 	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir()})
 	if err != nil {
@@ -33,6 +33,14 @@ func seekbarTestApp(t *testing.T) *App {
 		}
 	})
 	return a
+}
+
+func testWebPEncoderAvailable(bin string) bool {
+	if out, err := exec.Command(bin, "-hide_banner", "-encoders").Output(); err == nil && bytes.Contains(out, []byte("libwebp")) {
+		return true
+	}
+	_, err := exec.LookPath("cwebp")
+	return err == nil
 }
 
 func seekbarVideo(t *testing.T, a *App, id int, name string, render bool) {

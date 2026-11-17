@@ -32,7 +32,7 @@ function dispatch(msg) {
 
 function open() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${proto}://${location.host}`;
+    const url = `${proto}://${location.host}/ws`;
     try {
         socket = new WebSocket(url);
     } catch (e) {

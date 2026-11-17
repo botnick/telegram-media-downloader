@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] — 2026-11-18
+
+Forwarding work contributed by **Zacky Achmad ([@zckyachmd](https://github.com/zckyachmd))** in #116 and #117, ported onto 3.4.19 and finished here. Thank you!
+
+### Added
+- **Durable forward queue.** Auto-forward and manual forwards now go through a queue saved in the database instead of memory, so work survives restarts. The Queue page has a Forward view with per-destination state, retry, retry-all, reconcile and pause/resume.
+- **FloodWait protection for forwarding.** A Telegram FloodWait closes a per-account gate that every forward worker respects and that persists across restarts, and the job is retried after the requested wait instead of failing.
+- **Forum topics and several destinations per rule**, with topic-to-topic routes, a direct scan route that forwards without downloading, protected (no-forward) copies and custom captions edited after a native forward.
+- **Processing history** on the Logs page: each download attempt with its outcome, duplicate skips, forward result and local cleanup. It keeps 30 days and at most 200,000 attempts.
+- **Indonesian** interface language.
+- Concurrent Telegram dialog listings are coalesced on the server and in the browser.
+
+### Safety
+- A forward whose Telegram response was lost, or an upload cancelled while sending, is marked *uncertain* and never resent automatically; an operator confirms it. A job stopped before anything was sent goes back to the queue on its own.
+- A download retried after a failure does not forward the message again.
+- Rules saved before destinations became explicit keep forwarding to the storage channel.
+- The forward queue (destinations, caption rules) is visible to admins only.
+
+### Not included from the contributor's fork
+- MCP agent control, complete instance backup/restore, Google-Drive-only media with local deletion, and the development asset mode. They are larger security and data-safety surfaces and can come in separate reviews.
+
+### Service worker
+- `VERSION = 'v35000'`
+
 ## [3.4.19] — 2026-11-04
 
 ### Fixed

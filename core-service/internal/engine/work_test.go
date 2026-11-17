@@ -190,6 +190,31 @@ func TestWorkClaimsSurviveRestartAndKeepLatestEdit(t *testing.T) {
 	}
 }
 
+func TestFailedDownloadCanRetryFromDurableQueue(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	if _, _, err := s.Enqueue(ctx, "account", Target{ID: "source"}, testMessage(7, 0, 7)); err != nil {
+		t.Fatal(err)
+	}
+	work, err := s.Claim(ctx, []string{"account"}, time.Now())
+	if err != nil || work == nil {
+		t.Fatalf("claim=%+v err=%v", work, err)
+	}
+	if err = s.Finish(ctx, work, fmt.Errorf("temporary download failure"), false, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := NewWorkStore(s.writer, s.reader)
+	ok, err := restarted.RetryJob(ctx, "source_7")
+	if err != nil || !ok {
+		t.Fatalf("retry=%t err=%v", ok, err)
+	}
+	retry, err := restarted.Claim(ctx, []string{"account"}, time.Now())
+	if err != nil || retry == nil || retry.MessageID != 7 || retry.Attempts != 1 {
+		t.Fatalf("retry claim=%+v err=%v", retry, err)
+	}
+}
+
 func TestSameSecondEditsUseTelegramOrderAcrossAccounts(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

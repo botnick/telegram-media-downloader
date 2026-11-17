@@ -261,7 +261,7 @@ func (s *facesService) unindexed(ctx context.Context, types []string, limit int)
 	marks, args := sqlIn(types)
 	args = append(args, max(1, limit))
 	rows, err := s.app.db.Reader.QueryContext(ctx, `SELECT id, file_path, file_type FROM downloads
-		 WHERE file_type IN (`+marks+`) AND ai_indexed_at IS NULL AND file_path NOT LIKE '%.part'
+		 WHERE file_type IN (`+marks+`) AND ai_indexed_at IS NULL AND file_path IS NOT NULL AND file_path<>'' AND file_path NOT LIKE '%.part'
 		 ORDER BY id ASC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
@@ -283,7 +283,7 @@ func (s *facesService) unindexed(ctx context.Context, types []string, limit int)
 func (s *facesService) countUnindexed(ctx context.Context, types []string) (int, error) {
 	marks, args := sqlIn(types)
 	var n int
-	err := s.app.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE file_type IN (`+marks+`) AND ai_indexed_at IS NULL`, args...).Scan(&n)
+	err := s.app.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE file_type IN (`+marks+`) AND ai_indexed_at IS NULL AND file_path IS NOT NULL AND file_path<>''`, args...).Scan(&n)
 	return n, err
 }
 

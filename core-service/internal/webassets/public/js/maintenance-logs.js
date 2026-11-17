@@ -83,6 +83,9 @@ const _filter = {
     search: '',
 };
 const _lines = []; // ring buffer of {ts,source,level,msg}
+let _historyOffset = 0;
+let _historyWired = false;
+let _historyRefreshTimer = null;
 
 // Track every unique source we see. If a new one appears, re-render
 // the chip group + bump the count badge. Cheap (Set.has is O(1)).
@@ -422,6 +425,105 @@ function _wireWs() {
     });
 }
 
+async function _loadProcessingHistory(append = false) {
+    const groupId = $('processing-history-group')?.value || '';
+    const query = new URLSearchParams({ limit: '100', offset: String(append ? _historyOffset : 0) });
+    if (groupId) query.set('groupId', groupId);
+    try {
+        const data = await api.get(`/api/maintenance/processing-history?${query}`);
+        const stats = data.stats || {};
+        for (const [key, id] of Object.entries({
+            attempts: 'history-stat-attempts', downloaded: 'history-stat-downloaded', reused: 'history-stat-reused',
+            duplicates: 'history-stat-duplicates', uniqueFiles: 'history-stat-unique',
+            failed: 'history-stat-failed', forwarded: 'history-stat-forwarded', forwardFailed: 'history-stat-forward-failed',
+            deleted: 'history-stat-deleted', deleteFailed: 'history-stat-delete-failed',
+        })) {
+            const el = $(id);
+            if (el) el.textContent = Number(stats[key] || 0).toLocaleString();
+        }
+        const select = $('processing-history-group');
+        if (select) {
+            const selected = select.value;
+            const options = [`<option value="">${escapeHtml(i18nT('maintenance.logs.history.all_groups', 'All groups'))}</option>`, ...(data.groups || []).map((g) =>
+                `<option value="${escapeHtml(g.id)}">${escapeHtml(g.name || g.id)}</option>`,
+            )];
+            select.innerHTML = options.join('');
+            select.value = selected;
+        }
+        const body = $('processing-history-rows');
+        if (!append && body) body.innerHTML = '';
+        const rows = (data.items || []).map((item) => {
+            const time = new Date(item.createdAt).toLocaleString();
+            const outcome = ({
+                downloaded: i18nT('maintenance.logs.history.status.downloaded', 'Downloaded'),
+                reused: i18nT('maintenance.logs.history.status.reused', 'Reused existing media'),
+                duplicate_skipped: i18nT('maintenance.logs.history.status.duplicate', 'Skipped duplicate'),
+                failed: i18nT('maintenance.logs.history.status.failed', 'Failed'),
+                interrupted: i18nT('maintenance.logs.history.status.interrupted', 'Interrupted by restart'),
+                processing: i18nT('maintenance.logs.history.status.processing', 'Processing'),
+            })[item.outcome] || item.outcome;
+            const reason = ({
+                telegram_media_match: i18nT('maintenance.logs.history.reason.telegram', 'same Telegram media'),
+                sha256_match: i18nT('maintenance.logs.history.reason.sha256', 'same file contents'),
+            })[item.reason] || item.reason;
+            const result = reason ? `${outcome}: ${reason}` : outcome;
+            const forward = ({
+                not_applicable: '—', pending: i18nT('maintenance.logs.history.status.pending', 'Pending'),
+                forwarded: i18nT('maintenance.logs.history.status.forwarded', 'Forwarded'),
+                processing: i18nT('maintenance.logs.history.status.forward_processing', 'Forwarding'),
+                failed: i18nT('maintenance.logs.history.status.failed', 'Failed'),
+                interrupted: i18nT('maintenance.logs.history.status.interrupted', 'Interrupted by restart'),
+            })[item.forwardStatus] || item.forwardStatus;
+            const deleteStatus = ({
+                not_requested: i18nT('maintenance.logs.history.status.retained', 'Retained'),
+                deleted: i18nT('maintenance.logs.history.status.deleted', 'Deleted after forward'),
+                failed: i18nT('maintenance.logs.history.status.delete_failed', 'Delete failed'),
+                already_absent: i18nT('maintenance.logs.history.status.absent', 'Already absent'),
+                pending: i18nT('maintenance.logs.history.status.pending', 'Pending'),
+                not_performed: i18nT('maintenance.logs.history.status.not_performed', 'Not performed'),
+            })[item.deleteStatus] || item.deleteStatus;
+            return `<tr class="border-t border-tg-border/40"><td class="py-2 pr-3 whitespace-nowrap">${escapeHtml(time)}</td>
+                <td class="py-2 pr-3">${escapeHtml(item.groupName || item.groupId)}<div class="text-tg-textSecondary">#${escapeHtml(item.messageId)}</div></td>
+                <td class="py-2 pr-3">${escapeHtml(item.fileName || '—')}</td>
+                <td class="py-2 pr-3" title="${escapeHtml(result)}">${escapeHtml(result)}</td>
+                <td class="py-2 pr-3">${escapeHtml(forward)}${item.forwardReason ? `<div class="text-tg-textSecondary max-w-56 truncate" title="${escapeHtml(item.forwardReason)}">${escapeHtml(item.forwardReason)}</div>` : ''}</td>
+                <td class="py-2" title="${escapeHtml(item.deleteReason || '')}">${escapeHtml(deleteStatus || (item.localDeleted ? i18nT('maintenance.logs.history.status.deleted', 'Deleted after forward') : i18nT('maintenance.logs.history.status.retained', 'Retained')))}</td></tr>`;
+        });
+        if (body) body.insertAdjacentHTML('beforeend', rows.join(''));
+        _historyOffset = Number(data.offset || 0) + (data.items || []).length;
+        const count = $('processing-history-count');
+        if (count) count.textContent = `${_historyOffset.toLocaleString()} ${i18nT('maintenance.logs.history.of', 'of')} ${Number(data.total || 0).toLocaleString()} ${i18nT('maintenance.logs.history.attempts', 'attempts')}`;
+        const more = $('processing-history-more');
+        if (more) more.classList.toggle('hidden', _historyOffset >= Number(data.total || 0));
+    } catch (e) {
+        showToast(e?.data?.error || e.message || 'Failed to load processing history', 'error');
+    }
+}
+
+function _wireProcessingHistory() {
+    if (_historyWired) return;
+    _historyWired = true;
+    $('processing-history-group')?.addEventListener('change', () => _loadProcessingHistory());
+    $('processing-history-more')?.addEventListener('click', () => _loadProcessingHistory(true));
+    for (const event of [
+        'download_complete', 'forward_error', 'file_deleted', 'processing_history_changed',
+        'group_purged', 'group_files_deleted', 'purge_all',
+    ]) {
+        // Throttled, and only while the Logs page is on screen: each refresh
+        // counts the whole history table, and downloads fire these events
+        // continuously.
+        ws.on(event, () => {
+            if (_historyRefreshTimer) return;
+            _historyRefreshTimer = setTimeout(() => {
+                _historyRefreshTimer = null;
+                const panel = $('processing-history-more')?.closest('section');
+                if (document.hidden || !panel || panel.offsetParent === null) return;
+                _loadProcessingHistory();
+            }, 3000);
+        });
+    }
+}
+
 export function init() {
     _wireWs();
     if (!_pageWired) {
@@ -432,6 +534,8 @@ export function init() {
     // paint them now, before the backfill round-trip.
     _renderSourceChips();
     _renderAll();
+    _wireProcessingHistory();
+    _loadProcessingHistory();
     // Refresh backfill every time the user opens the page so they're not
     // staring at a stale tail from a previous visit.
     _loadBackfill();

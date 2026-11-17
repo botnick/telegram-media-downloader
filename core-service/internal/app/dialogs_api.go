@@ -41,20 +41,37 @@ func (a *App) handleDialogTopics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer session.Close()
-	if _, err := session.List(-1); err != nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "Telegram topics are unavailable")
-		return
-	}
 	topics, err := session.ForumTopics(ctx, r.PathValue("id"))
 	if err != nil {
-		writeJSONError(w, http.StatusBadGateway, "Could not load forum topics: "+err.Error())
+		// Existing dialog reads usually cache channel access hashes. Reload
+		// every dialog folder only when the cached topic lookup fails.
+		if _, listErr := session.List(-1); listErr == nil {
+			topics, err = session.ForumTopics(ctx, r.PathValue("id"))
+		}
+	}
+	if err != nil {
+		if a.output != nil {
+			fmt.Fprintf(a.output, "Telegram forum topics unavailable: %v\n", err)
+		}
+		// Underlying Telegram errors can contain resource identifiers.
+		// Keep per-account causes in server logs, not in the HTTP response.
+		writeJSONError(w, http.StatusBadGateway, "Could not load forum topics. Check connected account access and server logs.")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"topics": topics})
 }
 
+// setDialogsServerTiming reports the complete dialog acquisition duration,
+// including engine startup and persisted access aggregation. It is not
+// a pure Telegram RPC latency measurement.
+func setDialogsServerTiming(w http.ResponseWriter, elapsed time.Duration) {
+	w.Header().Set("Server-Timing", fmt.Sprintf("dialogs;dur=%.1f", float64(elapsed)/float64(time.Millisecond)))
+}
+
 func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	dialogs, err := a.browseDialogs(r.Context())
+	setDialogsServerTiming(w, time.Since(start))
 	if err != nil {
 		if a.output != nil {
 			fmt.Fprintf(a.output, "Telegram dialogs unavailable: %v\n", err)
@@ -157,9 +174,48 @@ func (a *App) handleDialogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "dialogs": result, "allowDM": allowDM, "accounts": accountList})
 }
 
+// browseDialogs shares active Telegram listings for equivalent session roles.
+// Each caller can cancel its own wait without aborting work needed by others.
+// Results are not retained after a listing finishes.
 func (a *App) browseDialogs(ctx context.Context) ([]engine.Dialog, error) {
+	user, _ := auth.SessionFromContext(ctx)
+	// Admin is allowed to start the engine, unlike a guest; don't let a
+	// guest's listing race suppress an administrator's startup attempt.
+	key := "guest"
+	if user.Role == "admin" {
+		key = "admin"
+	}
+	ch := a.dialogListing.DoChan(key, func() (any, error) {
+		// A bounded context independent of the first request prevents its
+		// disconnect from cancelling every other waiting HTTP request.
+		listCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+		defer cancel()
+		return a.browseDialogsRemote(listCtx)
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-ch:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		return result.Val.([]engine.Dialog), nil
+	}
+}
+
+func (a *App) browseDialogsRemote(ctx context.Context) ([]engine.Dialog, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	stage := "open"
+	var openDuration, listDuration, persistDuration time.Duration
+	count := 0
+	defer func() {
+		if a.output != nil {
+			fmt.Fprintf(a.output, "dialog listing stages: stage=%s open=%s list=%s persist=%s count=%d\n",
+				stage, openDuration, listDuration, persistDuration, count)
+		}
+	}()
+	phaseStart := time.Now()
 	// Pair startup with acquiring a run lease. Account changes, purge and the
 	// idle-job drain cannot slip between them. Release the operation lock before
 	// network reads so account removal/shutdown can cancel a slow listing.
@@ -176,6 +232,10 @@ func (a *App) browseDialogs(ctx context.Context) ([]engine.Dialog, error) {
 		session, err = a.monitor.OpenDialogs(ctx)
 	}
 	a.monitorOp.Unlock()
+	openDuration = time.Since(phaseStart)
+	if err == nil {
+		stage = "list"
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +244,13 @@ func (a *App) browseDialogs(ctx context.Context) ([]engine.Dialog, error) {
 	defer session.Close()
 	// Access aggregation needs every account's full list; a UI cap could hide
 	// a readable account and incorrectly mark the chat unavailable.
+	phaseStart = time.Now()
 	dialogs, err := session.List(-1)
+	listDuration = time.Since(phaseStart)
+	count = len(dialogs)
+	if err == nil {
+		stage = "validate"
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -196,9 +262,14 @@ func (a *App) browseDialogs(ctx context.Context) ([]engine.Dialog, error) {
 	if version != a.dialogVersion {
 		return nil, errors.New("chat list changed; refresh to load current chats")
 	}
+	stage = "persist"
+	phaseStart = time.Now()
 	if err := a.saveDialogAccess(ctx, dialogs, observedAt); err != nil {
+		persistDuration = time.Since(phaseStart)
 		return nil, err
 	}
+	persistDuration = time.Since(phaseStart)
+	stage = "done"
 	return dialogs, nil
 }
 

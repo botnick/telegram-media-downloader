@@ -38,6 +38,43 @@ func TestForumRouteValidation(t *testing.T) {
 	})
 }
 
+func TestEnabledForwardingCanBeSavedBeforeRoutesAreChosen(t *testing.T) {
+	got, err := normalizedAutoForward(nil, map[string]any{
+		"enabled": true,
+		"routes":  []any{map[string]any{"sourceTopicId": float64(0), "destinationGroupId": ""}},
+	})
+	if err != nil {
+		t.Fatalf("enabled forwarding should save while routes are being configured: %v", err)
+	}
+	if got["enabled"] != true || len(got["routes"].([]any)) != 0 {
+		t.Fatalf("enabled forwarding without a destination should remain enabled and unrouted: %#v", got)
+	}
+	if _, err := normalizedAutoForward(nil, map[string]any{
+		"enabled": true,
+		"routes":  []any{map[string]any{"sourceTopicId": float64(0), "destinationGroupId": "storage"}},
+	}); err != nil {
+		t.Fatalf("explicit storage destination rejected: %v", err)
+	}
+}
+
+func TestForwardRoutingSignatureDetectsDestinationChanges(t *testing.T) {
+	settings := map[string]any{"routes": []any{
+		map[string]any{"sourceTopicId": float64(0), "destinationGroupId": "storage", "destinationTopicId": float64(0)},
+	}}
+	unchanged := map[string]any{"routes": []any{
+		map[string]any{"sourceTopicId": 0, "destinationGroupId": "storage", "destinationTopicId": 0},
+	}}
+	changed := map[string]any{"routes": []any{
+		map[string]any{"sourceTopicId": 0, "destinationGroupId": "me", "destinationTopicId": 0},
+	}}
+	if forwardRoutingSignature(settings) != forwardRoutingSignature(unchanged) {
+		t.Fatal("equivalent route settings produced different signatures")
+	}
+	if forwardRoutingSignature(settings) == forwardRoutingSignature(changed) {
+		t.Fatal("destination change was not detected")
+	}
+}
+
 func TestForumEmptyRoutesDoNotReactivateLegacyDestination(t *testing.T) {
 	settings := map[string]any{"enabled": true, "destination": "@old", "routes": []any{}}
 	if routes := matchingForwardRoutes(settings, 10); len(routes) != 0 {

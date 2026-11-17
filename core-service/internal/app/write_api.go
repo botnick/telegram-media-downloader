@@ -195,6 +195,14 @@ func (a *App) handleAPIGroupSave(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "group object is required")
 		return
 	}
+	confirmForwardReroute := patch["confirmForwardReroute"] == true
+	delete(patch, "confirmForwardReroute")
+	var releaseForwardLock func()
+	defer func() {
+		if releaseForwardLock != nil {
+			releaseForwardLock()
+		}
+	}()
 	groups, _ := config["groups"].([]any)
 	var saved map[string]any
 	for i, raw := range groups {
@@ -230,6 +238,21 @@ func (a *App) handleAPIGroupSave(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					writeJSONError(w, http.StatusBadRequest, err.Error())
 					return
+				}
+				previous, _ := group[key].(map[string]any)
+				if normalized["enabled"] == true && previous["enabled"] != true && !hasForwardDestination(normalized) {
+					writeJSONError(w, http.StatusBadRequest, "choose a forwarding destination before enabling auto-forward")
+					return
+				}
+				if forwardRoutingSignature(previous) != forwardRoutingSignature(normalized) {
+					active, release := a.lockForwardRouting(id)
+					releaseForwardLock = release
+					if active && !confirmForwardReroute {
+						releaseForwardLock()
+						releaseForwardLock = nil
+						writeJSON(w, http.StatusConflict, map[string]any{"error": "an auto-forward job is active; confirm to apply the destination change to new files", "code": "FORWARD_JOB_ACTIVE"})
+						return
+					}
 				}
 				group[key] = normalized
 			case "rescueMode":
@@ -284,6 +307,10 @@ func (a *App) handleAPIGroupSave(w http.ResponseWriter, r *http.Request) {
 				normalized, err := normalizedAutoForward(nil, value)
 				if err != nil {
 					writeJSONError(w, http.StatusBadRequest, err.Error())
+					return
+				}
+				if normalized["enabled"] == true && !hasForwardDestination(normalized) {
+					writeJSONError(w, http.StatusBadRequest, "choose a forwarding destination before enabling auto-forward")
 					return
 				}
 				saved[key] = normalized

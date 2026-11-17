@@ -189,7 +189,7 @@ func (a *App) handleStories(w http.ResponseWriter, r *http.Request, kind string)
 		writeJSONError(w, 409, err.Error())
 		return
 	}
-	defer a.startHistoryDrain(false)
+	defer a.startHistoryDrain(true)
 	if kind == "download" {
 		a.storiesOp.Lock()
 		defer a.storiesOp.Unlock()

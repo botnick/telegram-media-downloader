@@ -42,10 +42,11 @@ type Item struct {
 }
 
 type Record struct {
-	ID     int64
-	Path   string
-	SHA256 string
-	Reused bool
+	ID         int64
+	Path       string
+	SHA256     string
+	Reused     bool
+	SkipReason string
 	// Skipped: the media was already catalogued for another message, so no
 	// entry was made for this one (Item.SkipDuplicates). ID is the existing
 	// entry.
@@ -148,6 +149,9 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 	}
 	defer release()
 	if record, found, err := l.existing(ctx, item, `d.telegram_media_kind=? AND d.telegram_media_id=?`, item.Identity.Kind, item.Identity.ID); err != nil || found {
+		if found {
+			record.SkipReason = "telegram_media_match"
+		}
 		return record, err
 	}
 	if record, found, err := l.reuse(ctx, item, `d.telegram_media_kind=? AND d.telegram_media_id=? AND (d.telegram_media_size=? OR (d.telegram_media_size IS NULL AND d.file_size=?))`, item.Identity.Kind, item.Identity.ID, item.Identity.Size, item.Identity.Size); err != nil || found {
@@ -205,6 +209,7 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 	if record, found, err := l.existing(ctx, item, `d.file_hash=?`, sum); err != nil {
 		return Record{}, err
 	} else if found {
+		record.SkipReason = "sha256_match"
 		if err := root.Remove(path); err != nil {
 			return record, fmt.Errorf("remove redundant downloaded file: %w", err)
 		}
@@ -216,6 +221,7 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 	if record, found, err := l.reuse(ctx, item, `d.file_hash=? AND d.file_size=?`, sum, item.Identity.Size); err != nil {
 		return Record{}, err
 	} else if found {
+		record.SkipReason = "sha256_match"
 		// No catalog entry has ever named our unique destination. Deleting
 		// only this transfer's file cannot remove another message's media.
 		if err := root.Remove(path); err != nil {

@@ -24,6 +24,7 @@ func registerSystemRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("GET /api/maintenance/logs", admin(a.handleLogList))
 	mux.Handle("GET /api/maintenance/logs/download", admin(a.handleLogDownload))
 	mux.Handle("GET /api/maintenance/logs/recent", admin(a.handleLogRecent))
+	registerProcessingHistoryRoutes(mux, a)
 	mux.Handle("POST /api/maintenance/session/export", admin(a.handleSessionExport))
 	mux.Handle("POST /api/maintenance/sessions/revoke-all", admin(a.handleRevokeAll))
 }

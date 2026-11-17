@@ -30,8 +30,12 @@ func TestThumbFileRejectsStub(t *testing.T) {
 // A still must not be seeked: ffmpeg exits 0 past the end of one image and
 // writes an 8-byte stub.
 func TestRenderGalleryThumbStill(t *testing.T) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
 		t.Skip("ffmpeg not installed")
+	}
+	if !testWebPEncoderAvailable(ffmpeg) {
+		t.Skip("ffmpeg without libwebp or cwebp")
 	}
 	dir := t.TempDir()
 	src := filepath.Join(dir, "in.png")

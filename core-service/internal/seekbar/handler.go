@@ -242,7 +242,35 @@ func render(ctx context.Context, input, output string, req request) error {
 	}
 	args = append(args, "-y", output)
 	if err := runFFmpeg(ctx, args, req.FFmpeg); err != nil {
-		return err
+		if !strings.EqualFold(req.Format, "webp") {
+			return err
+		}
+		if _, lookupErr := exec.LookPath("cwebp"); lookupErr != nil {
+			return err
+		}
+		png, createErr := os.CreateTemp(filepath.Dir(output), ".seekbar-*.png")
+		if createErr != nil {
+			return errors.Join(err, createErr)
+		}
+		pngPath := png.Name()
+		_ = png.Close()
+		defer os.Remove(pngPath)
+		_ = os.Remove(output)
+		pngArgs := []string{"-hide_banner", "-loglevel", "error"}
+		if hw := strings.ToLower(strings.TrimSpace(req.HWAccel)); hwaccelAllow[hw] {
+			pngArgs = append(pngArgs, "-hwaccel", hw)
+		}
+		pngArgs = append(pngArgs, "-i", input, "-frames:v", "1", "-an", "-vf", filter, "-f", "image2", "-y", pngPath)
+		if pngErr := runFFmpeg(ctx, pngArgs, req.FFmpeg); pngErr != nil {
+			return errors.Join(err, pngErr)
+		}
+		if !nonEmpty(pngPath) {
+			return errors.Join(err, errors.New("ffmpeg: produced an empty PNG sprite"))
+		}
+		if cwebpErr := exec.CommandContext(ctx, "cwebp", "-quiet", "-q", strconv.Itoa(req.Quality), "-m", "6", pngPath, "-o", output).Run(); cwebpErr != nil {
+			_ = os.Remove(output)
+			return errors.Join(err, fmt.Errorf("cwebp: %w", cwebpErr))
+		}
 	}
 	if !nonEmpty(output) {
 		return errors.New("ffmpeg: produced an empty sprite")

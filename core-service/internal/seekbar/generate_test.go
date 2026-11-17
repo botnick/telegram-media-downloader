@@ -1,7 +1,6 @@
 package seekbar
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"math"
@@ -9,20 +8,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
 
-// testVideo renders a short clip with ffmpeg's test source, skipping when no
-// ffmpeg with libwebp is installed.
+func hasCwebp() bool {
+	_, err := exec.LookPath("cwebp")
+	return err == nil
+}
+
+// testVideo renders a short clip with ffmpeg's test source and requires a WebP encoder.
 func testVideo(t *testing.T, seconds int) string {
 	t.Helper()
 	bin := FFmpegPath()
 	if bin == "" {
 		t.Skip("ffmpeg not installed")
 	}
-	if out, err := exec.Command(bin, "-hide_banner", "-encoders").Output(); err != nil || !bytes.Contains(out, []byte("libwebp")) {
-		t.Skip("ffmpeg without libwebp")
+	if out, err := exec.Command(bin, "-hide_banner", "-encoders").Output(); (err != nil || !strings.Contains(string(out), "libwebp")) && !hasCwebp() {
+		t.Skip("ffmpeg without libwebp or cwebp")
 	}
 	path := filepath.Join(t.TempDir(), "clip.mp4")
 	cmd := exec.Command(bin, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",

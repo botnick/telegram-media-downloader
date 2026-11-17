@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/botnick/telegram-media-downloader/core-service/internal/auth"
-	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	"math"
 	"net/http"
 	"net/url"
@@ -16,6 +14,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/botnick/telegram-media-downloader/core-service/internal/auth"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 )
 
 func registerGalleryRoutes(mux *http.ServeMux, a *App) {
@@ -24,6 +25,7 @@ func registerGalleryRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("GET /api/system/health", a.requireAdmin(http.HandlerFunc(a.handleAPISystemHealth)))
 	mux.Handle("GET /api/monitor/status", guard(http.HandlerFunc(a.handleAPIMonitorStatus)))
 	mux.Handle("GET /api/queue/snapshot", guard(http.HandlerFunc(a.handleAPIQueueSnapshot)))
+	mux.Handle("GET /api/forward-queue", a.requireAdmin(http.HandlerFunc(a.handleAPIForwardQueueSnapshot)))
 	mux.Handle("GET /api/downloads", guard(http.HandlerFunc(a.handleAPIDownloads)))
 	mux.Handle("GET /api/downloads/all", guard(http.HandlerFunc(a.handleAPIDownloadsAll)))
 	mux.Handle("GET /api/downloads/search", guard(http.HandlerFunc(a.handleAPIDownloadsSearch)))
@@ -99,6 +101,14 @@ func (a *App) monitorStatusPayload(ctx context.Context) (map[string]any, error) 
 	if err != nil {
 		return nil, err
 	}
+	var backfill, forward int
+	if err := a.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM tgdl_history_jobs WHERE state='running'`).Scan(&backfill); err != nil {
+		return nil, err
+	}
+	if err := a.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM tgdl_forward_queue WHERE status IN ('pending','processing')`).Scan(&forward); err != nil {
+		return nil, err
+	}
+	status["backfill"], status["forward"] = backfill, forward
 	status["hint"] = hint
 	if status["accounts"] == 0 {
 		status["accounts"] = accounts
@@ -112,7 +122,32 @@ func (a *App) handleAPIQueueSnapshot(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 500, "queue read failed")
 		return
 	}
+	// The forward queue names destinations and caption rules: admins only.
+	if sess, _ := auth.SessionFromContext(r.Context()); sess.Role == "admin" {
+		forwardQueue, err := a.forwardQueueSnapshot(r.Context(), 0)
+		if err != nil {
+			writeJSONError(w, 500, "forward queue read failed")
+			return
+		}
+		snapshot["forwardQueue"] = forwardQueue
+	}
 	writeJSON(w, http.StatusOK, snapshot)
+}
+
+func (a *App) handleAPIForwardQueueSnapshot(w http.ResponseWriter, r *http.Request) {
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	if page > 1_000_000 {
+		page = 1_000_000
+	}
+	forwardQueue, err := a.forwardQueueSnapshot(r.Context(), (page-1)*forwardQueuePageSize)
+	if err != nil {
+		writeJSONError(w, 500, "forward queue read failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, forwardQueue)
 }
 
 func (a *App) handleAPIStats(w http.ResponseWriter, r *http.Request) {
@@ -373,7 +408,7 @@ type groupAggregate struct {
 }
 
 func (a *App) groupAggregates(r *http.Request) ([]groupAggregate, error) {
-	rows, err := a.db.Reader.QueryContext(r.Context(), `SELECT CAST(group_id AS TEXT), COALESCE(MAX(NULLIF(group_name,'')), CAST(group_id AS TEXT)), COUNT(*), COALESCE(SUM(file_size),0) FROM downloads GROUP BY group_id ORDER BY group_id`)
+	rows, err := a.db.Reader.QueryContext(r.Context(), `SELECT CAST(group_id AS TEXT), COALESCE(MAX(NULLIF(group_name,'')), CAST(group_id AS TEXT)), COUNT(CASE WHEN file_path IS NOT NULL AND file_path<>'' THEN 1 END), COALESCE(SUM(CASE WHEN file_path IS NOT NULL AND file_path<>'' THEN file_size ELSE 0 END),0) FROM downloads GROUP BY group_id ORDER BY group_id`)
 	if err != nil {
 		return nil, err
 	}

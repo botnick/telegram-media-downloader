@@ -57,7 +57,11 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	where, args := searchNarrowing(req)
+	narrowing, args := searchNarrowing(req)
+	where := "d.file_path IS NOT NULL AND d.file_path<>''"
+	if narrowing != "" {
+		where += " AND " + narrowing
+	}
 	ftsQuery := makeFTSQuery(query)
 	if ftsQuery != "" {
 		if out, ok := h.searchFTS(r, db, ftsQuery, where, args, limit, offset, req); ok {
@@ -67,7 +71,7 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pattern := likePattern(query)
-	likeWhere := "(d.file_name LIKE ? ESCAPE '\\' OR d.group_name LIKE ? ESCAPE '\\')"
+	likeWhere := "d.file_path IS NOT NULL AND d.file_path<>'' AND (d.file_name LIKE ? ESCAPE '\\' OR d.group_name LIKE ? ESCAPE '\\')"
 	likeArgs := []any{pattern, pattern}
 	if where != "" {
 		likeWhere += " AND " + where

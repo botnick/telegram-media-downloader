@@ -62,8 +62,10 @@ func TestRawTelegramIngestionSharesFileServesRangeAndSurvivesRestart(t *testing.
 		t.Fatal(err)
 	}
 	var event map[string]any
-	if err = ws.ReadJSON(&event); err != nil {
-		t.Fatal(err)
+	for event == nil || event["type"] != "download_complete" {
+		if err = ws.ReadJSON(&event); err != nil {
+			t.Fatal(err)
+		}
 	}
 	payload, ok := event["payload"].(map[string]any)
 	if !ok || event["type"] != "download_complete" || payload["mediaType"] != "video" || payload["key"] != "-1000000000123_10" {

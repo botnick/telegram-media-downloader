@@ -13,15 +13,23 @@ function applyState(state) {
     const dot = $('status-dot');
     const lbl = $('status-state');
     const map = {
-        running: { color: 'bg-tg-green', text: i18nT('status.monitor_running', 'Monitor running') },
-        starting: { color: 'bg-tg-blue', text: i18nT('status.starting', 'Starting…') },
-        stopping: { color: 'bg-tg-orange', text: i18nT('status.stopping', 'Stopping…') },
-        stopped: { color: 'bg-gray-500', text: i18nT('status.idle', 'Idle') },
-        error: { color: 'bg-tg-red', text: i18nT('status.error', 'Error') },
+        running: { color: 'bg-tg-green', text: i18nT('status.monitor_running', 'Engine running') },
+        starting: { color: 'bg-tg-blue', text: i18nT('status.starting', 'Starting engine…') },
+        stopping: { color: 'bg-tg-orange', text: i18nT('status.stopping', 'Stopping all work…') },
+        stopped: { color: 'bg-gray-500', text: i18nT('status.idle', 'Engine stopped') },
+        error: { color: 'bg-tg-red', text: i18nT('status.error', 'Engine error') },
     };
     const m = map[state] || map.stopped;
     if (dot) dot.className = `w-2 h-2 rounded-full ${m.color}`;
     if (lbl) lbl.textContent = m.text;
+    const running = ['running', 'starting', 'reconnecting'].includes(state);
+    document.querySelectorAll('[data-monitor-action]').forEach((button) => {
+        const action = button.dataset.monitorAction;
+        const visible = action === 'start' ? ['stopped', 'error'].includes(state) :
+            action === 'stop' ? running : action === 'restart' && state === 'running';
+        button.classList.toggle('hidden', !visible);
+        button.disabled = ['starting', 'stopping', 'reconnecting'].includes(state);
+    });
     const pillEl = $('engine-status-pill');
     if (pillEl) {
         pillEl.dataset.state = state || 'stopped';
@@ -29,7 +37,12 @@ function applyState(state) {
         if (pillLbl) pillLbl.textContent = m.text;
         pillEl.setAttribute(
             'aria-label',
-            i18nTf('header.engine_state', { state: m.text }, `Engine status: ${m.text}`),
+            i18nTf('header.engine_state', { state: m.text }, `Engine: ${m.text} · open controls`),
+        );
+        pillEl.title = i18nTf(
+            'header.engine_state',
+            { state: m.text },
+            `Engine: ${m.text} · open controls`,
         );
     }
 }
@@ -41,12 +54,13 @@ function applyMonitor(mon) {
     if (q) q.textContent = mon.queue ?? 0;
     const a = $('status-active');
     if (a) a.textContent = mon.active ?? 0;
+    const b = $('status-backfill');
+    if (b && mon.backfill != null) b.textContent = mon.backfill;
+    const f = $('status-forward');
+    if (f && mon.forward != null) f.textContent = mon.forward;
     // Bottom-nav engine badge — surface "there's something happening on
     // the Engine page" without forcing the user to navigate there. The
-    // queue tab already has its own badge sourced from queue.js (which
-    // counts queued + active jobs by polling the queue snapshot); this
-    // one mirrors the same idea but reads from /api/monitor/status so
-    // it works even when queue.js's WS-driven store hasn't booted.
+    // Queue page chips use this same snapshot for their global job counts.
     const navBadge = $('engine-nav-badge');
     if (navBadge) {
         const total = (Number(mon.queue) || 0) + (Number(mon.active) || 0);
@@ -247,6 +261,25 @@ export function initStatusBar() {
         );
     });
     ws.on('monitor_state', (m) => applyState(m.state));
+    for (const [id, action, toastKey, fallback, kind] of [
+        ['monitor-start-btn', 'start', 'toast.monitor_started', 'Monitor started', 'success'],
+        ['monitor-restart-btn', 'restart', 'toast.monitor_restarted', 'Monitor restarted', 'success'],
+        ['monitor-stop-btn', 'stop', 'toast.monitor_stopped', 'Monitor stopped', 'info'],
+    ]) {
+        $(id)?.addEventListener('click', async () => {
+            const button = $(id);
+            button.disabled = true;
+            try {
+                const result = await api.post(`/api/monitor/${action}`);
+                applyMonitor(result.status);
+                showToast(i18nT(toastKey, fallback), kind);
+            } catch (error) {
+                showToast(error?.data?.error || error?.message || `${fallback} failed`, 'error');
+            } finally {
+                button.disabled = false;
+            }
+        });
+    }
     // No per-event refetch: queue / active counters ride the 3 s
     // `monitor_status_push` and file / disk / group counters ride the
     // server's debounced `stats_update` push (both wired above). The old

@@ -41,8 +41,8 @@ func (h *Handler) GroupStats(w http.ResponseWriter, r *http.Request) {
 	var first, last sql.NullInt64
 	var at sql.NullString
 	err = db.QueryRowContext(r.Context(), `
-		SELECT COUNT(*),
-		       COALESCE(SUM(COALESCE(file_size, 0)), 0),
+		SELECT COUNT(CASE WHEN file_path IS NOT NULL AND file_path<>'' THEN 1 END),
+		       COALESCE(SUM(CASE WHEN file_path IS NOT NULL AND file_path<>'' THEN COALESCE(file_size, 0) ELSE 0 END), 0),
 		       MIN(CASE WHEN file_type IS NOT 'stories' THEN message_id END), MAX(CASE WHEN file_type IS NOT 'stories' THEN message_id END), MAX(CAST(created_at AS TEXT))
 		  FROM downloads
 		 WHERE group_id = ?
@@ -67,7 +67,7 @@ func (h *Handler) GroupStats(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.QueryContext(r.Context(), `
 		SELECT file_type, COUNT(*)
 		  FROM downloads
-		 WHERE group_id = ?
+		 WHERE group_id = ? AND file_path IS NOT NULL AND file_path<>''
 		 GROUP BY file_type
 	`, groupID)
 	if err != nil {
@@ -150,7 +150,7 @@ func (h *Handler) GroupFiles(w http.ResponseWriter, r *http.Request) {
 		h.unavailable(w, err)
 		return
 	}
-	where := "group_id = ?"
+	where := "group_id = ? AND file_path IS NOT NULL AND file_path<>''"
 	args := []any{groupID}
 	if req.Type != "" {
 		where += " AND file_type = ?"

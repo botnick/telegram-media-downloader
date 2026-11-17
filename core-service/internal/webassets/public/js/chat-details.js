@@ -48,7 +48,7 @@ const FILTERS = [
         icon: 'ri-file-line',
         label: () => i18nT('group.filter.files', 'Files / Documents'),
     },
-    { key: 'links', icon: 'ri-link', label: () => i18nT('group.filter.links', 'Links') },
+    { key: 'audio', icon: 'ri-music-line', label: () => i18nT('group.filter.audio', 'Audio / Music') },
     {
         key: 'voice',
         icon: 'ri-mic-line',
@@ -60,7 +60,6 @@ const FILTERS = [
         icon: 'ri-emoji-sticker-line',
         label: () => i18nT('group.filter.stickers', 'Stickers'),
     },
-    { key: 'urls', icon: 'ri-links-line', label: () => i18nT('group.filter.urls', 'URLs in Text') },
 ];
 
 // Rescue mode per chat: follow the global setting, or force on / off.
@@ -75,6 +74,7 @@ const TOGGLE_SAVE_MS = 150;
 
 // One page open at a time.
 let cur = null; // { id, name, group, fromApp, prev, prevGroup, stats }
+let globalForwardProtection = null;
 let pending = null; // merged PUT body waiting to be sent
 let saveTimer = null;
 let inflight = null;
@@ -82,6 +82,22 @@ let savedTimer = null;
 let wsWired = false;
 let forwardRouteSequence = 0;
 const forumTopicsCache = new Map();
+let dialogsRequest = null;
+
+function loadDialogs() {
+    if (state.allDialogs) return Promise.resolve(state.allDialogs);
+    if (!dialogsRequest) {
+        dialogsRequest = api.get('/api/dialogs').then((result) => {
+            state.allDialogs = result?.dialogs || [];
+            if (Array.isArray(result?.accounts)) state.dialogsAccounts = result.accounts;
+            return state.allDialogs;
+        }).catch((error) => {
+            dialogsRequest = null;
+            throw error;
+        });
+    }
+    return dialogsRequest;
+}
 
 function root() {
     let el = document.getElementById('page-chat');
@@ -93,6 +109,44 @@ function root() {
     el.className = 'hidden';
     host.appendChild(el);
     return el;
+}
+
+function fwdSettingsNow() {
+    return cur?.group?.autoForward || cur?.draftAutoForward || {};
+}
+
+function forwardProtectionIsEnabled(settings = fwdSettingsNow()) {
+    if (settings.protect != null) return settings.protect === true || settings.protect === 'on';
+    if (globalForwardProtection != null) return globalForwardProtection;
+    const configured = state.config?.forwarding?.protect;
+    return configured == null ? true : configured === true;
+}
+
+function canTryDirectForwardNow(settings = fwdSettingsNow()) {
+    return !forwardProtectionIsEnabled(settings);
+}
+
+function updateChatAutoForward(patch) {
+    if (!cur) return;
+    if (cur.group) cur.group.autoForward = { ...(cur.group.autoForward || {}), ...patch };
+    else cur.draftAutoForward = { ...(cur.draftAutoForward || {}), ...patch };
+}
+
+function syncDirectForwardToggle(settings = fwdSettingsNow()) {
+    const current = document.getElementById('fwd-direct-toggle');
+    if (!canTryDirectForwardNow(settings)) {
+        current?.remove();
+        return;
+    }
+    if (current) return;
+    const template = document.createElement('template');
+    template.innerHTML = switchRow({
+        id: 'fwd-direct-toggle',
+        label: i18nT('group.fwd.direct', 'Try direct forward first'),
+        sub: i18nT('group.fwd.direct_help', 'When caption and protection settings allow, Telegram forwarding avoids a local download. If Telegram rejects it, the job downloads and uploads the media.'),
+        on: settings.directForward === true,
+    });
+    document.getElementById('fwd-delete-toggle')?.after(template.content.firstElementChild);
 }
 
 /** Make sure #page-chat exists before renderPage() toggles `hidden`. */
@@ -367,26 +421,41 @@ function switchRow({ id, label, sub, on, disabled = false, extraClass = '' }) {
         </button>`;
 }
 
-function forwardGroupOptions(selected) {
+function forwardGroupDestinations() {
     const byID = new Map();
     for (const chat of [...(state.allDialogs || []), ...(state.groups || [])]) {
         if (chat?.id == null) continue;
         const id = String(chat.id);
+        if (id === 'me' || id === 'storage') continue;
         byID.set(id, { id, name: getGroupName(id, { fallback: chat.name || chat.title }) });
     }
     if (cur?.id) byID.set(String(cur.id), { id: String(cur.id), name: cur.name });
-    const groups = [...byID.values()].sort((a, b) => a.name.localeCompare(b.name));
-    return `<option value="">${escapeHtml(i18nT('group.fwd.select_group', 'Select a group…'))}</option>${groups
+    return [...byID.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function forwardGroupOptions(selected, groups = forwardGroupDestinations()) {
+    const byID = new Map(groups.map((group) => [group.id, group]));
+    const special = [
+        { id: 'storage', name: i18nT('group.fwd.storage', 'Telegram Downloader Storage') },
+        { id: 'me', name: i18nT('group.fwd.saved_messages', 'Saved Messages') },
+    ];
+    if (selected && !special.some((item) => item.id === String(selected)) && !byID.has(String(selected))) {
+        special.push({ id: String(selected), name: getGroupName(String(selected), { fallback: String(selected) }) });
+    }
+    return `<option value="">${escapeHtml(i18nT('group.fwd.select_destination', 'Select a destination…'))}</option>${special
+        .map((item) => `<option value="${item.id}" ${item.id === String(selected || '') ? 'selected' : ''}>${escapeHtml(item.name)}</option>`)
+        .join('')}${groups
         .map((group) => `<option value="${escapeHtml(group.id)}" ${group.id === String(selected || '') ? 'selected' : ''}>${escapeHtml(group.name)}</option>`)
         .join('')}`;
 }
 
-function forwardRouteHtml(route = {}, index = 0) {
+function forwardRouteHtml(route = {}, index = 0, groups) {
     const routeLabel = i18nTf('group.fwd.route_number', { number: index + 1 }, `Route ${index + 1}`);
     const suffix = ++forwardRouteSequence;
     const sourceID = `fwd-source-topic-${suffix}`;
     const destinationID = `fwd-destination-group-${suffix}`;
     const destinationTopicID = `fwd-destination-topic-${suffix}`;
+    const destinationGroupId = route.destinationGroupId ?? 'storage';
     const captions = Object.fromEntries(['captionMode', 'captionModeOverride', 'caption', 'regexPattern', 'regexReplacement']
         .filter((key) => key in route).map((key) => [key, route[key]]));
     return `<fieldset class="cd-forward-route" data-forward-route data-caption-settings="${escapeHtml(JSON.stringify(captions))}">
@@ -399,7 +468,7 @@ function forwardRouteHtml(route = {}, index = 0) {
         </select></div></div>
         <div class="cd-route-field"><label class="cd-label" for="${destinationID}-trigger">${escapeHtml(i18nT('group.fwd.destination_group', 'Destination group'))}</label>
         <div class="cd-search-select" data-search-select><button id="${destinationID}-trigger" type="button" class="tg-input cd-input cd-select-trigger" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span data-select-value></span><i class="ri-arrow-down-s-line" aria-hidden="true"></i></button><div class="cd-select-menu hidden" data-select-menu><input id="${destinationID}-search" class="tg-input cd-input cd-option-search" type="search" data-option-search data-option-search-empty="${escapeHtml(i18nT('group.fwd.no_search_results', 'No matching options.'))}" placeholder="${escapeHtml(i18nT('group.fwd.search_groups', 'Search groups…'))}" aria-label="${escapeHtml(i18nT('group.fwd.search_groups', 'Search groups…'))}" autocomplete="off"><div class="cd-select-options" data-select-options role="listbox"></div></div>
-        <select id="${destinationID}" class="cd-native-select" data-route-destination data-selected="${escapeHtml(String(route.destinationGroupId || ''))}" tabindex="-1" aria-hidden="true">${forwardGroupOptions(route.destinationGroupId)}</select></div></div>
+        <select id="${destinationID}" class="cd-native-select" data-route-destination data-selected="${escapeHtml(String(destinationGroupId))}" tabindex="-1" aria-hidden="true">${forwardGroupOptions(destinationGroupId, groups)}</select></div></div>
         <div class="cd-route-field hidden" data-route-destination-topic-wrap><label class="cd-label" for="${destinationTopicID}-trigger">${escapeHtml(i18nT('group.fwd.destination_topic', 'Destination topic'))}</label>
         <div class="cd-search-select" data-search-select><button id="${destinationTopicID}-trigger" type="button" class="tg-input cd-input cd-select-trigger" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span data-select-value></span><i class="ri-arrow-down-s-line" aria-hidden="true"></i></button><div class="cd-select-menu hidden" data-select-menu><input id="${destinationTopicID}-search" class="tg-input cd-input cd-option-search" type="search" data-option-search data-option-search-empty="${escapeHtml(i18nT('group.fwd.no_search_results', 'No matching options.'))}" placeholder="${escapeHtml(i18nT('group.fwd.search_topics', 'Search topics…'))}" aria-label="${escapeHtml(i18nT('group.fwd.search_destination_topics', 'Search destination topics'))}" autocomplete="off"><div class="cd-select-options" data-select-options role="listbox"></div></div>
         <select id="${destinationTopicID}" class="cd-native-select" data-route-destination-topic data-selected="${escapeHtml(String(route.destinationTopicId || 0))}" tabindex="-1" aria-hidden="true" disabled>
@@ -409,10 +478,26 @@ function forwardRouteHtml(route = {}, index = 0) {
     </fieldset>`;
 }
 
+function appendForwardRoute() {
+    const routes = document.getElementById('fwd-routes');
+    if (!routes) return null;
+    const template = document.createElement('template');
+    template.innerHTML = forwardRouteHtml({}, routes.querySelectorAll('[data-forward-route]').length).trim();
+    const card = template.content.firstElementChild;
+    routes.appendChild(card);
+    void loadForwardRouteOptions(card);
+    return card;
+}
+
 function globalCaptionFields(settings = {}) {
-    const mode = ['source_info', 'source', 'none', 'override', 'regex'].includes(settings.captionMode)
-        ? settings.captionMode
-        : 'source_info';
+    const savedMode = settings.captionMode;
+    const mode = ['source_info', 'source', 'none', 'override', 'regex', 'custom'].includes(savedMode)
+        ? ['source_info', 'override', 'regex'].includes(savedMode) ? 'custom' : savedMode
+        : 'source';
+    let caption = settings.caption || (savedMode === 'source_info' ? '{{source_caption}}\n\n{{source_info}}' : '');
+    if (savedMode === 'regex' || (savedMode === 'custom' && settings.captionBase === 'source')) {
+        caption = '{{source_caption}}';
+    }
     return `<div class="cd-caption-fields" data-global-caption>
         <div class="cd-route-field">
             <label class="cd-label" for="fwd-caption-mode-trigger">${escapeHtml(i18nT('group.fwd.caption_mode', 'Group caption'))}</label>
@@ -425,23 +510,28 @@ function globalCaptionFields(settings = {}) {
                     <div class="cd-select-options" data-select-options role="listbox"></div>
                 </div>
                 <select id="fwd-caption-mode" class="cd-native-select" data-global-caption-mode data-selected="${escapeHtml(mode)}" tabindex="-1" aria-hidden="true">
-                    <option value="source_info" ${mode === 'source_info' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_source_info', 'Source caption + source info'))}</option>
-                    <option value="source" ${mode === 'source' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_source', 'Source caption only'))}</option>
+                    <option value="source" ${mode === 'source' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_source', 'Use caption from source message'))}</option>
                     <option value="none" ${mode === 'none' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_none', 'No caption'))}</option>
-                    <option value="override" ${mode === 'override' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_override', 'Override caption'))}</option>
-                    <option value="regex" ${mode === 'regex' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_regex', 'Regex transform'))}</option>
+                    <option value="custom" ${mode === 'custom' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.caption_custom', 'Customize caption'))}</option>
                 </select>
             </div>
         </div>
-        <div class="cd-route-field cd-caption-full ${mode === 'override' ? '' : 'hidden'}" data-global-caption-override-wrap>
-            <label class="cd-label" for="fwd-caption-override">${escapeHtml(i18nT('group.fwd.override_text', 'Caption text'))}</label>
-            <textarea id="fwd-caption-override" class="tg-input cd-input" rows="2" data-global-caption-override>${escapeHtml(settings.caption || '')}</textarea>
+        <div class="cd-route-field cd-caption-full ${mode === 'custom' ? '' : 'hidden'}" data-global-caption-override-wrap>
+            <label class="cd-label" for="fwd-caption-override">${escapeHtml(i18nT('group.fwd.override_text', 'Custom caption text'))}</label>
+            <textarea id="fwd-caption-override" class="tg-input cd-input" rows="2" data-global-caption-override>${escapeHtml(caption)}</textarea>
+            <p class="cd-help">${escapeHtml(i18nT('group.fwd.caption_custom_help', 'Template variables for the replacement caption and regex Replace with: {{source_caption}}, {{source_name}}, {{source_id}}, {{message_id}}, {{source_info}}, {{source_link}} (when available).'))}</p>
         </div>
-        <div class="cd-caption-full cd-caption-regex ${mode === 'regex' ? '' : 'hidden'}" data-global-caption-regex-wrap>
-            <div class="cd-route-field"><label class="cd-label" for="fwd-caption-regex">${escapeHtml(i18nT('group.fwd.regex_pattern', 'Find (regular expression)'))}</label>
-            <input id="fwd-caption-regex" class="tg-input cd-input" type="text" data-global-caption-regex value="${escapeHtml(settings.regexPattern || '')}"></div>
-            <div class="cd-route-field"><label class="cd-label" for="fwd-caption-replacement">${escapeHtml(i18nT('group.fwd.regex_replacement', 'Replace with'))}</label>
-            <textarea id="fwd-caption-replacement" class="tg-input cd-input" rows="2" data-global-caption-replacement>${escapeHtml(settings.regexReplacement || '')}</textarea></div>
+        <div class="cd-caption-full cd-caption-regex ${mode === 'custom' ? '' : 'hidden'}" data-global-caption-regex-wrap>
+            <p class="cd-subheading">${escapeHtml(i18nT('group.fwd.regex_transform', 'Regex transform (optional)'))}</p>
+            <p class="cd-help">${escapeHtml(i18nT('group.fwd.regex_help', 'Find and replace text in the custom caption. Leave the pattern empty to skip this step.'))}</p>
+            <div class="cd-route-field">
+                <label class="cd-label" for="fwd-caption-regex">${escapeHtml(i18nT('group.fwd.regex_pattern', 'Find pattern (regular expression)'))}</label>
+                <input id="fwd-caption-regex" class="tg-input cd-input" type="text" data-global-caption-regex value="${escapeHtml(settings.regexPattern || '')}">
+            </div>
+            <div class="cd-route-field">
+                <label class="cd-label" for="fwd-caption-replacement">${escapeHtml(i18nT('group.fwd.regex_replacement', 'Replace with'))}</label>
+                <textarea id="fwd-caption-replacement" class="tg-input cd-input" rows="2" data-global-caption-replacement>${escapeHtml(settings.regexReplacement || '')}</textarea>
+            </div>
         </div>
     </div>`;
 }
@@ -462,7 +552,7 @@ async function loadTopicOptions(select, groupID, emptyLabel, disableClosed = fal
         let request = forumTopicsCache.get(groupID);
         if (!request) {
             request = api
-                .get(`/api/dialogs/${encodeURIComponent(groupID)}/topics`)
+                .get(`/api/dialogs/${encodeURIComponent(groupID)}/topics`, { timeoutMs: 130_000 })
                 .then((result) => (Array.isArray(result?.topics) ? result.topics : []))
                 .catch((error) => {
                     forumTopicsCache.delete(groupID);
@@ -491,7 +581,7 @@ async function loadTopicOptions(select, groupID, emptyLabel, disableClosed = fal
             .join('')}${selected !== '0' && !availableTopics.some((topic) => String(topic.id) === selected) ? `<option value="${escapeHtml(selected)}" selected>${escapeHtml(emptyLabel)} #${escapeHtml(selected)}</option>` : ''}`;
         cacheSearchOptions(select);
         select.disabled = topics.length === 0;
-        if (wrapper) wrapper.classList.toggle('hidden', !isSourceTopic && topics.length === 0);
+        if (wrapper) wrapper.classList.toggle('hidden', topics.length === 0);
         filterSearchOptions(select);
         updateRouteWildcardState();
         const status = select.closest('[data-forward-route]')?.querySelector('[data-route-topics-status]');
@@ -502,7 +592,7 @@ async function loadTopicOptions(select, groupID, emptyLabel, disableClosed = fal
         wrapper?.classList.remove('hidden');
         cacheSearchOptions(select);
         const status = select.closest('[data-forward-route]')?.querySelector('[data-route-topics-status]');
-        if (status) status.textContent = error?.data?.message || error?.data?.error || i18nT('group.fwd.topics_error', 'Connect a Telegram account to load topic names.');
+        if (status) status.textContent = error?.data?.message || error?.data?.error || i18nT('group.fwd.topics_error', 'Could not load topic names. Check the Telegram connection and try again.');
     }
 }
 
@@ -511,8 +601,10 @@ function cacheSearchOptions(select) {
     select._searchOptions = [...select.options].map((option) => ({
         value: option.value,
         label: option.textContent,
+        searchLabel: option.textContent.toLocaleLowerCase(),
         disabled: option.disabled,
     }));
+    select._searchOptionsByValue = new Map(select._searchOptions.map((option) => [option.value, option]));
     filterSearchOptions(select);
 }
 
@@ -523,24 +615,37 @@ function filterSearchOptions(select, query = null) {
     const options = select._searchOptions || [...select.options].map((option) => ({
         value: option.value,
         label: option.textContent,
+        searchLabel: option.textContent.toLocaleLowerCase(),
         disabled: option.disabled,
     }));
     const value = input ? (query ?? input.value).trim().toLocaleLowerCase() : '';
     const selected = select.value;
-    const matching = options.filter((option) => !value || option.label.toLocaleLowerCase().includes(value));
-    select.replaceChildren(...options.map((option) => {
-        const element = document.createElement('option');
-        element.value = option.value;
-        element.textContent = option.label;
-        element.disabled = option.disabled;
-        element.selected = option.value === selected;
-        return element;
-    }));
+    // The native <select> is the canonical full option set. Rebuilding all
+    // options for every search keystroke was O(N) DOM churn and could stall
+    // configuration pages with thousands of dialogs or forum topics.
+    // Search the cached descriptors and render only a bounded visible menu.
+    const MAX_VISIBLE_OPTIONS = 100;
+    const matching = [];
+    let matchCount = 0;
+    for (const option of options) {
+        if (value && !option.searchLabel.includes(value)) continue;
+        matchCount++;
+        if (matching.length < MAX_VISIBLE_OPTIONS) matching.push(option);
+    }
     const list = widget?.querySelector('[data-select-options]');
-    if (list) list.innerHTML = matching.length
-        ? matching.map((option) => `<button type="button" role="option" class="${option.value === selected ? 'is-selected' : ''}" aria-selected="${option.value === selected}" data-select-option="${escapeHtml(option.value)}" ${option.disabled ? 'disabled' : ''}><span class="cd-select-option-text">${escapeHtml(option.label)}</span>${option.value === selected ? '<i class="ri-check-line cd-select-check" aria-hidden="true"></i>' : ''}</button>`).join('')
-        : `<span class="cd-select-empty">${escapeHtml(input?.dataset.optionSearchEmpty || 'No matching options.')}</span>`;
-    const selectedOption = options.find((option) => option.value === selected);
+    if (list) {
+        list.innerHTML = matchCount
+            ? matching.map((option) => `<button type="button" role="option" class="${option.value === selected ? 'is-selected' : ''}" aria-selected="${option.value === selected}" data-select-option="${escapeHtml(option.value)}" ${option.disabled ? 'disabled' : ''}><span class="cd-select-option-text">${escapeHtml(option.label)}</span>${option.value === selected ? '<i class="ri-check-line cd-select-check" aria-hidden="true"></i>' : ''}</button>`).join('')
+            : `<span class="cd-select-empty">${escapeHtml(input?.dataset.optionSearchEmpty || 'No matching options.')}</span>`;
+        if (matchCount > matching.length) {
+            const hint = document.createElement('span');
+            hint.className = 'cd-select-empty';
+            hint.setAttribute('role', 'status');
+            hint.textContent = `Showing first ${matching.length} of ${matchCount} matches. Type to narrow results.`;
+            list.appendChild(hint);
+        }
+    }
+    const selectedOption = select._searchOptionsByValue?.get(selected) || options.find((option) => option.value === selected);
     const trigger = widget?.querySelector('[data-select-trigger]');
     if (trigger) {
         trigger.querySelector('[data-select-value]').textContent = selectedOption?.label || '';
@@ -548,7 +653,7 @@ function filterSearchOptions(select, query = null) {
         trigger.setAttribute('aria-label', selectedOption?.label || input?.getAttribute('aria-label') || 'Select option');
     }
     const empty = input?.dataset.optionSearchEmpty;
-    input?.setAttribute('aria-description', value && !options.some((option) => option.label.toLocaleLowerCase().includes(value)) ? empty : '');
+    input?.setAttribute('aria-description', value && matchCount === 0 ? empty : '');
 }
 
 function closeSearchSelect(widget) {
@@ -564,26 +669,44 @@ function refreshSourceTopicOptions() {
 
 function updateRouteWildcardState() {
     const routes = [...document.querySelectorAll('[data-forward-route]')];
-    for (const card of routes) {
-        const source = card.querySelector('[data-route-source-topic]');
-        const destination = card.querySelector('[data-route-destination]');
-        const sourceID = Number(source?.value) || 0;
-        const destinationID = destination?.value || '';
+    // Index the selected pairs once instead of re-querying every other route
+    // for each option. This matters with many destinations/topics and routes.
+    const selections = routes.map((card) => ({
+        card,
+        source: card.querySelector('[data-route-source-topic]'),
+        destination: card.querySelector('[data-route-destination]'),
+    }));
+    const countsByDestination = new Map();
+    const countsBySource = new Map();
+    for (const entry of selections) {
+        entry.sourceID = Number(entry.source?.value) || 0;
+        entry.destinationID = entry.destination?.value || '';
+        const bySource = countsByDestination.get(entry.destinationID) || new Map();
+        bySource.set(entry.sourceID, (bySource.get(entry.sourceID) || 0) + 1);
+        countsByDestination.set(entry.destinationID, bySource);
+        const byDestination = countsBySource.get(entry.sourceID) || new Map();
+        byDestination.set(entry.destinationID, (byDestination.get(entry.destinationID) || 0) + 1);
+        countsBySource.set(entry.sourceID, byDestination);
+    }
+    for (const { card, source, destination, sourceID, destinationID } of selections) {
+        const remove = card.querySelector('[data-route-remove]');
+        if (remove) remove.disabled = routes.length <= 1;
         const sourceAll = source && !source.closest('[data-route-source-topic-wrap]')?.classList.contains('hidden') && sourceID === 0;
         card.querySelector('[data-route-wildcard-note]')?.classList.toggle('hidden', !sourceAll);
 
+        const sourceCache = new Map((source?._searchOptions || []).map((item) => [item.value, item]));
+        const destinationCache = new Map((destination?._searchOptions || []).map((item) => [item.value, item]));
         for (const option of source?.options || []) {
-            option.disabled = Boolean(destinationID) && routes.some((other) => other !== card &&
-                other.querySelector('[data-route-destination]')?.value === destinationID &&
-                (Number(other.querySelector('[data-route-source-topic]')?.value) || 0) === Number(option.value));
-            const cached = source._searchOptions?.find((item) => item.value === option.value);
+            const value = Number(option.value);
+            const conflicts = countsByDestination.get(destinationID)?.get(value) || 0;
+            option.disabled = Boolean(destinationID) && conflicts > (sourceID === value ? 1 : 0);
+            const cached = sourceCache.get(option.value);
             if (cached) cached.disabled = option.disabled;
         }
         for (const option of destination?.options || []) {
-            option.disabled = Boolean(option.value) && routes.some((other) => other !== card &&
-                other.querySelector('[data-route-destination]')?.value === option.value &&
-                (Number(other.querySelector('[data-route-source-topic]')?.value) || 0) === sourceID);
-            const cached = destination._searchOptions?.find((item) => item.value === option.value);
+            const conflicts = countsBySource.get(sourceID)?.get(option.value) || 0;
+            option.disabled = Boolean(option.value) && conflicts > (destinationID === option.value ? 1 : 0);
+            const cached = destinationCache.get(option.value);
             if (cached) cached.disabled = option.disabled;
         }
     }
@@ -591,18 +714,7 @@ function updateRouteWildcardState() {
 
 async function loadForwardRouteOptions(route = null) {
     const cards = route ? [route] : [...(document.querySelectorAll('[data-forward-route]') || [])];
-    if (!state.allDialogs && !state._forwardDialogsLoading && !state._forwardDialogsFailed) {
-        state._forwardDialogsLoading = api
-            .get('/api/dialogs')
-            .then((result) => {
-                state.allDialogs = result?.dialogs || [];
-                if (Array.isArray(result?.accounts)) state.dialogsAccounts = result.accounts;
-            })
-            .catch(() => {
-                state._forwardDialogsFailed = true;
-            });
-    }
-    if (!state.allDialogs && state._forwardDialogsLoading) await state._forwardDialogsLoading;
+    if (!state.allDialogs) await loadDialogs().catch(() => {});
     for (const card of cards) {
         const source = card.querySelector('[data-route-source-topic]');
         const destination = card.querySelector('[data-route-destination]');
@@ -625,9 +737,13 @@ async function loadForwardRouteOptions(route = null) {
     await Promise.all(cards.map(async (card) => {
         const destination = card.querySelector('[data-route-destination]');
         const targetTopic = card.querySelector('[data-route-destination-topic]');
-        if (targetTopic && destination?.value) {
-            await loadTopicOptions(targetTopic, destination.value, i18nT('group.fwd.no_topic', 'No topic'), true);
-            targetTopic.dataset.selected = targetTopic.value || '0';
+        if (targetTopic) {
+            const selected = targetTopic.dataset.selected || targetTopic.value || '0';
+            targetTopic.innerHTML = `<option value="0">${escapeHtml(i18nT('group.fwd.no_topic', 'No topic'))}</option>${selected !== '0' ? `<option value="${escapeHtml(selected)}" selected>${escapeHtml(i18nT('group.fwd.no_topic', 'No topic'))} #${escapeHtml(selected)}</option>` : ''}`;
+            targetTopic.value = selected;
+            targetTopic.disabled = !destination?.value || ['storage', 'me'].includes(destination.value);
+            targetTopic.dataset.selected = selected;
+            targetTopic.closest('[data-route-destination-topic-wrap]')?.classList.add('hidden');
         }
         card.querySelectorAll('[data-search-select] select').forEach((select) => filterSearchOptions(select));
     }));
@@ -640,42 +756,25 @@ function updateTopicFilterCount() {
     const selected = list ? list.querySelectorAll('[data-topic-filter-id]:checked').length : 0;
     const counter = document.querySelector('[data-topic-counter]');
     if (counter) {
-        counter.textContent = total > 0 ? `${selected} / ${total} selected` : '0 selected';
+        counter.textContent = i18nTf(
+            'group.topics.count',
+            { selected, total },
+            `${selected} of ${total} topics selected`,
+        );
     }
 }
 
-async function loadGroupTopicFilterOptions() {
-    const list = document.getElementById('topics-list');
-    if (!list || !cur?.id) return;
-    const selected = new Set((cur.group?.topics?.ids || []).map(String));
-    list.innerHTML = `<span class="cd-help">${escapeHtml(i18nT('group.fwd.topics_loading', 'Loading topics…'))}</span>`;
-    try {
-        let request = forumTopicsCache.get(cur.id);
-        if (!request) {
-            request = api.get(`/api/dialogs/${encodeURIComponent(cur.id)}/topics`)
-                .then((result) => (Array.isArray(result?.topics) ? result.topics : []))
-                .catch((error) => { forumTopicsCache.delete(cur.id); throw error; });
-            forumTopicsCache.set(cur.id, request);
-        }
-        const topics = await request;
-        if (!list.isConnected) return;
-        list.dataset.loaded = 'true';
-        if (!topics.length) {
-            list.innerHTML = `<span class="cd-help">${escapeHtml(i18nT('group.fwd.no_topics', 'This group has no forum topics.'))}</span>`;
-            updateTopicFilterCount();
-            return;
-        }
-        list.innerHTML = topics.map((topic) => `
-            <label class="cd-topic-option">
-                <input type="checkbox" class="cd-checkbox-input" data-topic-filter-id value="${escapeHtml(String(topic.id))}" ${selected.has(String(topic.id)) ? 'checked' : ''}>
-                <span class="cd-checkbox-control" aria-hidden="true"><i class="ri-check-line"></i></span>
-                <span class="cd-topic-name">${escapeHtml(topic.name)}</span>
-                ${topic.closed ? `<span class="cd-topic-badge">${escapeHtml(i18nT('group.fwd.closed', 'closed'))}</span>` : ''}
-            </label>`).join('');
-        updateTopicFilterCount();
-    } catch (error) {
-        if (list.isConnected) list.innerHTML = `<span class="cd-help" role="status">${escapeHtml(error?.data?.message || error?.data?.error || i18nT('group.fwd.topics_error', 'Connect a Telegram account to load topic names.'))}</span>`;
+export function preloadGroupTopics(groupId) {
+    const id = String(groupId || '');
+    if (!id) return Promise.resolve([]);
+    let request = forumTopicsCache.get(id);
+    if (!request) {
+        request = api.get(`/api/dialogs/${encodeURIComponent(id)}/topics`, { timeoutMs: 130_000 })
+            .then((result) => (Array.isArray(result?.topics) ? result.topics : []))
+            .catch((error) => { forumTopicsCache.delete(id); throw error; });
+        forumTopicsCache.set(id, request);
     }
+    return request;
 }
 
 function collectForwardRoutes() {
@@ -706,16 +805,30 @@ function render() {
     const el = root();
     if (!el || !cur) return;
     const g = cur.group;
-    const fwd = g?.autoForward || {};
+    const fwd = fwdSettingsNow();
     const savedRoutes = Array.isArray(fwd.routes) ? fwd.routes : [];
     const forwardRoutes = savedRoutes.filter((route) => String(route?.destinationGroupId || '').trim());
-    const topics = g?.topics || {};
+    if (!forwardRoutes.length && !Array.isArray(fwd.routes) && fwd.destination) {
+        forwardRoutes.push({ sourceTopicId: 0, destinationGroupId: String(fwd.destination) });
+    }
+    if (!forwardRoutes.length && !Array.isArray(fwd.routes) && fwd.enabled === true) {
+        forwardRoutes.push({ sourceTopicId: 0, destinationGroupId: 'storage' });
+    }
+    if (!forwardRoutes.length) forwardRoutes.push({ sourceTopicId: 0, destinationGroupId: 'storage' });
+    const forwardingConfigured = forwardRoutes.length > 0 && forwardRoutes.every((route) => String(route.destinationGroupId || '').trim());
+    const forwardingEnabled = fwd.enabled === true;
+    const forwardProtectionEnabled = forwardProtectionIsEnabled(fwd);
+    const canTryDirectForward = !forwardProtectionEnabled;
+    const topicRule = g?.topics || {};
+    const forumTopics = Array.isArray(cur.forumTopics) ? cur.forumTopics : [];
+    const selectedTopics = new Set((topicRule.ids || []).map(String));
     const filters = filtersNow();
     const rescue = ['on', 'off', 'auto'].includes(g?.rescueMode) ? g.rescueMode : 'auto';
     const suspended = g?.suspended === true;
     const blocked = blockedNow();
-    const fwdBlocked = isBlockedAccess(g?.forwardAccess) && fwd.enabled === true;
+    const fwdBlocked = isBlockedAccess(g?.forwardAccess) && forwardingEnabled;
     const d = findDialog(cur.id);
+    const forwardDestinations = forwardGroupDestinations();
 
     el.classList.add('cd-page');
     el.innerHTML = `
@@ -766,6 +879,7 @@ function render() {
 
         <section class="cd-section" aria-labelledby="cd-h-download">
             <h3 id="cd-h-download" class="cd-heading">${escapeHtml(i18nT('chat.section.download', 'What to download'))}</h3>
+            <p class="cd-help">${escapeHtml(i18nT('chat.section.download_help', 'Choose which new messages are processed. These filters apply to both downloads and auto-forward.'))}</p>
             <div class="cd-card">
                 <div id="filter-options" class="cd-chips" role="group" aria-labelledby="cd-h-download">
                     ${FILTERS.map(
@@ -777,24 +891,19 @@ function render() {
                         </button>`,
                     ).join('')}
                 </div>
-                <details class="cd-more" ${topics.enabled ? 'open' : ''}>
-                    <summary class="cd-more-summary">
-                        <span>${escapeHtml(i18nT('chat.more', 'More'))}</span>
-                        <span class="cd-more-hint">${escapeHtml(i18nT('group.topics.title', 'Forum-topic filter'))}</span>
-                        <i class="ri-arrow-down-s-line cd-more-chevron" aria-hidden="true"></i>
-                    </summary>
-                    <div class="cd-more-body">
+                ${forumTopics.length ? `
+                    <section class="cd-topic-section cd-more" aria-labelledby="cd-topics-title">
+                        <div class="cd-more-body">
+                        <h4 id="cd-topics-title" class="cd-subheading">${escapeHtml(i18nT('chat.more', 'Forum topics'))}</h4>
                         ${switchRow({
                             id: 'topics-enable-toggle',
-                            label: i18nT('group.topics.title', 'Forum-topic filter'),
-                            sub: i18nT(
-                                'chat.topics.sub',
-                                'Forum groups only: download from some topics',
-                            ),
-                            on: topics.enabled === true,
+                            label: i18nT('group.topics.title', 'Limit by forum topic'),
+                            sub: i18nT('chat.topics.sub', 'In forum groups, limit processing to selected topics.'),
+                            on: topicRule.enabled === true,
                         })}
+                        <div id="topics-settings" class="${topicRule.enabled === true ? '' : 'hidden'}">
                         <div class="cd-route-field">
-                            <label class="cd-label" for="topics-mode-trigger">${escapeHtml(i18nT('group.topics.mode', 'Topics to process'))}</label>
+                            <label class="cd-label" for="topics-mode-trigger">${escapeHtml(i18nT('group.topics.mode', 'Selected topic rule'))}</label>
                             <div class="cd-search-select" data-search-select>
                                 <button id="topics-mode-trigger" type="button" class="tg-input cd-input cd-select-trigger" data-select-trigger aria-haspopup="listbox" aria-expanded="false">
                                     <span data-select-value></span>
@@ -803,9 +912,9 @@ function render() {
                                 <div class="cd-select-menu hidden" data-select-menu data-no-search>
                                     <div class="cd-select-options" data-select-options role="listbox"></div>
                                 </div>
-                                <select id="topics-mode" class="cd-native-select" data-selected="${topics.mode === 'blacklist' ? 'blacklist' : 'whitelist'}" tabindex="-1" aria-hidden="true">
-                                    <option value="whitelist" ${topics.mode !== 'blacklist' ? 'selected' : ''}>${escapeHtml(i18nT('group.topics.process_selected', 'Process selected topics only'))}</option>
-                                    <option value="blacklist" ${topics.mode === 'blacklist' ? 'selected' : ''}>${escapeHtml(i18nT('group.topics.ignore_selected', 'Ignore selected topics'))}</option>
+                                <select id="topics-mode" class="cd-native-select" data-selected="${topicRule.mode === 'blacklist' ? 'blacklist' : 'whitelist'}" tabindex="-1" aria-hidden="true">
+                                    <option value="whitelist" ${topicRule.mode !== 'blacklist' ? 'selected' : ''}>${escapeHtml(i18nT('group.topics.process_selected', 'Include selected topics'))}</option>
+                                    <option value="blacklist" ${topicRule.mode === 'blacklist' ? 'selected' : ''}>${escapeHtml(i18nT('group.topics.ignore_selected', 'Exclude selected topics'))}</option>
                                 </select>
                             </div>
                         </div>
@@ -816,24 +925,34 @@ function render() {
                                 <button type="button" class="cd-pill-btn" data-topics-clear-all>${escapeHtml(i18nT('common.clear_all', 'Clear'))}</button>
                             </div>
                         </div>
-                        <div id="topics-list" class="cd-topic-list" role="group" aria-labelledby="topics-mode-trigger"></div>
-                        <p id="cd-topics-help" class="cd-help">${escapeHtml(i18nT('group.topics.note', 'With no topics selected, all topics are processed. Turn this filter off to process every topic.'))}</p>
-                    </div>
-                </details>
+                        <div id="topics-list" class="cd-topic-list" role="group" aria-labelledby="topics-mode-trigger">
+                            ${forumTopics.map((topic) => `
+                                <label class="cd-topic-option">
+                                    <input type="checkbox" class="cd-checkbox-input" data-topic-filter-id value="${escapeHtml(String(topic.id))}" ${selectedTopics.has(String(topic.id)) ? 'checked' : ''}>
+                                    <span class="cd-checkbox-control" aria-hidden="true"><i class="ri-check-line"></i></span>
+                                    <span class="cd-topic-name">${escapeHtml(topic.name)}</span>
+                                    ${topic.closed ? `<span class="cd-topic-badge">${escapeHtml(i18nT('group.fwd.closed', 'closed'))}</span>` : ''}
+                                </label>`).join('')}
+                        </div>
+                        <p id="cd-topics-help" class="cd-help">${escapeHtml(i18nT('group.topics.note', 'No topics selected means all topics. This filter decides which messages reach download and auto-forward; Forward to routes choose their destinations.'))}</p>
+                        </div>
+                        </div>
+                    </section>` : cur.topicsUnavailable ? `
+                        <p class="cd-help" role="status">${escapeHtml(i18nT('group.fwd.topics_error', "Topic names are unavailable. Saved topic rules still apply, but you can't edit them now."))}</p>` : ''}
             </div>
         </section>
 
         <section class="cd-section" aria-labelledby="cd-h-forward">
             <h3 id="cd-h-forward" class="cd-heading">${escapeHtml(i18nT('chat.section.forward', 'Forward to'))}</h3>
+            <p class="cd-help">${escapeHtml(i18nT('chat.section.forward_help', 'Choose destinations for messages allowed by the content filters above.'))}</p>
             <div class="cd-card">
                 ${switchRow({
                     id: 'fwd-enable-toggle',
                     label: i18nT('chat.fwd.label', 'Forward new files'),
                     sub: i18nT('group.fwd.subtitle', 'Forward media to another channel'),
-                    on: fwd.enabled === true,
+                    on: forwardingEnabled,
                 })}
-                <div id="fwd-settings" class="cd-sub ${fwd.enabled ? '' : 'hidden'}">
-                    ${fwd.destination && !Array.isArray(fwd.routes) ? `<p class="cd-help cd-legacy-destination">${escapeHtml(i18nT('group.fwd.legacy', 'Existing destination remains active until a topic route is added.'))} <strong>${escapeHtml(fwd.destination === 'me' || fwd.destination === 'storage' ? fwd.destination : getGroupName(fwd.destination, { fallback: cur.name }))}</strong></p>` : ''}
+                <div id="fwd-settings" class="cd-sub ${forwardingEnabled ? '' : 'hidden'}">
                     ${
                         fwdBlocked
                             ? `<p class="cd-fwd-warn" role="note"><i class="ri-error-warning-line" aria-hidden="true"></i><span>${escapeHtml(
@@ -846,23 +965,43 @@ function render() {
                             : ''
                     }
                     ${switchRow({
+                        id: 'fwd-protect-toggle',
+                        label: i18nT('group.fwd.protect_default', 'Protect forwarded copies in this group'),
+                        sub: fwd.protect == null
+                            ? i18nT('group.fwd.protection_inherit', 'Following global protection rule')
+                            : i18nT('group.fwd.protection_override', 'Overrides global protection rule'),
+                        on: forwardProtectionEnabled,
+                    })}
+                    ${switchRow({
                         id: 'fwd-delete-toggle',
                         label: i18nT('group.fwd.delete_after', 'Delete after forward'),
-                        sub: i18nT(
-                            'group.fwd.delete_after_help',
-                            'Remove local file after successful upload.',
-                        ),
+                        sub: i18nT('group.fwd.delete_after_help', 'Remove local file after successful upload.'),
                         on: fwd.deleteAfterForward === true,
                     })}
+                    ${canTryDirectForward ? switchRow({
+                        id: 'fwd-direct-toggle',
+                        label: i18nT('group.fwd.direct', 'Try direct forward first'),
+                        sub: i18nT('group.fwd.direct_help', 'When caption and protection settings allow, Telegram forwarding avoids a local download. If Telegram rejects it, the job downloads and uploads the media.'),
+                        on: fwd.directForward === true,
+                    }) : ''}
+                    <div class="cd-route-field">
+                        <label class="cd-label" for="fwd-scan-route">${escapeHtml(i18nT('group.fwd.scan_route', 'Route scanned messages'))}</label>
+                        <select id="fwd-scan-route" class="tg-input cd-input">
+                            <option value="download" ${fwd.scanRoute === 'direct' || fwd.scanRoute === 'both' ? '' : 'selected'}>${escapeHtml(i18nT('group.fwd.scan_route.download', 'Download only'))}</option>
+                            <option value="direct" ${fwd.scanRoute === 'direct' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.scan_route.direct', 'Direct forward only'))}</option>
+                            <option value="both" ${fwd.scanRoute === 'both' ? 'selected' : ''}>${escapeHtml(i18nT('group.fwd.scan_route.both', 'Download and direct forward'))}</option>
+                        </select>
+                        <p class="cd-help">${escapeHtml(i18nT('group.fwd.scan_route_help', 'Direct forwarding sends accepted Telegram messages without saving media locally.'))}</p>
+                    </div>
                     ${globalCaptionFields(fwd)}
                     <section class="cd-route-section" aria-labelledby="cd-routes-title">
                         <div class="cd-route-heading">
                             <div><h4 id="cd-routes-title" class="cd-subheading">${escapeHtml(i18nT('group.fwd.routes', 'Routes'))}</h4>
-                            <p class="cd-help">${escapeHtml(i18nT('group.fwd.routes_help', 'Choose a destination. Topic options appear only when available.'))}</p></div>
+                            <p class="cd-help">${escapeHtml(i18nT('group.fwd.routes_help', 'Choose a destination for every route. Topic groups also let you route each topic.'))}</p></div>
                             <button type="button" class="tg-btn cd-route-add" data-cd-add-route><i class="ri-add-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('group.fwd.add_route', 'Add route'))}</span></button>
                         </div>
-                        <div id="fwd-routes" class="cd-fields">${forwardRoutes.map((route, index) => forwardRouteHtml(route, index)).join('')}</div>
-                        ${!forwardRoutes.length && !fwd.destination ? `<p class="cd-route-empty">${escapeHtml(i18nT('group.fwd.routes_empty', 'No routes yet. Add a route to choose a destination.'))}</p>` : ''}
+                        <div id="fwd-routes" class="cd-fields">${forwardRoutes.map((route, index) => forwardRouteHtml(route, index, forwardDestinations)).join('')}</div>
+                        <p class="cd-help ${forwardingConfigured ? 'hidden' : ''}" role="status" data-forward-route-required>${escapeHtml(i18nT('group.fwd.destination_required', 'Choose a destination before forwarding can start.'))}</p>
                     </section>
                 </div>
             </div>
@@ -938,8 +1077,12 @@ function render() {
             </div>
         </section>`;
     initAllSearchSelects(el);
+    const topicsList = document.getElementById('topics-list');
+    if (topicsList) {
+        topicsList.dataset.loaded = 'true';
+        updateTopicFilterCount();
+    }
     if (forwardRoutes.length) void loadForwardRouteOptions();
-    if (cur.id) void loadGroupTopicFilterOptions();
 }
 
 function initAllSearchSelects(scope = document) {
@@ -1006,10 +1149,7 @@ function accountLabel(a) {
 async function loadAccountsAndPeers(token) {
     const [accounts, peers] = await Promise.all([
         api.get('/api/accounts').catch(() => []),
-        api
-            .get('/api/cluster/peers')
-            .then((r) => (Array.isArray(r?.peers) ? r.peers : []))
-            .catch(() => []),
+        api.get('/api/cluster/peers').then((r) => (Array.isArray(r?.peers) ? r.peers : [])).catch(() => []),
     ]);
     if (!cur || cur.token !== token) return;
     const g = cur.group;
@@ -1083,18 +1223,11 @@ async function loadStats(token) {
 // page from a deep link / the sidebar may happen before the Chats page
 // ever loaded it — fetch it once in the background (the server caches it).
 async function loadDialogMeta(token) {
-    if (findDialog(cur.id) || state._chatDialogsLoading) return;
-    state._chatDialogsLoading = true;
+    if (findDialog(cur.id)) return;
     try {
-        const r = await api.get('/api/dialogs');
-        const list = r?.dialogs || [];
-        if (!state.allDialogs) state.allDialogs = list;
-        if (Array.isArray(r?.accounts) && !state.dialogsAccounts)
-            state.dialogsAccounts = r.accounts;
+        await loadDialogs();
     } catch {
         /* no account / not connected — the hero just shows less */
-    } finally {
-        state._chatDialogsLoading = false;
     }
     if (!cur || cur.token !== token) return;
     const meta = document.querySelector('#page-chat [data-cd-meta]');
@@ -1193,7 +1326,20 @@ async function flush() {
     inflight = saveChatConfig(target.id, body);
     let ok = false;
     try {
-        const group = await inflight;
+        let group;
+        try {
+            group = await inflight;
+        } catch (e) {
+            if (e?.data?.code !== 'FORWARD_JOB_ACTIVE' || !body.autoForward) throw e;
+            const accepted = await confirmSheet({
+                title: i18nT('group.fwd.reroute_title', 'Change forwarding destination?'),
+                message: i18nT('group.fwd.reroute_confirm', 'The active forward keeps its current destination. Only new files will use this destination.'),
+                confirmLabel: i18nT('group.fwd.reroute_apply', 'Apply to new files'),
+            });
+            if (!accepted) throw e;
+            inflight = saveChatConfig(target.id, { ...body, confirmForwardReroute: true });
+            group = await inflight;
+        }
         ok = true;
         if (cur === target) {
             target.group = group || target.group;
@@ -1204,10 +1350,29 @@ async function flush() {
                 document.getElementById('cd-danger')?.classList.remove('hidden');
                 setSwitch('group-enable-toggle', monitoringNow(), monitorSub());
             }
+            const savedForward = group?.autoForward || {};
+            if (typeof body.autoForward?.enabled === 'boolean') {
+                const savedEnabled = savedForward.enabled === true;
+                setSwitch('fwd-enable-toggle', savedEnabled);
+                document.getElementById('fwd-settings')?.classList.toggle('hidden', !savedEnabled);
+                if (body.autoForward.enabled && !savedEnabled) {
+                    document.querySelector('[data-forward-route-required]')?.classList.remove('hidden');
+                }
+            }
         }
     } catch (e) {
         if (cur === target) {
             pending = mergePatch(body, pending);
+            if (typeof body.autoForward?.enabled === 'boolean') {
+                const savedEnabled = target.group?.autoForward?.enabled === true;
+                setSwitch('fwd-enable-toggle', savedEnabled);
+                document.getElementById('fwd-settings')?.classList.toggle('hidden', !savedEnabled);
+            }
+            if ((e?.data?.error || e?.data?.message) === 'choose a forwarding destination before enabling auto-forward') {
+                setSwitch('fwd-enable-toggle', false);
+                document.getElementById('fwd-settings')?.classList.remove('hidden');
+                document.querySelector('[data-forward-route-required]')?.classList.remove('hidden');
+            }
             const msg =
                 e?.data?.code === 'GROUP_SUSPENDED'
                     ? i18nT('groups.status.suspended', 'Suspended')
@@ -1278,7 +1443,8 @@ function topicsPatch() {
 function globalCaptionPatch() {
     return {
         autoForward: {
-            captionMode: document.getElementById('fwd-caption-mode')?.value || 'source_info',
+            captionMode: document.getElementById('fwd-caption-mode')?.value || 'source',
+            captionBase: 'custom',
             caption: document.getElementById('fwd-caption-override')?.value || '',
             regexPattern: document.getElementById('fwd-caption-regex')?.value || '',
             regexReplacement: document.getElementById('fwd-caption-replacement')?.value || '',
@@ -1454,7 +1620,7 @@ function onClick(e) {
         const select = widget?.querySelector('select');
         if (!select || option.disabled) return;
         select.value = option.dataset.selectOption;
-        select.dataset.selected = select.value;
+        if (!select.matches('[data-route-destination]')) select.dataset.selected = select.value;
         filterSearchOptions(select, '');
         closeSearchSelect(widget);
         select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1531,19 +1697,20 @@ function onClick(e) {
         return void flush();
     }
     if (t.closest('[data-cd-add-route]')) {
-        const routes = document.getElementById('fwd-routes');
-        if (!routes) return;
-        const template = document.createElement('template');
-        template.innerHTML = forwardRouteHtml({}, routes.querySelectorAll('[data-forward-route]').length).trim();
-        const card = template.content.firstElementChild;
-        routes.appendChild(card);
-        void loadForwardRouteOptions(card);
+        appendForwardRoute();
         return;
     }
     if (t.closest('[data-route-remove]')) {
+        if (document.querySelectorAll('[data-forward-route]').length <= 1) {
+            showToast(i18nT('group.fwd.last_route', 'At least one forwarding route is required.'), 'error');
+            return;
+        }
         t.closest('[data-forward-route]')?.remove();
         updateRouteWildcardState();
-        queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0);
+        const routes = collectForwardRoutes();
+        const configured = routes.length > 0 && [...document.querySelectorAll('[data-route-destination]')].every((select) => select.value.trim());
+        document.querySelector('[data-forward-route-required]')?.classList.toggle('hidden', configured);
+        queueSave({ autoForward: { routes, ...(configured && document.getElementById('fwd-enable-toggle')?.getAttribute('aria-checked') === 'true' ? { enabled: true } : {}) } }, 0);
         return;
     }
     if (t.closest('[data-cd-pick]')) return void openDestinationPicker();
@@ -1573,12 +1740,32 @@ function onClick(e) {
         } else if (sw.id === 'fwd-enable-toggle') {
             setSwitch(sw.id, on);
             document.getElementById('fwd-settings')?.classList.toggle('hidden', !on);
-            queueSave({ autoForward: { enabled: on } });
+            const routes = on ? collectForwardRoutes() : undefined;
+            const configured = Array.isArray(routes) && routes.length > 0;
+            document.querySelector('[data-forward-route-required]')?.classList.toggle('hidden', configured);
+            queueSave({ autoForward: { enabled: on, ...(on ? { routes } : {}) } });
         } else if (sw.id === 'fwd-delete-toggle') {
             setSwitch(sw.id, on);
-            queueSave({ autoForward: { deleteAfterForward: on } });
+            const autoForward = { deleteAfterForward: on };
+            if (!on || forwardProtectionIsEnabled()) autoForward.directForward = false;
+            queueSave({ autoForward });
+            updateChatAutoForward(autoForward);
+            syncDirectForwardToggle({ ...fwdSettingsNow(), ...autoForward });
+        } else if (sw.id === 'fwd-direct-toggle') {
+            if (!on || !canTryDirectForwardNow()) return;
+            setSwitch(sw.id, on);
+            updateChatAutoForward({ directForward: on });
+            queueSave({ autoForward: { directForward: on } });
+        } else if (sw.id === 'fwd-protect-toggle') {
+            setSwitch(sw.id, on);
+            const autoForward = { protect: on };
+            if (on) autoForward.directForward = false;
+            queueSave({ autoForward });
+            updateChatAutoForward(autoForward);
+            syncDirectForwardToggle();
         } else if (sw.id === 'topics-enable-toggle') {
             setSwitch(sw.id, on);
+            document.getElementById('topics-settings')?.classList.toggle('hidden', !on);
             const rule = topicsPatch().topics;
             if (cur.group) cur.group.topics = { ...(cur.group.topics || {}), ...rule };
             const refresh = refreshSourceTopicOptions();
@@ -1611,22 +1798,52 @@ function onClick(e) {
     }
 }
 
-function onChange(e) {
+async function onChange(e) {
     if (!cur) return;
     const id = e.target.id;
     if (e.target.matches('[data-global-caption-mode]')) {
-        document.querySelector('[data-global-caption-override-wrap]')?.classList.toggle('hidden', e.target.value !== 'override');
-        document.querySelector('[data-global-caption-regex-wrap]')?.classList.toggle('hidden', e.target.value !== 'regex');
+        document.querySelector('[data-global-caption-override-wrap]')?.classList.toggle('hidden', e.target.value !== 'custom');
+        document.querySelector('[data-global-caption-regex-wrap]')?.classList.toggle('hidden', e.target.value !== 'custom');
         queueSave(globalCaptionPatch(), 0);
     } else if (e.target.closest('[data-global-caption]')) {
         queueSave(globalCaptionPatch(), 0);
     } else if (e.target.matches('[data-route-destination]')) {
         const card = e.target.closest('[data-forward-route]');
         const targetTopic = card?.querySelector('[data-route-destination-topic]');
+        const previous = e.target.dataset.selected || '';
+        const next = e.target.value;
+        let confirmForwardReroute = false;
+        if (previous !== next && cur?.id) {
+            let snapshot;
+            try {
+                snapshot = await api.get('/api/queue/snapshot');
+            } catch {
+                e.target.value = previous;
+                filterSearchOptions(e.target);
+                showToast(i18nT('group.fwd.reroute_check_failed', 'Could not check active forwards. Try changing the destination again.'), 'error');
+                return;
+            }
+            const active = (snapshot?.forwardQueue?.items || []).some((item) =>
+                String(item.groupId) === String(cur.id) && item.status === 'processing',
+            );
+            if (active) {
+                const accepted = await confirmSheet({
+                    title: i18nT('group.fwd.reroute_title', 'Change forwarding destination?'),
+                    message: i18nT('group.fwd.reroute_confirm', 'The active forward keeps its current destination. Only new files will use this destination.'),
+                    confirmLabel: i18nT('group.fwd.reroute_apply', 'Apply to new files'),
+                });
+                if (!accepted) {
+                    e.target.value = previous;
+                    filterSearchOptions(e.target);
+                    return;
+                }
+                confirmForwardReroute = true;
+            }
+        }
         e.target.dataset.selected = e.target.value;
         if (targetTopic) {
             targetTopic.dataset.selected = '0';
-            if (e.target.value) {
+            if (e.target.value && !['storage', 'me'].includes(e.target.value)) {
                 void loadTopicOptions(targetTopic, e.target.value, i18nT('group.fwd.no_topic', 'No topic'), true).then(() => filterSearchOptions(targetTopic));
             } else {
                 targetTopic.innerHTML = `<option value="0">${escapeHtml(i18nT('group.fwd.no_topic', 'No topic'))}</option>`;
@@ -1636,7 +1853,14 @@ function onChange(e) {
         }
         filterSearchOptions(e.target);
         updateRouteWildcardState();
-        queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0);
+        const routes = collectForwardRoutes();
+        const configured = routes.length > 0 && [...document.querySelectorAll('[data-route-destination]')].every((select) => select.value.trim());
+        document.querySelector('[data-forward-route-required]')?.classList.toggle('hidden', configured);
+        if (configured && document.getElementById('fwd-enable-toggle')?.getAttribute('aria-checked') === 'true') {
+            queueSave({ autoForward: { routes, enabled: true }, ...(confirmForwardReroute ? { confirmForwardReroute: true } : {}) }, 0);
+        } else {
+            queueSave({ autoForward: { routes }, ...(confirmForwardReroute ? { confirmForwardReroute: true } : {}) }, 0);
+        }
     } else if (e.target.matches('[data-topic-filter-id]') || id === 'topics-mode') {
         const rule = topicsPatch().topics;
         if (cur.group) cur.group.topics = { ...(cur.group.topics || {}), ...rule };
@@ -1649,9 +1873,16 @@ function onChange(e) {
             filterSearchOptions(e.target);
             updateRouteWildcardState();
         }
-        queueSave({ autoForward: { routes: collectForwardRoutes() } }, 0);
+        const routes = collectForwardRoutes();
+        const configured = routes.length > 0 && [...document.querySelectorAll('[data-route-destination]')].every((select) => select.value.trim());
+        document.querySelector('[data-forward-route-required]')?.classList.toggle('hidden', configured);
+        if (configured && document.getElementById('fwd-enable-toggle')?.getAttribute('aria-checked') === 'true') {
+            queueSave({ autoForward: { routes, enabled: true } }, 0);
+        } else queueSave({ autoForward: { routes } }, 0);
     } else if (id === 'fwd-destination') {
         queueSave({ autoForward: { destination: e.target.value.trim() } }, 0);
+    } else if (id === 'fwd-scan-route') {
+        queueSave({ autoForward: { scanRoute: e.target.value } }, 0);
     } else if (id === 'setting-rescue-hours') {
         queueSave(rescueHoursPatch(), 0);
     } else if (id === 'monitor-account') {
@@ -1753,8 +1984,8 @@ function repositionOpenSearchSelects() {
         menu.style.width = `${Math.min(rect.width, window.innerWidth - margin * 2)}px`;
         const roomBelow = Math.max(0, window.innerHeight - rect.bottom - margin * 2);
         const roomAbove = Math.max(0, rect.top - margin * 2);
-        const openBelow = roomBelow >= Math.min(180, menu.scrollHeight) || roomBelow >= roomAbove;
-        const height = Math.min(menu.scrollHeight, openBelow ? roomBelow : roomAbove);
+        const openBelow = roomBelow >= roomAbove;
+        const height = Math.max(0, Math.min(240, window.innerHeight * 0.42, openBelow ? roomBelow : roomAbove));
         menu.dataset.placement = openBelow ? 'below' : 'above';
         menu.style.maxHeight = `${height}px`;
         menu.style.top = `${openBelow ? rect.bottom + margin : Math.max(margin, rect.top - height - margin)}px`;
@@ -1803,7 +2034,7 @@ let tokenSeq = 0;
  * the router came from (null for a deep link / reload) — kept on the
  * history entry so Back steps back to it instead of stacking a new one.
  */
-export function showChatDetails({ groupId, from = null, fromGroup = null, onName = null }) {
+export function showChatDetails({ groupId, from = null, fromGroup = null, onName = null, forumTopics = [], topicsUnavailable = false }) {
     const el = root();
     if (!el) return;
     const id = String(groupId);
@@ -1846,6 +2077,8 @@ export function showChatDetails({ groupId, from = null, fromGroup = null, onName
     cur = {
         id,
         token: ++tokenSeq,
+        forumTopics,
+        topicsUnavailable,
         group: group ? { ...group, filters: { ...(group.filters || {}) } } : null,
         draftFilters: { ...NEW_CHAT_FILTERS },
         name: getGroupName(id, { fallback: findDialog(id)?.name }),
@@ -1854,6 +2087,7 @@ export function showChatDetails({ groupId, from = null, fromGroup = null, onName
         clusterEditable: false,
         accountCount: (state.dialogsAccounts || []).length,
     };
+    globalForwardProtection = null;
     pending = null;
     render();
     wire(el);
@@ -1863,6 +2097,19 @@ export function showChatDetails({ groupId, from = null, fromGroup = null, onName
     loadStats(token);
     loadAccountsAndPeers(token);
     loadDialogMeta(token);
+    globalForwardProtection = null;
+    if (fwdSettingsNow().protect != null) {
+        syncDirectForwardToggle();
+    } else {
+        void api.get('/api/config').then((config) => {
+            globalForwardProtection = config?.forwarding?.protect === true;
+            if (cur?.token !== token) return;
+            setSwitch('fwd-protect-toggle', globalForwardProtection);
+            syncDirectForwardToggle();
+        }).catch(() => {
+            if (cur?.token === token) syncDirectForwardToggle();
+        });
+    }
 }
 
 /** The router is leaving the page — send any edit still waiting. */

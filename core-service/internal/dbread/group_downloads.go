@@ -60,7 +60,7 @@ func (h *Handler) DownloadsGroup(w http.ResponseWriter, r *http.Request) {
 	if offset < 0 {
 		offset = 0
 	}
-	where := "d.group_id = ?"
+	where := "d.group_id = ? AND d.file_path IS NOT NULL AND d.file_path<>''"
 	args := []any{req.GroupID}
 	typeMap := map[string]string{
 		"images": "photo", "videos": "video", "documents": "document", "audio": "audio",
