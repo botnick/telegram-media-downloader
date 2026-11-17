@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.1] — 2026-11-18
+
+### Fixed
+- **A full forward queue no longer drops jobs.** An auto-forward or manual forward added while `advanced.forwarder.queueSize` jobs were waiting was recorded as failed; it now waits as pending and is picked up once the backlog drains, the way direct scan jobs already did.
+- **No resend after a restart in the middle of a send.** When the server stopped while a destination was being sent, the job became "interrupted", and Retry could send that destination a second time. That destination is now marked uncertain, so an operator confirms or resends it on purpose.
+
+### Added
+- **Building on small hosts.** The Dockerfile accepts optional `GO_BUILD_JOBS`, `GO_BUILD_MAXPROCS` and `GO_BUILD_MEMLIMIT` build arguments so the image can be compiled on a 1–2 GiB Raspberry Pi, and caches Go modules and build output between builds. Defaults are unchanged. `docker-compose.yml` now passes `GOMEMLIMIT`, `TGDL_DOWNLOAD_THREADS` and `FASTSTART_CONCURRENCY` from `.env` (empty keeps the built-in defaults), and `.env.example` has a small-host block. See `docs/LOW-MEMORY-BUILDS.md`. Contributed by Zacky Achmad ([@zckyachmd](https://github.com/zckyachmd)).
+
+### Documentation
+- New forward queue guide (`docs/GO-FORWARD-QUEUE.md`); auto-forward settings, `advanced.forwarder` keys and the forward queue API are documented in CONFIGURATION.md and API.md; README, FEATURES and the project site describe forwarding, processing history and Indonesian, and thank the contributor.
+- Service worker cache version `v35100`.
+
 ## [3.5.0] — 2026-11-18
 
 Forwarding work contributed by **Zacky Achmad ([@zckyachmd](https://github.com/zckyachmd))** in #116 and #117, ported onto 3.4.19 and finished here. Thank you!

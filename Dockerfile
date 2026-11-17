@@ -5,11 +5,28 @@ FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS build
 ARG TARGETOS=linux
 ARG TARGETARCH
 ARG TARGETVARIANT
+# Optional limits for building on a small host (a 1-2 GiB Raspberry Pi can
+# run out of memory compiling github.com/gotd/td/tg). Empty keeps Go's
+# defaults; see docs/LOW-MEMORY-BUILDS.md.
+#   docker build --build-arg GO_BUILD_JOBS=1 --build-arg GO_BUILD_MAXPROCS=2 \
+#     --build-arg GO_BUILD_MEMLIMIT=1536MiB .
+ARG GO_BUILD_JOBS=
+ARG GO_BUILD_MAXPROCS=
+ARG GO_BUILD_MEMLIMIT=
 WORKDIR /src
+# Modules download in their own layer, so a source-only change does not fetch
+# the dependency graph again. The caches are BuildKit's, never in the image.
+COPY core-service/go.mod core-service/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    go mod download
 COPY core-service/ ./
-RUN GOARM_V="${TARGETVARIANT#v}"; \
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    GOARM_V="${TARGETVARIANT#v}"; \
+    if [ -n "$GO_BUILD_MAXPROCS" ]; then export GOMAXPROCS="$GO_BUILD_MAXPROCS"; fi; \
+    if [ -n "$GO_BUILD_MEMLIMIT" ]; then export GOMEMLIMIT="$GO_BUILD_MEMLIMIT"; fi; \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${GOARM_V:-7} \
-    go build -trimpath -ldflags "-s -w" -o /out/tgdl-server ./cmd/tgdl-server
+    go build ${GO_BUILD_JOBS:+-p "$GO_BUILD_JOBS"} -trimpath -ldflags "-s -w" -o /out/tgdl-server ./cmd/tgdl-server
 
 FROM scratch AS binaries
 COPY --from=build /out/tgdl-server /tgdl-server

@@ -330,6 +330,12 @@ again after 1 h, 6 h and 24 h. Pick another destination or give the account
 posting rights. Failed uploads are also shown as `forward_error` events and in
 the server log (`AutoForward:`).
 
+Then open **Queue → Forward**. Jobs wait there while the monitor is stopped
+or the forward queue is paused, and after a Telegram FloodWait until the wait
+is over. A job marked *uncertain* is never resent by itself: check the
+destination, then choose *Confirm sent* or *Resend*. See
+[Forward queue](GO-FORWARD-QUEUE.md).
+
 ### Faces, NSFW scores or hover previews don't appear for new files
 
 Hover previews are built by the server when `advanced.seekbar.enabled` is on

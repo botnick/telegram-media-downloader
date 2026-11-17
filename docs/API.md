@@ -164,20 +164,38 @@ Deleted, restricted and unreachable chats.
 
 | Method | Path | Access | Notes |
 |---|---|---|---|
-| `GET` | `/api/queue/snapshot` | Guest | Current download queue. |
+| `GET` | `/api/queue/snapshot` | Guest | Current download queue. For an admin session it also carries `forwardQueue`, the first page of the [forward queue](#forward-queue). |
 | `POST` | `/api/queue/{key}/pause` | Admin | Pause one item. |
 | `POST` | `/api/queue/{key}/resume` | Admin | Resume one item. |
 | `POST` | `/api/queue/{key}/cancel` | Admin | Cancel one item. |
 | `POST` | `/api/queue/{key}/retry` | Admin | Retry one failed item. |
 | `POST` | `/api/queue/batch` | Admin | Apply one action to several items. |
-| `POST` | `/api/queue/pause-all` | Admin | Pause everything. |
-| `POST` | `/api/queue/resume-all` | Admin | Resume everything. |
+| `POST` | `/api/queue/pause-all` | Admin | Pause everything, the forward queue included. |
+| `POST` | `/api/queue/resume-all` | Admin | Resume everything, the forward queue included. |
 | `POST` | `/api/queue/cancel-all` | Admin | Cancel everything. |
 | `POST` | `/api/queue/retry-all` | Admin | Retry all failed items. |
 | `POST` | `/api/queue/clear-finished` | Admin | Clear finished items. |
 | `GET` | `/api/jobs` | Admin | Background jobs on the durable work queue. |
 | `GET` | `/api/jobs/{id}` | Admin | One job. |
 | `POST` | `/api/jobs/{id}/cancel` | Admin | Cancel a job. |
+
+## Forward queue
+
+Durable forward jobs (3.5.0 and later); how they move between states is in
+[Forward queue](GO-FORWARD-QUEUE.md). All routes are admin-only. Changes are
+announced with the `forward_queue_changed` WebSocket event.
+
+| Method | Path | Access | Notes |
+|---|---|---|---|
+| `GET` | `/api/forward-queue` | Admin | `?page=N` (50 jobs per page). Returns counts (`total`, `pending`, `active`, `forwarded`, `failed`, `interrupted`, `uncertain`, `notApplicable`), `paused`, `workerStatus` (`running` or `paused`), `concurrency`, `capacity`, `intervalSec`, `page`, `pageSize`, `hasMore`, `items` (pending, running, uncertain, failed and interrupted jobs) and `recent` (the last 10 forwarded). Each job has `id`, `groupId`, `groupName`, `messageId`, `fileName`, `topicId`, `destinations`, `destinationStates` (per destination: `settings`, `status`, `method`, `reason`, `fallbackReason`, `directFailed`, `destinationMessageId`), `stage`, `status`, `reason`, `attempts`, `retryAt` and `createdAt` (unix ms). |
+| `POST` | `/api/forward-queue` | Admin | Forward library items: `{ids: [...]}` (download IDs) or `{paths: [...]}`, 1–100 completed downloads, plus `destination` (required) and an optional `caption`. Items already pending, running, forwarded or uncertain for that destination are skipped. `202 {success, queued, skipped}`. `409` when the source chat has no forward account. |
+| `POST` | `/api/forward-queue/backfill` | Admin | Forward a chat's earlier downloads: `{groupId, destination, caption, beforeMessageId, limit}` (`limit` 1–100, default 50; newest first, below `beforeMessageId` when set). `202 {success, scanned, queued, skipped, nextBeforeMessageId, hasMore}`; pass `nextBeforeMessageId` back to continue. |
+| `POST` | `/api/forward-queue/pause` | Admin | Pause forwarding only. `{success, bucket: "forward", paused: true}`. |
+| `POST` | `/api/forward-queue/resume` | Admin | Resume forwarding. `{success, bucket: "forward", paused: false}`. |
+| `POST` | `/api/forward-queue/retry-all` | Admin | Return every `failed` and `interrupted` job to the queue (never `uncertain` ones). `{success, retried}`. |
+| `POST` | `/api/forward-queue/{id}/retry` | Admin | Retry one `failed` or `interrupted` job with a fresh attempt count. `409` for any other state. |
+| `POST` | `/api/forward-queue/{id}/reconcile` | Admin | Settle an `uncertain` job: `{action: "sent"}` marks its uncertain destinations forwarded; `{action: "resend", confirmDuplicateRisk: true}` queues them again. Optional `destinationIndex` limits it to one destination. Audited. Returns `{success, status, warning}`; `409` when the job is not uncertain. |
+| `PUT` | `/api/forwarding/default-protection` | Admin | `{protect: true}` or `{protect: false}`: the default for protected forwarded copies (`forwarding.protect`). `{success}`. |
 
 ## History backfill
 
@@ -259,6 +277,7 @@ Long tasks start with a `POST` and report progress through their `…/status` ro
 | `GET` | `/api/maintenance/logs` | Admin | Log files. |
 | `GET` | `/api/maintenance/logs/recent` | Admin | Recent log lines. |
 | `GET` | `/api/maintenance/logs/download` | Admin | Download a log file. |
+| `GET` | `/api/maintenance/processing-history` | Admin | Processing history: `?groupId=&limit=&offset=` (`limit` default 100, at most 500). Returns `stats` (`attempts`, `downloaded`, `reused`, `duplicates`, `failed`, `forwarded`, `forwardFailed`, `deleted`, `deleteFailed`, `uniqueFiles`), `items` (`id`, `groupId`, `groupName`, `messageId`, `fileName`, `fileSize`, `origin`, `outcome`, `reason`, `forwardStatus`, `forwardReason`, `deleteStatus`, `deleteReason`, `localDeleted`, `createdAt`), `groups` (`id`, `name`), `total`, `limit`, `offset`. Kept for 30 days and at most 200,000 attempts. |
 | `DELETE` | `/api/purge/all` | Admin | Factory reset. Body must be `{"confirm": "DELETE ALL"}`. |
 | `GET` | `/api/purge/all/status` | Admin | Progress of the reset. |
 
@@ -456,7 +475,7 @@ Connect to `ws://<host>:3000/ws` (or `wss://` behind TLS). An upgrade on `/` is 
 | Rescue | `rescued`, `rescue_sweep_done` |
 | Backup (admin sockets only) | `backup_progress`, `backup_done`, `backup_error`, `backup_queue_drained`, `backup_destination_added`, `backup_destination_updated`, `backup_destination_removed`, `log` |
 | Cluster | `peer_catalog_update`, `cluster_sweep_progress`/`_done` |
-| Auto-forward and TTL | `forward_error`, `monitor_download` (self-destructing media queued) |
+| Auto-forward and TTL | `forward_error`, `forward_queue_changed` (no payload; reload `/api/forward-queue`), `processing_history_changed` (admin, at most once a second), `monitor_download` (self-destructing media queued) |
 | NSFW | `nsfw_progress`, `nsfw_done`, `nsfw_bulk_progress`/`_done`, `nsfw_model_downloading`, `nsfw_blocklist_deleted` |
 | Seekbar | `seekbar_progress`/`_done`, `seekbar_rebuild_progress`/`_done`, `seekbar_sprite_ready` |
 | Faces | `ai_faces_status`, `ai_people_progress`/`_done`, `quality_backfill_progress`/`_done` |

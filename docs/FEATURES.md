@@ -13,12 +13,13 @@ group, forum topic and private chat that account can read. Everything runs on
 your machine in one `tgdl-server` process with the dashboard built in; face
 recognition and NSFW scoring use optional companion containers.
 
-This page lists what the current 3.x release (3.4) does. Detailed guides:
+This page lists what the current 3.x release (3.5) does. Detailed guides:
 
 | Guide | What it covers |
 |---|---|
 | [Backup](BACKUP.md) | Local, S3, SFTP, FTP/FTPS, Google Drive and Dropbox destinations, encrypted archives, offline restore |
 | [Cluster mode](CLUSTER.md) | Pairing several instances into one library |
+| [Forward queue](GO-FORWARD-QUEUE.md) | How forwards are queued, retried, paced and recovered after a restart |
 | [AI: faces, NSFW and previews](AI.md) | Seekbar previews, the `tgdl-nsfw` and `tgdl-faces` sidecars |
 | [API reference](API.md) | HTTP and WebSocket endpoints of the dashboard |
 
@@ -46,14 +47,35 @@ This page lists what the current 3.x release (3.4) does. Detailed guides:
 - **Stories**: list and download a user's Stories by username.
 - **Self-destructing (TTL) media** jumps to the front of the queue so it is
   saved before it expires; its timer is stored with the download.
-- **Auto-forward** (per chat, **Forward to** in the chat's page): each newly
-  downloaded file is re-uploaded to a destination, `me` (Saved Messages), a
-  chat ID, `@username`, a `t.me` link or the "Telegram Downloader Storage"
-  channel, with a caption linking the source post. A **Forward account** can
-  be chosen per chat. Uploads go through the account's flood guard and never
-  hold up downloads. A destination that refuses posts is paused and checked
-  again after 1 h, 6 h and 24 h. **Delete after forward** removes only the
-  local copy, never anything on Telegram.
+- **Auto-forward** (per chat, **Forward to** in the chat's page): new files
+  go to one or more destinations, `me` (Saved Messages), a chat ID,
+  `@username`, a `t.me` link or the "Telegram Downloader Storage" channel. A
+  **Forward account** can be chosen per chat. Forwarding never holds up
+  downloads. A destination that refuses posts is paused and checked again
+  after 1 h, 6 h and 24 h. **Delete after forward** removes only the local
+  copy, never anything on Telegram. Details in [Forward queue](GO-FORWARD-QUEUE.md)
+  and [Configuration](CONFIGURATION.md#auto-forward).
+  - **Durable forward queue**: jobs are saved in the database and survive
+    restarts. The Queue page's Forward view shows each destination's state,
+    with retry, retry all, reconcile and pause/resume. A failing job is tried
+    3 times; 1–5 workers run with a minimum gap between starts.
+  - **FloodWait protection**: a FloodWait closes a per-account gate that
+    every forward worker respects and that persists across restarts; the job
+    is retried after the wait instead of failing.
+  - **Forum topics and several destinations**: routes from a source topic
+    (or all topics) to a destination chat and topic, up to 100 per chat.
+  - **Direct forward**: Telegram's native forward is tried first, with an
+    upload as fallback. The **direct scan route** forwards new and backfilled
+    messages without downloading them, or forwards and downloads both.
+  - **Protected copies** (no forwarding or saving in the destination) by
+    default or per chat, and **custom captions** with variables and an
+    optional regex, edited after a native forward.
+  - **Uncertain deliveries are never resent automatically**: when Telegram's
+    answer is lost, the job waits for an operator to confirm it was sent or
+    to resend it knowingly. A job stopped before anything was sent goes back
+    to the queue on its own.
+  - **Forward download history** and manual forwards of library items use
+    the same queue.
 - **Several accounts**: add more than one Telegram account and pin a chat to
   the account that should read it.
 - **Proxies**: SOCKS5, SOCKS4, HTTP and MTProxy, used by sign-in, live updates
@@ -106,7 +128,8 @@ This page lists what the current 3.x release (3.4) does. Detailed guides:
 - Live queue with progress, speed and ETA.
 - **Share links**: signed, expiring and revocable links that open without a
   login.
-- Installable **PWA**, dark and light theme, **English and Thai**.
+- Installable **PWA**, dark and light theme, **English, Thai and
+  Indonesian**.
 - Ctrl+K palette to jump to any page, setting or chat.
 
 ## AI (optional)
@@ -163,6 +186,10 @@ Details and setup: [AI: faces, NSFW and previews](AI.md).
   deletes files, and skips pruning when the downloads folder is unreadable or
   more than half of the library looks missing (an unmounted disk); Verify
   files still prunes on request.
+- **Processing history** (Maintenance → Logs): every download attempt with
+  its outcome, duplicate skips, the forward result and local cleanup, with
+  totals and a per-chat filter. Kept for 30 days and at most 200,000
+  attempts.
 - **Prometheus metrics** at `/metrics`: loaded accounts, active downloads,
   queue size, workers and process memory (`TGDL_METRICS_TOKEN` protects it).
 - Sign out every browser at once.
@@ -198,7 +225,8 @@ do them. Saved settings are kept, so nothing is lost if they return.
   [Cluster mode](CLUSTER.md#limitations).
 - **Backups**: in-dashboard restore (restore is offline with
   `tgdl-server backup-restore`). See [Backup](BACKUP.md#limits-and-whats-not-in-3x).
-- **Live log viewer**: Maintenance → Logs only browses log files left by 2.x;
-  3.x logs to standard output (`docker compose logs`).
+- **Live log viewer**: Maintenance → Logs only browses log files left by 2.x
+  (and shows the processing history); 3.x logs to standard output
+  (`docker compose logs`).
 - The `rateLimits` and `pollingInterval` settings are stored but have no
   effect.

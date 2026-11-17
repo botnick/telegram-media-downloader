@@ -36,6 +36,10 @@ services:
       # Optional NSFW sidecar (tgdl-nsfw service below). Empty = not used.
       - TGDL_NSFW_SIDECAR_URL=${TGDL_NSFW_SIDECAR_URL:-}
       - TGDL_NSFW_API_TOKEN=${TGDL_NSFW_API_TOKEN:-}
+      # Small hosts (see .env.example). Empty keeps the built-in defaults.
+      - GOMEMLIMIT=${GOMEMLIMIT:-}
+      - TGDL_DOWNLOAD_THREADS=${TGDL_DOWNLOAD_THREADS:-}
+      - FASTSTART_CONCURRENCY=${FASTSTART_CONCURRENCY:-}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       # The autoheal service restarts the container if it stops answering.

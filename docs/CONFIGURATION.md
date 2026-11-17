@@ -20,7 +20,8 @@ port to listen on and how to sit behind a proxy.
 | **Settings → Downloads** | Concurrent downloads (1–50, the starting point of the [adaptive concurrency](#advanced-settings)), attempts per file (1–20, counting the first), bandwidth limit (0 = unlimited) |
 | **Settings → Downloads** (disk) | Library size cap (`maxTotalSize`) and **Auto-rotate when full**, see [disk rotation](#advanced-settings) |
 | **Settings** (other sections) | Proxy (SOCKS5, SOCKS4, HTTP, MTProxy), dashboard and guest passwords, share links, CSP and HTTPS policy, rescue mode, appearance |
-| **Chats → a chat** | Monitor on/off, media types, senders, forum topics, which account reads it, **Forward to** (auto-forward destination, forward account, delete after forward) |
+| **Settings → Forward protection** | Protect forwarded copies by default (`forwarding.protect`); a chat can override it |
+| **Chats → a chat** | Monitor on/off, media types, senders, forum topics, which account reads it, **Forward to** (routes and destinations, captions, protection, direct forward, scan route, forward account, delete after forward; see [Auto-forward](#auto-forward)) |
 | **Maintenance** | Updates, database tools, logs, sessions, cluster pairing and sweep, seekbar previews, NSFW review |
 | **Safety & AI** | Face recognition and its sidecar, see [AI](AI.md) |
 | **Backup** | Destinations and schedules, see [Backup](BACKUP.md) |
@@ -46,12 +47,47 @@ the range are clamped when saved.
 | `diskManagement.sweepIntervalMin` | `10` (1–1440) | Minutes between rotation sweeps. The first sweep runs 5 s after start or a settings change. |
 | `advanced.diskRotator.maxDeletesPerSweep` | `5000` | Most downloads one sweep may delete. |
 | `advanced.integrity.intervalMin` | `60` (at least 60 is used) | Minutes between integrity sweeps, which drop catalog rows whose file is missing. Never deletes files; skips pruning when more than half of the library looks missing. |
+| `advanced.forwarder.concurrency` | `1` (1–5) | Forward jobs running at once. Higher values send several files at once and make Telegram FloodWaits more likely. |
+| `advanced.forwarder.queueSize` | `256` (1–10000) | Most pending and running forward jobs. A job added over it waits as pending and is picked up once the backlog drains. |
+| `advanced.forwarder.intervalSec` | `1` (0–3600) | Smallest gap in seconds between two forward starts across all workers; `0` adds no delay. Also set from the Queue page. |
+| `advanced.forwarder.floodWaitAttempts` | `3` (1–10) | Sends of one upload while Telegram keeps answering with a FloodWait, before the job is put back in the queue until the wait is over. |
 | `advanced.seekbar.*`, `advanced.nsfw.*`, `advanced.ai.*` | | See [AI](AI.md#settings). |
 
-Auto-forward is set per chat in its `autoForward` block (`enabled`,
-`destination`, `deleteAfterForward`) plus `forwardAccount`; the destination is
-`me`, a chat ID, `@username`, a `t.me` link, or empty for the "Telegram
-Downloader Storage" channel. See [Features](FEATURES.md#downloading).
+## Auto-forward
+
+Auto-forward is set per chat (**Chats → a chat → Forward to**) and stored in
+the chat's `autoForward` block, plus `forwardAccount`, the account that
+sends. How jobs are queued, retried and recovered is described in
+[Forward queue](GO-FORWARD-QUEUE.md).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Forward this chat's new files. |
+| `routes` | | List of destinations, at most 100 (see below). Saved by the dashboard; one message can go to several destinations. |
+| `destination` / `destinationGroupId` | | Single destination of a rule saved without `routes` (older rules). A rule that names no destination and has no `routes` keeps forwarding to the "Telegram Downloader Storage" channel, as before. |
+| `captionMode` | `source` | Caption for every route that does not set its own: `source` (the source caption as it is), `none` (no caption) or `custom`. `source_info` (source caption plus source info) and the older `override` and `regex` are saved as `custom`. A rule saved before captions were configurable keeps the 2.x caption: the source caption and a link to the source post. |
+| `captionBase` | `source` | For `custom`: start from the source caption (`source`) or from `caption` (`custom`). |
+| `caption` | | Custom caption text, at most 4096 bytes. Variables: `{{source_caption}}`, `{{source_name}}`, `{{source_id}}`, `{{message_id}}`, `{{source_info}}`, `{{source_link}}`. |
+| `regexPattern`, `regexReplacement` | | Optional find-and-replace on a `custom` caption (Go regular expression; the replacement may use the variables). |
+| `protect` | follows `forwarding.protect` | `true`/`false` (or `on`/`off`): protected copies cannot be forwarded or saved in the destination. Unset follows the global **Forward protection** setting. A protected copy is always uploaded, so it turns `directForward` off. |
+| `directForward` | `false` | Try Telegram's native forward first. If Telegram rejects it, the local file is uploaded, or the source is downloaded and uploaded when there is no local file. |
+| `scanRoute` | `download` | What the live monitor and backfills do with a new message: `download` (download it; auto-forward runs after the download), `direct` (queue it for forwarding without downloading it) or `both` (queue the direct forward and download it too; the download does not forward it a second time). Needs `enabled`. |
+| `deleteAfterForward` | `false` | Delete the local copy after every destination received the file. Only the local file is removed, never anything on Telegram. |
+
+Each entry of `routes` has:
+
+| Key | Meaning |
+|---|---|
+| `sourceTopicId` | Forum topic of the source chat, or `0` for all topics. A route for the message's own topic wins; an all-topics route still applies to destinations that topic route does not cover. One destination per source topic. |
+| `destinationGroupId` | `me` (Saved Messages), `storage` (the "Telegram Downloader Storage" channel), a chat ID, `@username` or `t.me` link. A route without it is dropped. |
+| `destinationTopicId` | Forum topic to post into, `0` for none. |
+| `captionMode` | `inherit` (use the chat's caption settings) or one of the modes above, with the same `captionBase`, `caption`, `regexPattern` and `regexReplacement` keys. |
+
+Any caption other than `source` normally needs an upload. With
+`directForward` or a direct scan route, the message is forwarded natively
+instead, without its caption (`none`) or with the caption edited afterwards
+(`custom`); protected copies are always uploaded. Changing a rule affects
+only jobs queued after the change.
 
 ## Environment variables
 

@@ -212,3 +212,43 @@ func TestProcessingHistoryPrunerKeepsRecentAndForwardLinkedRows(t *testing.T) {
 		t.Fatalf("removed=%d kept=%d total=%d", removed, left, total)
 	}
 }
+
+// An auto-forward added while the queue is at capacity waits its turn
+// instead of being recorded as failed.
+func TestFullForwardQueueDefersAutoForward(t *testing.T) {
+	ctx := context.Background()
+	a, _ := forwardTestApp(t, map[string]any{"enabled": true, "destination": "@Archive"})
+	now := time.Now().UnixMilli()
+	for messageID := 1; messageID <= 256; messageID++ {
+		if _, err := a.db.Writer.ExecContext(ctx, `INSERT INTO tgdl_forward_queue(group_id,message_id,status,created_at,updated_at) VALUES('-1000000000999',?,'pending',?,?)`, messageID, now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.queueForward(forwardJob{groupID: "-1000000000123", groupName: "Source", messageID: 40, settings: map[string]any{"enabled": true, "destination": "@Archive"}, stage: "available"})
+	var status, reason string
+	var retryAt int64
+	if err := a.db.Reader.QueryRow(`SELECT status,reason,retry_at FROM tgdl_forward_queue WHERE group_id='-1000000000123' AND message_id=40`).Scan(&status, &reason, &retryAt); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" || reason == "" || retryAt <= now {
+		t.Fatalf("overflow status=%q reason=%q retryAt=%d", status, reason, retryAt)
+	}
+}
+
+// A destination still being sent when the server stops may have reached
+// Telegram, so the job needs an operator decision rather than a plain retry.
+func TestShutdownMidSendMarksDestinationUncertain(t *testing.T) {
+	a, _ := forwardTestApp(t, map[string]any{"enabled": true, "destination": "@Archive"})
+	destinations := []forwardDestination{
+		{Settings: map[string]any{"destination": "@Done"}, Status: "forwarded"},
+		{Settings: map[string]any{"destination": "@Archive"}, Status: "processing"},
+	}
+	id := insertForwardRow(t, a, 41, "processing", destinations)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	a.forward(ctx, forwardJob{queueID: id, groupID: "-1000000000123", groupName: "Source", messageID: 41, settings: map[string]any{"enabled": true, "destination": "@Archive"}, stage: "native_forward", destinations: destinations})
+	status, states := forwardRowState(t, a, id)
+	if status != "uncertain" || states[0].Status != "forwarded" || states[1].Status != "uncertain" {
+		t.Fatalf("status=%q destinations=%+v", status, states)
+	}
+}

@@ -173,30 +173,18 @@ func (a *App) queueForward(job forwardJob) {
 		a.forwardFailed(job, "", err)
 		return
 	}
+	// A full queue defers the job instead of failing it, like a direct scan:
+	// it is kept and picked up once the backlog drains.
+	reason, retryAt := "", int64(0)
 	if queued >= queueLimit {
-		now := time.Now().UnixMilli()
-		reason := "auto-forward queue is full"
-		err = tx.QueryRowContext(ctx, `INSERT INTO tgdl_forward_queue(history_id,group_id,group_name,message_id,file_name,topic_id,caption,record_id,file_path,facts_json,forward_config_json,destinations_json,status,reason,stage,created_at,updated_at,completed_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'failed',?,'enqueue',?,?,?) RETURNING id`, job.historyID, job.groupID, job.groupName, job.messageID, job.fileName, job.topicID, job.text, job.recordID, job.path, string(facts), string(forwardConfig), string(destinationsJSON), reason, now, now, now).Scan(&job.queueID)
-		if err == nil {
-			err = tx.Commit()
-		} else {
-			_ = tx.Rollback()
-		}
-		if err != nil {
-			a.forwardFailed(job, "", err)
-			return
-		}
-		a.forwardFailed(job, "", errors.New(reason))
-		a.notifyForwardQueue()
-		return
+		reason, retryAt = "forward queue capacity reached; deferred for automatic retry", time.Now().UnixMilli()+1000
 	}
 	now := time.Now().UnixMilli()
 	if job.fileName == "" && job.path != "" {
 		job.fileName = path.Base(job.path)
 	}
-	err = tx.QueryRowContext(ctx, `INSERT INTO tgdl_forward_queue(history_id,group_id,group_name,message_id,file_name,topic_id,caption,record_id,file_path,facts_json,forward_config_json,destinations_json,stage,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, job.historyID, job.groupID, job.groupName, job.messageID, job.fileName, job.topicID, job.text, job.recordID, job.path, string(facts), string(forwardConfig), string(destinationsJSON), job.stage, now, now).Scan(&job.queueID)
+	err = tx.QueryRowContext(ctx, `INSERT INTO tgdl_forward_queue(history_id,group_id,group_name,message_id,file_name,topic_id,caption,record_id,file_path,facts_json,forward_config_json,destinations_json,stage,reason,retry_at,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`, job.historyID, job.groupID, job.groupName, job.messageID, job.fileName, job.topicID, job.text, job.recordID, job.path, string(facts), string(forwardConfig), string(destinationsJSON), job.stage, reason, retryAt, now, now).Scan(&job.queueID)
 	if err != nil {
 		_ = tx.Rollback()
 		a.forwardFailed(job, "", err)
@@ -1498,6 +1486,14 @@ func (a *App) forward(ctx context.Context, job forwardJob) {
 		if ctx.Err() != nil {
 			status = "interrupted"
 			reason = ctx.Err().Error()
+			// A destination still marked as sending when the server stopped may
+			// have reached Telegram: never let a plain retry resend it.
+			for i := range job.destinations {
+				if job.destinations[i].Status == "processing" {
+					job.destinations[i].Status = "uncertain"
+					job.destinations[i].Reason = "server stopped while this destination was being sent"
+				}
+			}
 		}
 		if job.waitForEngine && ctx.Err() == nil {
 			status = "pending"

@@ -47,6 +47,7 @@
 | The same video forwarded everywhere | **Skips duplicates before downloading**, then confirms by SHA-256 |
 | Files scattered across devices | **Web dashboard and PWA** on any browser in your network |
 | Sharing a file with someone without an account | **Signed, expiring share links** you can revoke |
+| Copying new media to another chat or topic | **Auto-forward** through a durable queue that survives restarts and respects FloodWaits |
 | Keeping a copy somewhere else | **Backups** to a local disk, S3, SFTP, FTP/FTPS, Google Drive or Dropbox, optionally encrypted |
 
 ## Quick start
@@ -106,7 +107,12 @@ examples: [Install and deploy](docs/DEPLOY.md).
 - History backfill (pull older, catch up, rescan, optional date window) that
   resumes after a restart
 - `t.me/` message links, Telegram Stories and self-destructing (TTL) media
-- Auto-forward each new file to Saved Messages, a channel or a chat
+- Auto-forward new files to Saved Messages, channels, chats and forum topics,
+  several destinations per chat, through a durable queue that survives
+  restarts, waits out FloodWaits and never resends an uncertain delivery on
+  its own
+- Direct forwarding without downloading, protected copies and custom
+  captions
 - Several Telegram accounts; pin each chat to the account that reads it
 - SOCKS5, SOCKS4, HTTP and MTProxy proxies
 - Adaptive parallel downloads (scale between a minimum and maximum with the
@@ -120,7 +126,7 @@ examples: [Install and deploy](docs/DEPLOY.md).
 - Video player with MP4 faststart and seekbar hover previews; signed,
   expiring share links
 - Separate tab for deleted or inaccessible chats; leave dead chats in bulk
-- Installable PWA, dark and light theme, English and Thai
+- Installable PWA, dark and light theme, English, Thai and Indonesian
 
 **Operations**
 - One-click update from the dashboard (Docker + bundled watchtower), with a
@@ -131,6 +137,7 @@ examples: [Install and deploy](docs/DEPLOY.md).
   duplicate sweep
 - Optional disk rotation (deletes the oldest downloads over a size cap),
   periodic integrity sweep, database and file verification, recovery tools
+- Processing history of every download attempt and forward (30 days)
 - Prometheus `/metrics`; `FFMPEG_HWACCEL` hardware decoding for thumbnails
 
 **Security**
@@ -305,6 +312,7 @@ an offline restore command. See
 ฟรีและโอเพนซอร์ส ติดตั้งบนเครื่องหรือ NAS ของคุณเองด้วย Docker หรือไฟล์ Go ไฟล์เดียว
 ล็อกอินด้วยบัญชี Telegram ของคุณ จึงโหลดจากช่องส่วนตัวที่เป็นสมาชิกได้ เฝ้าแชตแบบเรียลไทม์
 ดึงข้อความย้อนหลังทั้งช่อง ข้ามไฟล์ซ้ำ และสำรองข้อมูลไป S3, Google Drive หรือ Dropbox ได้
+ส่งต่อไฟล์ใหม่ไปหลายแชตหรือหลาย topic ผ่านคิวที่ไม่หายเมื่อรีสตาร์ท
 หน้าเว็บจัดการมีภาษาไทย อ่านต่อที่[หน้าเว็บภาษาไทย](https://botnick.github.io/telegram-media-downloader/th/)
 
 ## Documentation
@@ -317,6 +325,7 @@ an offline restore command. See
 | [Features](docs/FEATURES.md) | Everything 3.x does and what is still missing |
 | [Backup](docs/BACKUP.md) | Local, S3, SFTP, FTP/FTPS, Google Drive, Dropbox, encryption, restore |
 | [Cluster mode](docs/CLUSTER.md) | Pairing several instances |
+| [Forward queue](docs/GO-FORWARD-QUEUE.md) | Auto-forward jobs, retries, FloodWait, restart recovery |
 | [AI: faces, NSFW and previews](docs/AI.md) | Seekbar previews and the face and NSFW sidecars |
 | [API reference](docs/API.md) | HTTP and WebSocket endpoints |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common problems and fixes |
@@ -336,6 +345,13 @@ make check   # gofmt, go vet, race tests
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Acknowledgements
+
+Thanks to **Zacky Achmad ([@zckyachmd](https://github.com/zckyachmd))** for
+the forwarding work in 3.5.0: the durable forward queue, FloodWait
+protection, forum topic routes, processing history and the Indonesian
+translation, and for the small-host build and Raspberry Pi guidance in 3.5.1.
 
 ## License
 
