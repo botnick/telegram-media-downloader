@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.3] — 2026-11-24
+
+### Fixed
+- **Re-posts of videos saved before 3.5.2 are recognised as duplicates again.** 3.5.2 relabels HEVC `hev1` videos on download, which changes their SHA-256. A re-post of a video already in the library from an earlier version no longer matched it and was saved a second time. Each relabelled download now also records the hash of Telegram's original bytes (`source_hash`), and duplicate detection checks both. It also matches when `TGDL_HEVC_HVC1=0` is set later.
+- **The NSFW hash blocklist covers relabelled videos.** Entries saved before 3.5.2 hold the original hash; a relabelled re-post is now still removed. Blocking a relabelled file adds both its hashes.
+
+### Changed
+- **The Docker image ships the same VA-API tools as 2.x**: `i965-va-driver` for older Intel iGPUs (amd64) next to `intel-media-va-driver`, and `vainfo` to check the driver with `docker exec <container> vainfo`. Suggested by [@eason102](https://github.com/eason102) in #120.
+- Database: new nullable `downloads.source_hash` column with a partial index, added automatically on start.
+- Service worker cache version `v35300`.
+
 ## [3.5.2] — 2026-11-24
 
 Contributed by **[@eason102](https://github.com/eason102)** in #119 and #120. Thank you!

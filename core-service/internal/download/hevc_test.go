@@ -89,3 +89,42 @@ func TestIngestLeavesNonMP4Untouched(t *testing.T) {
 		t.Fatal("non-MP4 file modified")
 	}
 }
+
+// A library file saved before relabelling existed keeps Telegram's original
+// bytes and hash. A later re-post of the same original is relabelled on
+// download, but must still be recognised as a duplicate of that older file.
+func TestRelabelledDownloadDeduplicatesAgainstPreRelabelFile(t *testing.T) {
+	library, _ := openTestLibrary(t, t.TempDir())
+	src := hev1Clip()
+	t.Setenv("TGDL_HEVC_HVC1", "0")
+	old, onDisk := ingestClip(t, library, "1", 1, src)
+	if !bytes.Equal(onDisk, src) {
+		t.Fatal("fixture: old file should keep the original bytes")
+	}
+	t.Setenv("TGDL_HEVC_HVC1", "1")
+	repost, _ := ingestClip(t, library, "2", 2, src)
+	if !repost.Reused || repost.Path != old.Path {
+		t.Fatalf("re-post of a pre-relabel file stored again: old=%+v repost=%+v", old, repost)
+	}
+}
+
+// The relabelled file records Telegram's original hash, so a later download
+// of the same original with relabelling switched off is still a duplicate.
+func TestRelabelledFileRemembersOriginalHash(t *testing.T) {
+	library, db := openTestLibrary(t, t.TempDir())
+	src := hev1Clip()
+	first, _ := ingestClip(t, library, "1", 1, src)
+	original := sha256.Sum256(src)
+	var source string
+	if err := db.Reader.QueryRow(`SELECT COALESCE(source_hash,'') FROM downloads WHERE id=?`, first.ID).Scan(&source); err != nil {
+		t.Fatal(err)
+	}
+	if source != hex.EncodeToString(original[:]) {
+		t.Fatalf("source_hash=%q", source)
+	}
+	t.Setenv("TGDL_HEVC_HVC1", "0")
+	second, _ := ingestClip(t, library, "2", 2, src)
+	if !second.Reused || second.Path != first.Path {
+		t.Fatalf("original bytes not matched to the relabelled file: first=%+v second=%+v", first, second)
+	}
+}

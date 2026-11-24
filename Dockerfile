@@ -43,10 +43,13 @@ ENV PORT=3000 \
 # `docker compose exec -u node` and GPU group alignment carry over.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini gosu ffmpeg ca-certificates wget \
-    # Intel iHD VA-API driver so FFMPEG_HWACCEL=vaapi works with /dev/dri on
-    # Intel iGPUs (Broadwell and newer). x86 only; harmless without a GPU.
+    # VA-API userland so FFMPEG_HWACCEL=vaapi works with /dev/dri, as in 2.x
+    # (#32): iHD for Intel Broadwell and newer, i965 for older Intel iGPUs
+    # (x86 only). vainfo lets operators check the driver with
+    # `docker exec <container> vainfo`. Harmless without a GPU.
+    && apt-get install -y --no-install-recommends vainfo \
     && if [ "$(dpkg --print-architecture)" = amd64 ]; then \
-         apt-get install -y --no-install-recommends intel-media-va-driver; \
+         apt-get install -y --no-install-recommends intel-media-va-driver i965-va-driver; \
        fi \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1000 node \

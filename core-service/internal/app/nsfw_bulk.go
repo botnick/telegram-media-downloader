@@ -283,6 +283,12 @@ func (a *App) nsfwBlocklistAdd(ctx context.Context, ids []int64, source string) 
 			SELECT file_hash, file_name, ?, ? FROM downloads WHERE file_hash IS NOT NULL AND file_hash <> '' AND id IN (`+placeholders(len(chunk))+`)`, args...); err != nil {
 			return err
 		}
+		// Also block Telegram's original bytes of a file changed on
+		// download, so a re-post is caught whether or not it is relabelled.
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO nsfw_hash_blocklist(file_hash, file_name, deleted_at, source)
+			SELECT source_hash, file_name, ?, ? FROM downloads WHERE source_hash IS NOT NULL AND source_hash <> '' AND id IN (`+placeholders(len(chunk))+`)`, args...); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

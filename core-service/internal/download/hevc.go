@@ -25,19 +25,19 @@ func HEVCRelabelEnabled() bool {
 // SHA-256, crash recovery and duplicate detection all describe the published
 // file. A file it cannot parse is published unchanged: playback compatibility
 // never fails a download.
-func relabelHEVC(f *os.File, digest hash.Hash) error {
+func relabelHEVC(f *os.File, digest hash.Hash) (bool, error) {
 	st, err := f.Stat()
 	if err != nil {
-		return nil
+		return false, nil
 	}
 	changed, _ := mp4tag.RelabelHEV1(f, st.Size())
 	if changed == 0 {
-		return nil
+		return false, nil
 	}
 	digest.Reset()
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return err
+		return true, err
 	}
 	_, err = io.Copy(digest, f)
-	return err
+	return true, err
 }

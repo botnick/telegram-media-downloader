@@ -439,9 +439,9 @@ func (a *App) nsfwAutoScan(ctx context.Context, job nsfwJob) error {
 		return nil
 	}
 	var row nsfwRow
-	var hash sql.NullString
+	var hash, sourceHash sql.NullString
 	var checked sql.NullInt64
-	err := a.db.Reader.QueryRowContext(ctx, `SELECT id, COALESCE(file_path,''), COALESCE(file_type,''), file_hash, nsfw_checked_at FROM downloads WHERE id = ?`, job.id).Scan(&row.id, &row.path, &row.fileType, &hash, &checked)
+	err := a.db.Reader.QueryRowContext(ctx, `SELECT id, COALESCE(file_path,''), COALESCE(file_type,''), file_hash, source_hash, nsfw_checked_at FROM downloads WHERE id = ?`, job.id).Scan(&row.id, &row.path, &row.fileType, &hash, &sourceHash, &checked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -460,8 +460,11 @@ func (a *App) nsfwAutoScan(ctx context.Context, job nsfwJob) error {
 		if sum == "" {
 			sum = a.nsfwHashFile(ctx, row)
 		}
+		// A file changed on download (HEVC relabel) is also matched by
+		// Telegram's original bytes, which older blocklist entries carry.
+		source := strings.ToLower(sourceHash.String)
 		var hit int
-		if sum != "" && a.db.Reader.QueryRowContext(ctx, `SELECT 1 FROM nsfw_hash_blocklist WHERE lower(file_hash) = ?`, sum).Scan(&hit) == nil {
+		if sum != "" && a.db.Reader.QueryRowContext(ctx, `SELECT 1 FROM nsfw_hash_blocklist WHERE lower(file_hash) IN (?, ?)`, sum, source).Scan(&hit) == nil {
 			if _, err := a.deleteRows(contextRequest(ctx), []int64{row.id}, nil); err != nil {
 				return err
 			}

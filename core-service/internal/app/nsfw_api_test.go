@@ -506,3 +506,37 @@ func TestNSFWScanScoresVideosFromSeekbarSprites(t *testing.T) {
 		t.Fatal("a video without a sprite stays unchecked for a later scan")
 	}
 }
+
+// Blocklist entries saved before HEVC relabelling carry Telegram's original
+// hash. A later re-post is relabelled on download (new file_hash) but keeps
+// the original as source_hash, and is still removed. Blocking a relabelled
+// file also blocks its original bytes.
+func TestNSFWBlocklistMatchesRelabelledDownloads(t *testing.T) {
+	h := newNSFWHarness(t, map[string]any{"enabled": true, "blocklistEnabled": true, "fileTypes": []any{"photo", "video"}})
+	client := h.a.hub.Add("admin")
+	defer h.a.hub.Remove(client)
+	if _, err := h.a.db.Writer.Exec(`INSERT INTO nsfw_hash_blocklist(file_hash,file_name,deleted_at,source) VALUES('originalhash','old.mp4',1,'test')`); err != nil {
+		t.Fatal(err)
+	}
+	h.addFile(5, "video", "repost.mp4", "data", "relabelledhash")
+	if _, err := h.a.db.Writer.Exec(`UPDATE downloads SET source_hash='originalhash' WHERE id=5`); err != nil {
+		t.Fatal(err)
+	}
+	h.a.queueNSFW(5, "-1_5")
+	if ev := waitEvent(t, client.Events(), "nsfw_blocklist_deleted").Payload.(map[string]any); ev["id"] != int64(5) {
+		t.Fatalf("blocklist event=%v", ev)
+	}
+
+	h.addFile(6, "video", "new.mp4", "data", "newrelabelled")
+	if _, err := h.a.db.Writer.Exec(`UPDATE downloads SET source_hash='neworiginal', nsfw_score=0.99, nsfw_checked_at=1 WHERE id=6`); err != nil {
+		t.Fatal(err)
+	}
+	if code, res := h.call(http.MethodPost, "/api/maintenance/nsfw/v2/bulk-delete", map[string]any{"ids": []any{6.0}, "confirm": true}); code != 200 || res["started"] != true {
+		t.Fatalf("bulk-delete %d %v", code, res)
+	}
+	waitEvent(t, client.Events(), "nsfw_bulk_done")
+	var n int
+	if err := h.a.db.Reader.QueryRow(`SELECT COUNT(*) FROM nsfw_hash_blocklist WHERE file_hash IN ('newrelabelled','neworiginal')`).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("blocklisted hashes=%d err=%v, want both the published and the original", n, err)
+	}
+}

@@ -175,8 +175,18 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 	// The per-transfer handoff owns exactly one identity; the durable library
 	// owns all cross-message coalescing and does not retain this temporary map.
 	m := NewManager(hashClient{client, digest}, telegram.NewDedupIndex())
+	// originalSum is the hash of Telegram's bytes when relabelling changed
+	// the file; older library copies of the same upload carry that hash.
+	var originalSum string
 	if HEVCRelabelEnabled() {
-		m.finalize = func(f *os.File) error { return relabelHEVC(f, digest) }
+		m.finalize = func(f *os.File) error {
+			before := hex.EncodeToString(digest.Sum(nil))
+			changed, err := relabelHEVC(f, digest)
+			if changed {
+				originalSum = before
+			}
+			return err
+		}
 	}
 	m.prepared = func() error {
 		_, err := l.writer.ExecContext(ctx, `UPDATE tgdl_ingest_files SET sha256=? WHERE path=?`, hex.EncodeToString(digest.Sum(nil)), filepath.ToSlash(relative))
@@ -209,7 +219,7 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 		return Record{}, err
 	}
 	defer contentRelease()
-	if record, found, err := l.existing(ctx, item, `d.file_hash=?`, sum); err != nil {
+	if record, found, err := l.existingByHash(ctx, item, sum, originalSum); err != nil {
 		return Record{}, err
 	} else if found {
 		record.SkipReason = "sha256_match"
@@ -221,7 +231,7 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 		}
 		return record, nil
 	}
-	if record, found, err := l.reuse(ctx, item, `d.file_hash=? AND d.file_size=?`, sum, item.Identity.Size); err != nil {
+	if record, found, err := l.reuseByHash(ctx, item, sum, originalSum); err != nil {
 		return Record{}, err
 	} else if found {
 		record.SkipReason = "sha256_match"
@@ -235,13 +245,46 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 		}
 		return record, nil
 	}
-	record, err := l.register(ctx, item, candidate{path: relative, sha256: sum, info: info, fingerprint: fingerprint}, false)
+	record, err := l.register(ctx, item, candidate{path: relative, sha256: sum, sourceSHA: originalSum, info: info, fingerprint: fingerprint}, false)
 	// A failed catalog commit intentionally leaves the completed file in place
 	// for recovery rather than claiming success or deleting downloaded data.
 	if err != nil {
 		return Record{}, fmt.Errorf("catalog registration failed for %s: %w", relative, err)
 	}
 	return record, nil
+}
+
+// existingByHash and reuseByHash match a catalog row by the published bytes
+// or by Telegram's original bytes (source_hash), for each given hash: the
+// download's own hash first, then its original when relabelling changed it.
+func (l *Library) existingByHash(ctx context.Context, item Item, sums ...string) (Record, bool, error) {
+	for _, sum := range sums {
+		if sum == "" {
+			continue
+		}
+		if record, found, err := l.existing(ctx, item, `d.file_hash=?`, sum); err != nil || found {
+			return record, found, err
+		}
+		if record, found, err := l.existing(ctx, item, `d.source_hash=?`, sum); err != nil || found {
+			return record, found, err
+		}
+	}
+	return Record{}, false, nil
+}
+
+func (l *Library) reuseByHash(ctx context.Context, item Item, sums ...string) (Record, bool, error) {
+	for _, sum := range sums {
+		if sum == "" {
+			continue
+		}
+		if record, found, err := l.reuse(ctx, item, `d.file_hash=? AND d.file_size=?`, sum, item.Identity.Size); err != nil || found {
+			return record, found, err
+		}
+		if record, found, err := l.reuse(ctx, item, `d.source_hash=? AND d.file_size=?`, sum, item.Identity.Size); err != nil || found {
+			return record, found, err
+		}
+	}
+	return Record{}, false, nil
 }
 
 type hashClient struct {
@@ -323,7 +366,10 @@ func (l *Library) destination(item Item) (string, error) {
 
 type candidate struct {
 	path, sha256, fingerprint string
-	info                      os.FileInfo
+	// sourceSHA is the hash of Telegram's bytes when the file was changed
+	// on download; empty otherwise.
+	sourceSHA string
+	info      os.FileInfo
 }
 
 var ErrSuperseded = errors.New("Telegram message was superseded by a later ingestion")
@@ -521,16 +567,16 @@ func (l *Library) register(ctx context.Context, item Item, media candidate, reus
 	inserted := errors.Is(err, sql.ErrNoRows)
 	var id int64
 	facts := item.Facts
-	err = tx.QueryRowContext(ctx, `INSERT INTO downloads(group_id,group_name,message_id,file_name,file_size,file_type,file_path,file_hash,telegram_media_kind,telegram_media_id,telegram_media_size,
+	err = tx.QueryRowContext(ctx, `INSERT INTO downloads(group_id,group_name,message_id,file_name,file_size,file_type,file_path,file_hash,source_hash,telegram_media_kind,telegram_media_id,telegram_media_size,
 		telegram_mime,media_width,media_height,media_duration_ms,forward_origin,telegram_thumb,ttl_seconds,status)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'completed') ON CONFLICT(group_id,message_id) DO UPDATE SET
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'completed') ON CONFLICT(group_id,message_id) DO UPDATE SET
 		group_name=excluded.group_name,file_name=excluded.file_name,file_size=excluded.file_size,file_type=excluded.file_type,
-		file_path=excluded.file_path,file_hash=excluded.file_hash,telegram_media_kind=excluded.telegram_media_kind,
+		file_path=excluded.file_path,file_hash=excluded.file_hash,source_hash=excluded.source_hash,telegram_media_kind=excluded.telegram_media_kind,
 		telegram_media_id=excluded.telegram_media_id,telegram_media_size=excluded.telegram_media_size,
 		telegram_mime=excluded.telegram_mime,media_width=excluded.media_width,media_height=excluded.media_height,
 		media_duration_ms=excluded.media_duration_ms,forward_origin=excluded.forward_origin,telegram_thumb=excluded.telegram_thumb,
 		ttl_seconds=COALESCE(excluded.ttl_seconds,ttl_seconds),status='completed' RETURNING id`,
-		item.GroupID, item.GroupName, item.MessageID, item.Name, item.Identity.Size, item.Type, filepath.ToSlash(media.path), media.sha256, item.Identity.Kind, item.Identity.ID, item.Identity.Size,
+		item.GroupID, item.GroupName, item.MessageID, item.Name, item.Identity.Size, item.Type, filepath.ToSlash(media.path), media.sha256, nullString(media.sourceSHA), item.Identity.Kind, item.Identity.ID, item.Identity.Size,
 		nullString(facts.Mime), nullInt(int64(facts.Width)), nullInt(int64(facts.Height)), nullInt(facts.DurationMs), nullString(facts.Origin), nullBytes(facts.Thumb), nullInt(int64(item.TTLSeconds))).Scan(&id)
 	if err != nil {
 		return Record{}, err

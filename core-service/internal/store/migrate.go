@@ -372,6 +372,9 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 	for _, column := range []struct{ name, kind string }{
 		{"telegram_mime", "TEXT"}, {"media_width", "INTEGER"}, {"media_height", "INTEGER"},
 		{"media_duration_ms", "INTEGER"}, {"forward_origin", "TEXT"}, {"telegram_thumb", "BLOB"},
+		// SHA-256 of Telegram's original bytes when the published file was
+		// changed on download (HEVC hev1 relabelled to hvc1); NULL otherwise.
+		{"source_hash", "TEXT"},
 	} {
 		var exists int
 		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('downloads') WHERE name=?`, column.name).Scan(&exists); err != nil {
@@ -382,6 +385,9 @@ func RunMigrations(ctx context.Context, db *sql.DB) (int, error) {
 				return 0, fmt.Errorf("add media fact %s: %w", column.name, err)
 			}
 		}
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_source_hash ON downloads(source_hash) WHERE source_hash IS NOT NULL`); err != nil {
+		return 0, err
 	}
 	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_media_facts ON downloads(file_type, media_duration_ms, media_width, media_height) WHERE media_width IS NOT NULL OR media_duration_ms IS NOT NULL`); err != nil {
 		return 0, err
