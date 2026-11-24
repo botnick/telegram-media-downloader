@@ -175,6 +175,9 @@ func (l *Library) Ingest(ctx context.Context, item Item, client Client) (Record,
 	// The per-transfer handoff owns exactly one identity; the durable library
 	// owns all cross-message coalescing and does not retain this temporary map.
 	m := NewManager(hashClient{client, digest}, telegram.NewDedupIndex())
+	if HEVCRelabelEnabled() {
+		m.finalize = func(f *os.File) error { return relabelHEVC(f, digest) }
+	}
 	m.prepared = func() error {
 		_, err := l.writer.ExecContext(ctx, `UPDATE tgdl_ingest_files SET sha256=? WHERE path=?`, hex.EncodeToString(digest.Sum(nil)), filepath.ToSlash(relative))
 		return err
