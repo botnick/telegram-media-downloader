@@ -26,6 +26,9 @@ type Manager struct {
 	Index  *telegram.DedupIndex
 	// prepared records durable recovery metadata after sync, before publication.
 	prepared func() error
+	// finalize may rewrite the synced partial file in place, keeping its
+	// size, before prepared runs and the file is published.
+	finalize func(*os.File) error
 }
 
 func NewManager(client Client, index *telegram.DedupIndex) *Manager {
@@ -164,6 +167,22 @@ func (m *Manager) transfer(ctx context.Context, identity telegram.MediaIdentity,
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if m.finalize != nil {
+		f, err := root.OpenFile(tmpName, os.O_RDWR, 0)
+		if err != nil {
+			return fmt.Errorf("reopen partial file: %w", err)
+		}
+		err = m.finalize(f)
+		if err == nil {
+			err = f.Sync()
+		}
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			return fmt.Errorf("finalize partial file: %w", err)
+		}
 	}
 	if m.prepared != nil {
 		if err := m.prepared(); err != nil {
