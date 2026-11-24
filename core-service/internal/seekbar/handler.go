@@ -223,13 +223,35 @@ func (h *Handler) resolveOutput(p string) (string, error) {
 	return output, nil
 }
 
+// decodeArgs returns the input options and video filter for one sprite.
+//
+// With VAAPI the frames stay on the GPU: the decoder hands surfaces straight
+// to scale_vaapi and only the scaled-down tiles are copied back for fps and
+// tile. Plain `-hwaccel vaapi` copies every full-size frame back to system
+// memory and scales it on the CPU, which on an Intel N100 is no faster than
+// software decoding. Other backends keep the copy-back path. If the GPU path
+// fails, Encode drops HWAccel and retries on the CPU.
+func decodeArgs(req request) ([]string, string) {
+	fps := "fps=1/" + formatFloat(req.Interval)
+	tile := fmt.Sprintf("tile=%dx%d", req.Cols, req.Rows)
+	switch hw := strings.ToLower(strings.TrimSpace(req.HWAccel)); {
+	case hw == "vaapi":
+		args := []string{"-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi"}
+		if device := strings.TrimSpace(os.Getenv("TGDL_VAAPI_DEVICE")); device != "" {
+			args = append(args, "-hwaccel_device", device)
+		}
+		return args, fmt.Sprintf("scale_vaapi=w=%d:h=-2:format=nv12,hwdownload,format=nv12,%s,%s", req.TileWidth, fps, tile)
+	case hwaccelAllow[hw]:
+		return []string{"-hwaccel", hw}, fmt.Sprintf("%s,scale=%d:-2:flags=fast_bilinear,%s", fps, req.TileWidth, tile)
+	default:
+		return nil, fmt.Sprintf("%s,scale=%d:-2:flags=fast_bilinear,%s", fps, req.TileWidth, tile)
+	}
+}
+
 func render(ctx context.Context, input, output string, req request) error {
 	_ = os.Remove(output)
-	filter := fmt.Sprintf("fps=1/%s,scale=%d:-2:flags=fast_bilinear,tile=%dx%d", formatFloat(req.Interval), req.TileWidth, req.Cols, req.Rows)
-	args := []string{"-hide_banner", "-loglevel", "error"}
-	if hw := strings.ToLower(strings.TrimSpace(req.HWAccel)); hwaccelAllow[hw] {
-		args = append(args, "-hwaccel", hw)
-	}
+	hwArgs, filter := decodeArgs(req)
+	args := append([]string{"-hide_banner", "-loglevel", "error"}, hwArgs...)
 	args = append(args, "-i", input, "-frames:v", "1", "-an", "-vf", filter)
 	if strings.EqualFold(req.Format, "webp") {
 		args = append(args, "-c:v", "libwebp", "-quality", strconv.Itoa(req.Quality), "-compression_level", "6", "-f", "webp")
@@ -256,10 +278,7 @@ func render(ctx context.Context, input, output string, req request) error {
 		_ = png.Close()
 		defer os.Remove(pngPath)
 		_ = os.Remove(output)
-		pngArgs := []string{"-hide_banner", "-loglevel", "error"}
-		if hw := strings.ToLower(strings.TrimSpace(req.HWAccel)); hwaccelAllow[hw] {
-			pngArgs = append(pngArgs, "-hwaccel", hw)
-		}
+		pngArgs := append([]string{"-hide_banner", "-loglevel", "error"}, hwArgs...)
 		pngArgs = append(pngArgs, "-i", input, "-frames:v", "1", "-an", "-vf", filter, "-f", "image2", "-y", pngPath)
 		if pngErr := runFFmpeg(ctx, pngArgs, req.FFmpeg); pngErr != nil {
 			return errors.Join(err, pngErr)

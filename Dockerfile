@@ -43,6 +43,11 @@ ENV PORT=3000 \
 # `docker compose exec -u node` and GPU group alignment carry over.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tini gosu ffmpeg ca-certificates wget \
+    # Intel iHD VA-API driver so FFMPEG_HWACCEL=vaapi works with /dev/dri on
+    # Intel iGPUs (Broadwell and newer). x86 only; harmless without a GPU.
+    && if [ "$(dpkg --print-architecture)" = amd64 ]; then \
+         apt-get install -y --no-install-recommends intel-media-va-driver; \
+       fi \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1000 node \
     && useradd --uid 1000 --gid 1000 --home-dir /app --create-home --shell /usr/sbin/nologin node
