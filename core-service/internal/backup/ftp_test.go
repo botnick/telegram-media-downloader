@@ -637,11 +637,15 @@ func TestFTPAutomaticEncryptedMirrorResumesAfterRestart(t *testing.T) {
 func TestFTPLowRateDoesNotExpireNetworkDeadlines(t *testing.T) {
 	f := newFixtureFTP(t, "control")
 	p := f.provider()
-	p.timeout = 100 * time.Millisecond
-	ctx := withUploadPacer(context.Background(), newUploadPacer(30))
+	// Each pacing wait (2 B/s, 1-byte chunks: 500 ms) is longer than the
+	// network timeout, so the upload only succeeds if waits do not count
+	// against deadlines. 250 ms still leaves real localhost round trips room
+	// on a slow CI runner; the old 100 ms timeout with ~100 ms waits raced.
+	p.timeout = 250 * time.Millisecond
+	ctx := withUploadPacer(context.Background(), newUploadPacer(2))
 	start := time.Now()
-	result, err := p.Upload(ctx, "slow", strings.NewReader(strings.Repeat("x", 40)), 40, nil)
-	if err != nil || result.Bytes != 40 {
+	result, err := p.Upload(ctx, "slow", strings.NewReader(strings.Repeat("x", 4)), 4, nil)
+	if err != nil || result.Bytes != 4 {
 		t.Fatal("pacing mistaken for timeout", result, err)
 	}
 	if time.Since(start) < time.Second {
