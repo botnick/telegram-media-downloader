@@ -113,6 +113,7 @@ ignored.
 | `FFMPEG_HWACCEL` | unset | Hardware video decoding for thumbnails and seekbar previews: `vaapi`, `qsv`, `cuda`, `videotoolbox`, `d3d11va` or `dxva2`. Overrides **Settings → Advanced**; a backend that fails on the host falls back to the CPU. |
 | `FASTSTART_CONCURRENCY` | `2` | Parallel MP4 faststart rewrites (max 8). |
 | `TGDL_DOWNLOAD_THREADS` | `4` | Parts of one file fetched at the same time (1–16). An account that gets a `FLOOD_WAIT` during a file drops to half for its next files and climbs back by one after 8 files without one. `1` fetches one part at a time, as before 3.4.15. |
+| `TGDL_HEVC_HVC1` | `1` | Renames the HEVC sample entry of new MP4 downloads from `hev1` to `hvc1` when the parameter sets are in the `hvcC` box, so Safari and every iOS browser can play them. Lossless: the file size and every sample stay the same. `0` keeps Telegram's bytes unchanged. |
 | `TGDL_VERIFY_CHUNKS` | `0` | `1` checks every part against Telegram's chunk hashes. It uses 128 KiB parts one at a time, so downloads are several times slower. |
 | `WATCHTOWER_URL` | unset (`http://watchtower:8080` in Compose) | Enables **Install update** through the watchtower sidecar. |
 | `WATCHTOWER_HTTP_API_TOKEN` | generated | Token shared with watchtower. When unset, it is generated once in `data/watchtower/api-token`. |

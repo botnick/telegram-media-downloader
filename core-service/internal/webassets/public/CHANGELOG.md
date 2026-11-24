@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **HEVC videos play in Safari and on iPhone/iPad.** Many HEVC uploads on Telegram label their video track `hev1`. Safari and every iOS browser (all of them use WebKit) refuse that label with *Error 4: playback failed*, while Chrome and VLC play the same file. New downloads now have the label renamed to `hvc1` when the stream's parameter sets are in its `hvcC` box. Only four bytes of metadata change: the size and every video and audio sample stay identical, the catalog SHA-256 describes the published file, and re-uploads of the same original are still recognised as duplicates. `TGDL_HEVC_HVC1=0` keeps Telegram's bytes untouched. Files downloaded before this release are not changed.
+
 ## [3.5.1] — 2026-11-18
 
 ### Fixed
