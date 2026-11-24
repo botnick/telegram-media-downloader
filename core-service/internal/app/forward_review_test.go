@@ -219,8 +219,10 @@ func TestFullForwardQueueDefersAutoForward(t *testing.T) {
 	ctx := context.Background()
 	a, _ := forwardTestApp(t, map[string]any{"enabled": true, "destination": "@Archive"})
 	now := time.Now().UnixMilli()
+	// 'processing' rows fill the queue without being claimed by the
+	// background workers, which would otherwise drain 'pending' fixtures.
 	for messageID := 1; messageID <= 256; messageID++ {
-		if _, err := a.db.Writer.ExecContext(ctx, `INSERT INTO tgdl_forward_queue(group_id,message_id,status,created_at,updated_at) VALUES('-1000000000999',?,'pending',?,?)`, messageID, now, now); err != nil {
+		if _, err := a.db.Writer.ExecContext(ctx, `INSERT INTO tgdl_forward_queue(group_id,message_id,status,stage,created_at,updated_at) VALUES('-1000000000999',?,'processing','capacity_fixture',?,?)`, messageID, now, now); err != nil {
 			t.Fatal(err)
 		}
 	}
