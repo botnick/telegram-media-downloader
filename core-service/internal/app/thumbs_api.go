@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/hash"
+	"github.com/botnick/telegram-media-downloader/core-service/internal/seekbar"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/thumbs"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/ws"
 )
@@ -391,25 +392,21 @@ func (a *App) buildOneThumb(ctx context.Context, row thumbRow) {
 	_ = os.Remove(tmp)
 }
 
-func (a *App) handleThumbHWAccel(w http.ResponseWriter, _ *http.Request) {
-	path, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		path = "ffmpeg"
+// handleThumbHWAccel lists the hardware decoders ffmpeg was built with and
+// the ones whose device opens on this host; recommended is the first of
+// those (vaapi, qsv, cuda, …) or null for CPU only.
+func (a *App) handleThumbHWAccel(w http.ResponseWriter, r *http.Request) {
+	path := seekbar.FFmpegPath()
+	if path == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"available": []string{}, "compiledIn": []string{}, "ffmpegPath": "ffmpeg", "recommended": nil})
+		return
 	}
-	compiled := []string{}
-	if out, runErr := exec.Command(path, "-hide_banner", "-hwaccels").Output(); runErr == nil {
-		known := map[string]bool{"vaapi": true, "cuda": true, "qsv": true, "videotoolbox": true, "d3d11va": true, "dxva2": true, "opencl": true, "vulkan": true}
-		for _, line := range strings.Split(string(out), "\n") {
-			line = strings.ToLower(strings.TrimSpace(line))
-			if known[line] && !containsString(compiled, line) {
-				compiled = append(compiled, line)
-			}
-		}
+	available, compiled := seekbar.ProbeHWAccel(r.Context())
+	var recommended any
+	if len(available) > 0 {
+		recommended = available[0]
 	}
-	// Keep the invariant required by the UI: available is a subset of the
-	// compiled list. Device initialization is host-specific, so the safe
-	// default is the empty verified set.
-	writeJSON(w, http.StatusOK, map[string]any{"available": []string{}, "compiledIn": compiled, "ffmpegPath": path, "recommended": nil})
+	writeJSON(w, http.StatusOK, map[string]any{"available": available, "compiledIn": compiled, "ffmpegPath": path, "recommended": recommended})
 }
 
 func containsString(values []string, target string) bool {

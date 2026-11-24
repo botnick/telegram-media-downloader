@@ -768,7 +768,8 @@ func (a *App) handleSeekbarHWAccel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"available": []string{}, "compiled": []string{}, "ffmpeg_path": "", "error": "ffmpeg is not installed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, a.seekbarHWAccel(r.Context()))
+	available, compiled := seekbar.ProbeHWAccel(r.Context())
+	writeJSON(w, http.StatusOK, map[string]any{"available": available, "compiled": compiled, "ffmpeg_path": seekbar.FFmpegPath()})
 }
 
 // handleSeekbarSidecarTest keeps the released validation answers; a valid URL

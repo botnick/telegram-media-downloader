@@ -353,6 +353,9 @@ the forwarding work in 3.5.0: the durable forward queue, FloodWait
 protection, forum topic routes, processing history and the Indonesian
 translation, and for the small-host build and Raspberry Pi guidance in 3.5.1.
 
+Thanks to **[@eason102](https://github.com/eason102)** for Safari and iOS
+playback of HEVC downloads and GPU seekbar previews with VA-API in 3.5.2.
+
 ## License
 
 [MIT](LICENSE). Not affiliated with Telegram. Uses the MTProto user API via

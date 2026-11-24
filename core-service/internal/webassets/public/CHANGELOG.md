@@ -2,13 +2,18 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.5.2] — 2026-11-24
+
+Contributed by **[@eason102](https://github.com/eason102)** in #119 and #120. Thank you!
 
 ### Fixed
 - **HEVC videos play in Safari and on iPhone/iPad.** Many HEVC uploads on Telegram label their video track `hev1`. Safari and every iOS browser (all of them use WebKit) refuse that label with *Error 4: playback failed*, while Chrome and VLC play the same file. New downloads now have the label renamed to `hvc1` when the stream's parameter sets are in its `hvcC` box. Only four bytes of metadata change: the size and every video and audio sample stay identical, the catalog SHA-256 describes the published file, and re-uploads of the same original are still recognised as duplicates. `TGDL_HEVC_HVC1=0` keeps Telegram's bytes untouched. Files downloaded before this release are not changed.
+
 ### Changed
 - **Seekbar previews use the GPU end to end with VA-API.** With `FFMPEG_HWACCEL=vaapi` (or `vaapi` in Settings → Advanced) each decoded frame used to be copied back to system memory and scaled on the CPU, which on an Intel N100 was no faster than software decoding. Frames now stay on the GPU through `scale_vaapi`, and only the small tiles are copied back. A 1080p HEVC clip on an N100 went from 141.8 s to 53.4 s. Other backends are unchanged, and a GPU failure still falls back to the CPU.
-- **The Docker image ships the Intel VA-API driver** (`intel-media-va-driver`, amd64), so VA-API can start inside the container once `/dev/dri` is passed through (QSV still fails on recent Intel GPUs because Debian's ffmpeg links the legacy Media SDK). Before, the hardware probe reported *CPU only* even with the device mounted.
+- **The Docker image ships the Intel VA-API driver** (`intel-media-va-driver`, amd64), so VA-API can start inside the container once `/dev/dri` is passed through (QSV still fails on recent Intel GPUs because Debian's ffmpeg links the legacy Media SDK).
+- **Run hardware probe tests the device.** Settings → Advanced → *Run hardware probe* used to list nothing as available on every host. It now opens each backend ffmpeg was built with (`-init_hw_device`, honouring `TGDL_VAAPI_DEVICE`) and lists only the ones that work, with the first as the recommendation. It also uses `FFMPEG_PATH` like the encoders do.
+- Service worker cache version `v35200`.
 
 ## [3.5.1] — 2026-11-18
 
