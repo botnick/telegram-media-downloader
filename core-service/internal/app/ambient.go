@@ -26,7 +26,12 @@ func (a *App) startAmbient() {
 	go func() { defer a.ambientWG.Done(); a.runClusterSync(a.ctx) }()
 	go func() { defer a.ambientWG.Done(); a.clusterSockets.run(a.ctx) }()
 	go func() { defer a.ambientWG.Done(); a.faces.run(a.ctx) }()
-	go func() { defer a.ambientWG.Done(); a.runForwards(a.ctx) }()
+	go func() {
+		defer a.ambientWG.Done()
+		if !a.manualForwards {
+			a.runForwards(a.ctx)
+		}
+	}()
 	go func() { defer a.ambientWG.Done(); a.runProcessingHistoryPruner(a.ctx) }()
 }
 

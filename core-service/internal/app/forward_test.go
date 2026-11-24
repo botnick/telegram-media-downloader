@@ -100,7 +100,17 @@ func eventually(t *testing.T, what string, check func() bool) {
 	}
 }
 
+// forwardTestApp starts an app whose background forward workers are off, so
+// the test drives the queue (claimForward, forward, the HTTP handlers) and
+// reads states no worker can change underneath it.
 func forwardTestApp(t *testing.T, autoForward map[string]any) (*App, *fakeForwarder) {
+	t.Helper()
+	return forwardTestAppWith(t, autoForward, Config{manualForwards: true})
+}
+
+// forwardTestAppWithWorkers runs the background forward workers, for tests
+// that wait (eventually) for the end-to-end result.
+func forwardTestAppWithWorkers(t *testing.T, autoForward map[string]any) (*App, *fakeForwarder) {
 	t.Helper()
 	return forwardTestAppWith(t, autoForward, Config{})
 }
@@ -166,6 +176,11 @@ func TestDirectScanQueueIsDurableIdempotentAndDoesNotCreateDownloadWork(t *testi
 	settings, accountID, ok := directScanSettings(cfg, "-1000000000123")
 	if !ok || accountID != "acct2" {
 		t.Fatalf("direct scan settings=%v account=%q ok=%v", settings, accountID, ok)
+	}
+	// Paused so the background workers cannot pick the job up and move
+	// it past the queued state this test inspects.
+	if err := a.setForwardQueuePaused(ctx, true); err != nil {
+		t.Fatal(err)
 	}
 	message := docMessage(712, 123, 991, "captured message")
 	if err := a.queueDirectScan(ctx, "-1000000000123", "Source", accountID, settings, cfg, message); err != nil {
@@ -498,6 +513,11 @@ func TestForwardRetryAndAmbiguousDeliverySurviveAppRestart(t *testing.T) {
 	if !ok {
 		t.Fatal("direct scan settings missing")
 	}
+	// Held until the restart so a background worker cannot claim the job
+	// before its retry time is set.
+	if err = a.setForwardQueuePaused(ctx, true); err != nil {
+		t.Fatal(err)
+	}
 	if err = a.queueDirectScan(ctx, "-1000000000123", "Source", accountID, settings, cfg, docMessage(741, 123, 995, "retry after restart")); err != nil {
 		t.Fatal(err)
 	}
@@ -512,11 +532,14 @@ func TestForwardRetryAndAmbiguousDeliverySurviveAppRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restarted, err := New(ctx, Config{DataDir: dataDir, Output: io.Discard})
+	restarted, err := New(ctx, Config{DataDir: dataDir, Output: io.Discard, manualForwards: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = restarted.Close() })
+	if err = restarted.setForwardQueuePaused(ctx, false); err != nil {
+		t.Fatal(err)
+	}
 	var status string
 	var persistedRetryAt int64
 	if err = restarted.db.Reader.QueryRowContext(ctx, `SELECT status,retry_at FROM tgdl_forward_queue WHERE message_id=741`).Scan(&status, &persistedRetryAt); err != nil {
@@ -557,6 +580,10 @@ func TestForwardRetryAndAmbiguousDeliverySurviveAppRestart(t *testing.T) {
 func TestForwardClaimReleasedWhenPacingDelayIsCancelled(t *testing.T) {
 	ctx := context.Background()
 	a, _ := forwardTestApp(t, map[string]any{"enabled": true, "destination": "@Archive"})
+	// Paused so the released job is not claimed again before it is checked.
+	if err := a.setForwardQueuePaused(ctx, true); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UnixMilli()
 	result, err := a.db.Writer.ExecContext(ctx, `INSERT INTO tgdl_forward_queue(group_id,message_id,status,attempts,created_at,updated_at) VALUES('-1000000000123',722,'processing',2,?,?)`, now, now)
 	if err != nil {
@@ -922,7 +949,7 @@ func TestDirectScanWithoutCaptionSkipsCaptionEdit(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
-			a, fake := forwardTestApp(t, map[string]any{
+			a, fake := forwardTestAppWithWorkers(t, map[string]any{
 				"enabled": true, "destination": "@Archive", "scanRoute": "direct", "captionMode": test.mode,
 			})
 			cfg, err := a.config.Load(ctx)
@@ -965,7 +992,7 @@ func TestNoCaptionRetryEditsSavedForwardInsteadOfResending(t *testing.T) {
 
 func TestAutoForwardWithoutDownloadRequiresDeleteAfterForward(t *testing.T) {
 	ctx := context.Background()
-	a, fake := forwardTestApp(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true, "directForward": true, "captionMode": "native"})
+	a, fake := forwardTestAppWithWorkers(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true, "directForward": true, "captionMode": "native"})
 	var directCalls atomic.Int32
 	transport := mediaTransport(func(_ context.Context, _ telegram.Attachment, w io.Writer) error {
 		_, err := w.Write([]byte("media"))
@@ -1212,6 +1239,11 @@ func TestForwardQueueRetryAllOnlyResetsFailedAndInterruptedJobs(t *testing.T) {
 	if _, err := a.db.Writer.ExecContext(ctx, `UPDATE tgdl_queue_state SET paused=1 WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}
+	// The forward queue has its own pause; without it a worker can claim a
+	// job reset to pending before this test reads it.
+	if err := a.setForwardQueuePaused(ctx, true); err != nil {
+		t.Fatal(err)
+	}
 	ids := make(map[string]int64)
 	for _, status := range []string{"failed", "interrupted", "forwarded", "pending"} {
 		var id int64
@@ -1426,7 +1458,7 @@ func TestAmbiguousTelegramResponseStaysUncertainWithoutAutomaticResend(t *testin
 
 func TestDirectForwardFailureDownloadsThenUploads(t *testing.T) {
 	ctx := context.Background()
-	a, fake := forwardTestApp(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true, "directForward": true, "captionMode": "native"})
+	a, fake := forwardTestAppWithWorkers(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true, "directForward": true, "captionMode": "native"})
 	var directCalls, downloads atomic.Int32
 	transport := mediaTransport(func(_ context.Context, _ telegram.Attachment, w io.Writer) error {
 		downloads.Add(1)
@@ -1452,6 +1484,13 @@ func TestDirectForwardFailureDownloadsThenUploads(t *testing.T) {
 		stored, exists := rowPath(t, a, "-1000000000123", 12)
 		return exists && stored == ""
 	})
+	// The processing history records the deletion right after the catalog
+	// update, in its own write.
+	eventually(t, "processing history of the local deletion", func() bool {
+		var n int
+		_ = a.db.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM tgdl_processing_attempts WHERE group_id=? AND message_id=? AND local_deleted=1`, "-1000000000123", 12).Scan(&n)
+		return n == 1
+	})
 	if stored, exists := rowPath(t, a, "-1000000000123", 12); !exists || stored != "" {
 		t.Fatal("fallback media bytes were not evicted while retaining its catalog row")
 	}
@@ -1472,7 +1511,7 @@ func TestDirectForwardFailureDownloadsThenUploads(t *testing.T) {
 
 func TestProtectedAutoForwardDownloadsAndUploadsProtectedCopy(t *testing.T) {
 	ctx := context.Background()
-	a, fake := forwardTestApp(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true, "protect": true, "captionMode": "native"})
+	a, fake := forwardTestAppWithWorkers(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true, "protect": true, "captionMode": "native"})
 	if _, err := a.ingestTelegramWithForward(ctx, docMessage(20, 123, 88, ""), "", "Source", "acct1", fiveBytes, func(context.Context, telegram.ForwardMessageRequest) error {
 		t.Fatal("protected media used native forwarding")
 		return nil
@@ -1514,7 +1553,7 @@ func rowPath(t *testing.T, a *App, group string, message int) (string, bool) {
 
 func TestAutoForwardUploadsAndDeletesOnlyTheLocalCopy(t *testing.T) {
 	ctx := context.Background()
-	a, fake := forwardTestApp(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true})
+	a, fake := forwardTestAppWithWorkers(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true})
 	// Another chat already holds the same media: the forwarded message reuses
 	// its file, which must survive deleteAfterForward.
 	if _, err := a.ingestTelegram(ctx, docMessage(1, 456, 77, ""), "", "Other", "acct1", fiveBytes); err != nil {
@@ -1572,7 +1611,7 @@ func TestAutoForwardUploadsAndDeletesOnlyTheLocalCopy(t *testing.T) {
 
 func TestAutoForwardSkipsWhenNotLiveDisabledOrAlreadyDownloaded(t *testing.T) {
 	ctx := context.Background()
-	a, fake := forwardTestApp(t, map[string]any{"enabled": true, "destination": "me", "deleteAfterForward": false})
+	a, fake := forwardTestAppWithWorkers(t, map[string]any{"enabled": true, "destination": "me", "deleteAfterForward": false})
 	fake.observing.Store(false)
 	if _, err := a.ingestTelegram(ctx, docMessage(1, 123, 1, ""), "", "Source", "acct1", fiveBytes); err != nil {
 		t.Fatal(err)
@@ -1655,7 +1694,7 @@ func TestAutoForwardDoesNotUploadFallbackAfterItIsDisabled(t *testing.T) {
 
 func TestAutoForwardPausesARefusingDestinationUntilItsRecheck(t *testing.T) {
 	ctx := context.Background()
-	a, fake := forwardTestApp(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true})
+	a, fake := forwardTestAppWithWorkers(t, map[string]any{"enabled": true, "destination": "@Archive", "deleteAfterForward": true})
 	fake.fail(tgerr.New(403, "CHAT_WRITE_FORBIDDEN"))
 	if _, err := a.ingestTelegram(ctx, docMessage(1, 123, 1, ""), "", "Source", "acct1", fiveBytes); err != nil {
 		t.Fatal(err)

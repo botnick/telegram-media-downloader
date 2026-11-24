@@ -47,6 +47,9 @@ type Config struct {
 	SecureCookies          bool
 	Output                 io.Writer
 	RequireMonitorForwards bool
+	// manualForwards leaves the background forward workers off so a test
+	// can drive the forward queue itself (test-only; unexported).
+	manualForwards bool
 }
 type App struct {
 	historyNotifyPending atomic.Bool
@@ -56,6 +59,7 @@ type App struct {
 	apiRL                *rateLimiter
 	monitor              *engine.Controller
 	gateForwards         bool
+	manualForwards       bool
 	forwarder            forwardSender
 	forwardActivityMu    sync.Mutex
 	manualForwardMu      sync.Mutex
@@ -223,6 +227,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
 	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), leaveBatchStatus: dedupIdleStatus("chatLeaveBatch"), updateStatus: dedupIdleStatus("autoUpdate"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum"), nsfw: newNSFWRuntime()}
 	a.gateForwards = cfg.RequireMonitorForwards
+	a.manualForwards = cfg.manualForwards
 	a.httpOptions, a.proxyPolicy, a.apiRL = cfg.HTTP, proxy, newRateLimiter(10000, time.Minute)
 	a.seekbar = newSeekbarState()
 	a.faces = newFacesService(a)
