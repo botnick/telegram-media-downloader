@@ -111,6 +111,7 @@ ignored.
 | `FFMPEG_PATH` | `ffmpeg` | ffmpeg used for thumbnails, seekbar previews and video operations. |
 | `FFPROBE_PATH` | `ffprobe` beside `FFMPEG_PATH`, then on `PATH` | ffprobe used to read video durations for seekbar previews. |
 | `FFMPEG_HWACCEL` | unset | Hardware video decoding for thumbnails and seekbar previews: `vaapi`, `qsv`, `cuda`, `videotoolbox`, `d3d11va` or `dxva2`. Overrides **Settings → Advanced**; a backend that fails on the host falls back to the CPU. |
+| `TGDL_VAAPI_DEVICE` | ffmpeg's default render node | VA-API render node for `FFMPEG_HWACCEL=vaapi` seekbar sprites, e.g. `/dev/dri/renderD129` on a host with two GPUs. |
 | `FASTSTART_CONCURRENCY` | `2` | Parallel MP4 faststart rewrites (max 8). |
 | `TGDL_DOWNLOAD_THREADS` | `4` | Parts of one file fetched at the same time (1–16). An account that gets a `FLOOD_WAIT` during a file drops to half for its next files and climbs back by one after 8 files without one. `1` fetches one part at a time, as before 3.4.15. |
 | `TGDL_VERIFY_CHUNKS` | `0` | `1` checks every part against Telegram's chunk hashes. It uses 128 KiB parts one at a time, so downloads are several times slower. |

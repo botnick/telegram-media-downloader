@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Seekbar previews use the GPU end to end with VA-API.** With `FFMPEG_HWACCEL=vaapi` (or `vaapi` in Settings → Advanced) each decoded frame used to be copied back to system memory and scaled on the CPU, which on an Intel N100 was no faster than software decoding. Frames now stay on the GPU through `scale_vaapi`, and only the small tiles are copied back. A 1080p HEVC clip on an N100 went from 141.8 s to 53.4 s. Other backends are unchanged, and a GPU failure still falls back to the CPU.
+- **The Docker image ships the Intel VA-API driver** (`intel-media-va-driver`, amd64), so VA-API can start inside the container once `/dev/dri` is passed through (QSV still fails on recent Intel GPUs because Debian's ffmpeg links the legacy Media SDK). Before, the hardware probe reported *CPU only* even with the device mounted.
+
 ## [3.5.1] — 2026-11-18
 
 ### Fixed
