@@ -16,7 +16,7 @@ import (
 func registerAccountRoutes(mux *http.ServeMux, a *App) {
 	mux.Handle("GET /api/accounts", a.requireAdmin(http.HandlerFunc(a.handleAccounts)))
 	mux.Handle("POST /api/accounts/auth/begin", a.requireAdmin(http.HandlerFunc(a.handleAccountBegin)))
-	for _, step := range []string{"phone", "code", "2fa", "cancel"} {
+	for _, step := range []string{"phone", "qr", "code", "2fa", "cancel"} {
 		step := step
 		mux.Handle("POST /api/accounts/auth/"+step, a.requireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.handleAccountStep(w, r, step) })))
 	}

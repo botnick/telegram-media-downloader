@@ -8436,6 +8436,27 @@ html.theme-light .cr-chips .account-chip {
     min-height: 44px;
     font-size: 14px;
 }
+.aw-links .cr-link i {
+    margin-right: 4px;
+}
+/* The code stays dark-on-white in every theme: scanners need the contrast
+   and a light quiet zone around it. */
+.aw-qr {
+    display: flex;
+    justify-content: center;
+}
+.aw-qr img {
+    width: 232px;
+    height: 232px;
+    max-width: 100%;
+    padding: 8px;
+    border-radius: 12px;
+    background: #fff;
+    image-rendering: pixelated;
+}
+.aw-qr-note {
+    text-align: center;
+}
 .aw-footer {
     display: flex;
     align-items: center;

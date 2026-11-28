@@ -3,8 +3,10 @@ package accounts
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/telegram"
 	gotdauth "github.com/gotd/td/telegram/auth"
@@ -18,6 +20,10 @@ type loginFixture struct {
 	password atomic.Int64
 	flood    bool
 	hintErr  bool
+	// QR sign-in: shown counts tokens put on screen; scan releases the wait
+	// with the error it sends (nil = success without a cloud password).
+	shown atomic.Int64
+	scan  chan error
 }
 
 func (f *loginFixture) Run(ctx context.Context, fn func(context.Context, telegram.LoginRPC) error) error {
@@ -56,6 +62,118 @@ func (f *loginFixture) Password(_ context.Context, password string) (*tg.AuthAut
 	}
 	return &tg.AuthAuthorization{User: &tg.User{ID: 42, FirstName: "Alice", Username: "alice", Phone: "10000000001"}}, nil
 }
+func (f *loginFixture) QR(ctx context.Context, show func(string, time.Time) error) (*tg.AuthAuthorization, error) {
+	for i := 0; i < 2; i++ { // the first token expires and is replaced
+		if err := show("tg://login?token=fixture"+string(rune('a'+i)), time.Now().Add(30*time.Second)); err != nil {
+			return nil, err
+		}
+		f.shown.Add(1)
+	}
+	select {
+	case err := <-f.scan:
+		if err != nil {
+			return nil, err
+		}
+		return &tg.AuthAuthorization{User: &tg.User{ID: 42, FirstName: "Alice"}}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func waitState(t *testing.T, w *Wizard, id, want string) Status {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		status, found := w.Status(id)
+		if found && status.State == want {
+			return status
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("state %q never reached: %+v found=%v", want, status, found)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func qrWizard(t *testing.T, f *loginFixture, published *atomic.Int64) (*Wizard, string) {
+	t.Helper()
+	w := NewWizard(context.Background(), WizardConfig{DataDir: t.TempDir(), Factory: func(telegram.GotdConfig) (telegram.LoginClient, error) { return f, nil }, Publish: func(_ context.Context, p PendingAccount) (string, error) {
+		if !f.closed.Load() {
+			t.Error("published a key while login client still owned it")
+		}
+		published.Add(1)
+		return "alice", nil
+	}})
+	t.Cleanup(func() { _ = w.Close() })
+	begin, err := w.Begin(context.Background(), telegram.GotdConfig{AppID: 1, AppHash: "fixture", SessionSecret: "fixture"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return w, begin.SessionID
+}
+
+func TestWizardQRAnswersOnFirstCodeThenFinishesOnScan(t *testing.T) {
+	f := &loginFixture{scan: make(chan error)}
+	var published atomic.Int64
+	w, id := qrWizard(t, f, &published)
+	status, err := w.Submit(context.Background(), id, "qr", "")
+	if err != nil || status.State != "qr" || status.QRURL == nil || !strings.HasPrefix(*status.QRURL, "tg://login?token=") {
+		t.Fatalf("qr: %+v %v", status, err)
+	}
+	if status.QRImage == nil || !strings.HasPrefix(*status.QRImage, "data:image/png;base64,") || status.QRExpires == nil {
+		t.Fatalf("qr image: %+v", status)
+	}
+	if _, err = w.Submit(context.Background(), id, "phone", "+10000000001"); err == nil {
+		t.Fatal("phone accepted while a QR sign-in runs")
+	}
+	if _, err = w.Submit(context.Background(), id, "qr", ""); err == nil {
+		t.Fatal("second QR start accepted")
+	}
+	for f.shown.Load() < 2 {
+		time.Sleep(time.Millisecond)
+	}
+	if s := waitState(t, w, id, "qr"); s.QRURL == nil || *s.QRURL != "tg://login?token=fixtureb" {
+		t.Fatalf("refreshed token not shown: %+v", s)
+	}
+	f.scan <- nil
+	done := waitState(t, w, id, "done")
+	if done.AccountID == nil || *done.AccountID != "alice" || published.Load() != 1 || done.QRImage != nil {
+		t.Fatalf("finish: %+v published=%d", done, published.Load())
+	}
+}
+
+func TestWizardQRWithCloudPasswordAsksForIt(t *testing.T) {
+	f := &loginFixture{scan: make(chan error, 1)}
+	var published atomic.Int64
+	w, id := qrWizard(t, f, &published)
+	if _, err := w.Submit(context.Background(), id, "qr", ""); err != nil {
+		t.Fatal(err)
+	}
+	f.scan <- &tgerr.Error{Code: 401, Type: "SESSION_PASSWORD_NEEDED", Message: "SESSION_PASSWORD_NEEDED"}
+	status := waitState(t, w, id, "password")
+	if status.Hint == nil || *status.Hint != "a hint" || status.QRURL != nil || status.Error != nil {
+		t.Fatalf("password prompt: %+v", status)
+	}
+	status, err := w.Submit(context.Background(), id, "password", " correct password ")
+	if err != nil || status.State != "done" || published.Load() != 1 {
+		t.Fatalf("finish: %+v %v", status, err)
+	}
+}
+
+func TestWizardQRFailureAfterShowEndsTheFlow(t *testing.T) {
+	f := &loginFixture{scan: make(chan error, 1)}
+	var published atomic.Int64
+	w, id := qrWizard(t, f, &published)
+	if _, err := w.Submit(context.Background(), id, "qr", ""); err != nil {
+		t.Fatal(err)
+	}
+	f.scan <- &tgerr.Error{Code: 400, Type: "AUTH_TOKEN_EXPIRED", Message: "AUTH_TOKEN_EXPIRED"}
+	status := waitState(t, w, id, "error")
+	if status.Code == nil || *status.Code != "AUTH_TOKEN_EXPIRED" || published.Load() != 0 {
+		t.Fatalf("error: %+v", status)
+	}
+}
+
 func TestWizardRetriesPromptAndClosesConnectionBeforePublish(t *testing.T) {
 	f := new(loginFixture)
 	var published atomic.Int64

@@ -91,7 +91,7 @@ from the dashboard.
 Then:
 
 1. **Settings → Telegram API**: paste `apiId` and `apiHash`.
-2. **Settings → Accounts → Add**: phone number, login code, optional 2FA.
+2. **Settings → Accounts → Add**: phone number and login code, or *Sign in with a QR code instead* and scan it from the Telegram app (Settings → Devices → Link Desktop Device); then the 2FA password if the account has one.
 3. **Chats**: turn on the monitor for a chat, start a backfill, or paste a
    `t.me/` link.
 

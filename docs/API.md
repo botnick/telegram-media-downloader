@@ -91,6 +91,7 @@ curl -b jar http://localhost:3000/api/stats
 | `GET` | `/api/accounts` | Admin | Loaded Telegram accounts. |
 | `POST` | `/api/accounts/auth/begin` | Admin | Start the add-account wizard. Returns a wizard `sessionId`. |
 | `POST` | `/api/accounts/auth/phone` | Admin | Wizard step: phone number. |
+| `POST` | `/api/accounts/auth/qr` | Admin | Wizard step instead of the phone number: sign in by scanning a QR code from another Telegram app. Answers once the first code is ready (`state: "qr"` with `qrUrl`, `qrImage` as a PNG data URL, `qrExpires` in Unix ms); poll the wizard state for a refreshed code, `password`, `done` or `error`. |
 | `POST` | `/api/accounts/auth/code` | Admin | Wizard step: login code. |
 | `POST` | `/api/accounts/auth/2fa` | Admin | Wizard step: two-step verification password. |
 | `POST` | `/api/accounts/auth/cancel` | Admin | Cancel the wizard. |

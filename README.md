@@ -74,7 +74,7 @@ Open `http://localhost:3000` and:
 
 1. **Sign in** with that password.
 2. **Settings → Telegram API**: paste `apiId` and `apiHash`.
-3. **Settings → Accounts → Add**: phone, login code, optional 2FA.
+3. **Settings → Accounts → Add**: phone and login code, or scan a QR code from the Telegram app; then the 2FA password if the account has one.
 4. **Chats**: turn on the monitor, start a backfill, or paste a `t.me/` link.
 
 The image is multi-arch (amd64, arm64). Synology users can start from

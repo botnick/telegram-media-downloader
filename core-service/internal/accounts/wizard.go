@@ -4,6 +4,7 @@ package accounts
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	gotdauth "github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
+	"rsc.io/qr"
 )
 
 type PendingAccount struct {
@@ -50,6 +52,11 @@ type Status struct {
 	Seconds   *int    `json:"seconds"`
 	Hint      *string `json:"hint"`
 	AccountID *string `json:"accountId"`
+	// QR sign-in (state "qr"): the token URL another Telegram app scans,
+	// the same URL as a PNG data URL, and when Telegram replaces it (Unix ms).
+	QRURL     *string `json:"qrUrl,omitempty"`
+	QRImage   *string `json:"qrImage,omitempty"`
+	QRExpires *int64  `json:"qrExpires,omitempty"`
 }
 type command struct {
 	step, value string
@@ -164,7 +171,13 @@ func (w *Wizard) Submit(ctx context.Context, id, step, value string) (Status, er
 		return Status{}, errors.New("Auth session not found")
 	}
 	f.mu.Lock()
-	if f.status.State != step {
+	// QR sign-in is the alternative to entering a phone number, so it starts
+	// from the same first step and needs no value.
+	wantState := step
+	if step == "qr" {
+		wantState = "phone"
+	}
+	if f.status.State != wantState {
 		state := f.status.State
 		f.mu.Unlock()
 		return Status{}, fmt.Errorf("Wrong state: %s", state)
@@ -173,7 +186,9 @@ func (w *Wizard) Submit(ctx context.Context, id, step, value string) (Status, er
 		f.mu.Unlock()
 		return Status{}, errors.New("Authentication request already in progress")
 	}
-	if step != "password" {
+	if step == "qr" {
+		value = ""
+	} else if step != "password" {
 		value = strings.TrimSpace(value)
 		if value == "" {
 			f.mu.Unlock()
@@ -301,7 +316,27 @@ func (f *flow) setState(state string) {
 	if state != "password" {
 		f.status.Hint = nil
 	}
+	if state != "qr" {
+		f.status.QRURL, f.status.QRImage, f.status.QRExpires = nil, nil, nil
+	}
 	f.mu.Unlock()
+}
+
+// showQR publishes a login token for the dashboard to draw. The PNG is made
+// here so the page needs no QR library.
+func (f *flow) showQR(url string, expires time.Time) error {
+	code, err := qr.Encode(url, qr.M)
+	if err != nil {
+		return err
+	}
+	image := "data:image/png;base64," + base64.StdEncoding.EncodeToString(code.PNG())
+	ms := expires.UnixMilli()
+	f.mu.Lock()
+	f.status.State = "qr"
+	f.status.Hint = nil
+	f.status.QRURL, f.status.QRImage, f.status.QRExpires = &url, &image, &ms
+	f.mu.Unlock()
+	return nil
 }
 
 func (w *Wizard) run(f *flow) {
@@ -336,6 +371,7 @@ func (w *Wizard) run(f *flow) {
 	err = client.Run(f.ctx, func(ctx context.Context, rpc telegram.LoginRPC) error {
 		startup.Stop()
 		for {
+			responded := false
 			rpcCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			var authorized *tg.AuthAuthorization
 			var callErr error
@@ -361,6 +397,29 @@ func (w *Wizard) run(f *flow) {
 				authorized, callErr = rpc.SignIn(rpcCtx, phone, cmd.value, hash)
 			case "password":
 				authorized, callErr = rpc.Password(rpcCtx, cmd.value)
+			case "qr":
+				// The request answers as soon as the first code is on screen;
+				// the scan itself can take minutes, bounded by the flow's
+				// lifetime, and the page follows it by polling the status.
+				authorized, callErr = rpc.QR(ctx, func(url string, expires time.Time) error {
+					if err := f.showQR(url, expires); err != nil {
+						return err
+					}
+					if !responded {
+						responded = true
+						f.respond(cmd)
+					}
+					return nil
+				})
+				cancel()
+				rpcCtx, cancel = context.WithTimeout(ctx, 30*time.Second)
+				passwordNeeded := errors.Is(callErr, gotdauth.ErrPasswordAuthNeeded) || tgerr.Is(callErr, "SESSION_PASSWORD_NEEDED")
+				if responded && callErr != nil && !passwordNeeded {
+					// Nobody is waiting on a reply any more: a scan that went
+					// wrong ends the flow, and the page starts a new one.
+					cancel()
+					return callErr
+				}
 			default:
 				callErr = errors.New("Unknown authentication step")
 			}
@@ -394,7 +453,9 @@ func (w *Wizard) run(f *flow) {
 			if callErr != nil {
 				f.failure(callErr)
 			}
-			f.respond(cmd)
+			if !responded {
+				f.respond(cmd)
+			}
 			select {
 			case cmd = <-f.commands:
 			case <-ctx.Done():

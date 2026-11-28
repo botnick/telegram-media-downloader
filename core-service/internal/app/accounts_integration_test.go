@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/botnick/telegram-media-downloader/core-service/internal/accounts"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/engine"
@@ -57,6 +58,68 @@ func (*httpLoginFixture) Password(context.Context, string) (*tg.AuthAuthorizatio
 }
 func (*httpLoginFixture) PasswordHint(context.Context) (string, error) {
 	return "", errors.New("unexpected password hint request")
+}
+
+// QR shows one code, then the scan lands while the page polls.
+func (f *httpLoginFixture) QR(ctx context.Context, show func(string, time.Time) error) (*tg.AuthAuthorization, error) {
+	if err := show("tg://login?token=fixture", time.Now().Add(30*time.Second)); err != nil {
+		return nil, err
+	}
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return &tg.AuthAuthorization{User: &tg.User{ID: 43, FirstName: "Bob", Username: "bob_qr"}}, nil
+}
+
+func TestHTTPAccountQRLoginPublishesAfterScan(t *testing.T) {
+	var loginClosed atomic.Bool
+	login := func(cfg telegram.GotdConfig) (telegram.LoginClient, error) {
+		return &httpLoginFixture{cfg: cfg, closed: &loginClosed}, nil
+	}
+	a, err := newConfiguredTestApp(context.Background(), Config{DataDir: t.TempDir(), AccountLoginFactory: login})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	configureMonitor(t, a)
+	begin := accountRequest(t, a, "POST", "/api/accounts/auth/begin", `{"label":"Bob"}`)
+	var result struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err = json.Unmarshal(begin.Body.Bytes(), &result); err != nil || result.SessionID == "" {
+		t.Fatalf("begin: %d %s", begin.Code, begin.Body.String())
+	}
+	qr := accountRequest(t, a, "POST", "/api/accounts/auth/qr", `{"sessionId":"`+result.SessionID+`"}`)
+	var started struct {
+		State   string `json:"state"`
+		QRURL   string `json:"qrUrl"`
+		QRImage string `json:"qrImage"`
+	}
+	if err = json.Unmarshal(qr.Body.Bytes(), &started); qr.Code != 200 || err != nil || started.State != "qr" || started.QRURL != "tg://login?token=fixture" || !strings.HasPrefix(started.QRImage, "data:image/png;base64,") {
+		t.Fatalf("qr: %d %s", qr.Code, qr.Body.String())
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		w := accountRequest(t, a, "GET", "/api/accounts/auth/"+result.SessionID, "")
+		if strings.Contains(w.Body.String(), `"state":"done"`) {
+			if strings.Contains(w.Body.String(), "qrImage") {
+				t.Fatal("finished sign-in still carries a QR code")
+			}
+			break
+		}
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"state":"qr"`) || time.Now().After(deadline) {
+			t.Fatalf("poll: %d %s", w.Code, w.Body.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err = os.Stat(filepath.Join(a.dataDir, "sessions", "native", "bob.enc")); err != nil {
+		t.Fatalf("QR account not saved: %v", err)
+	}
+	if !strings.Contains(accountRequest(t, a, "GET", "/api/accounts", "").Body.String(), "bob_qr") {
+		t.Fatal("QR account metadata missing")
+	}
 }
 
 type wizardMonitorAccount struct {

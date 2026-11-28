@@ -1,7 +1,10 @@
 // Add a Telegram account without leaving the dashboard — the sheet behind
 // #/account/add, Settings → Accounts "Add account", the empty Chats page
 // and onboarding step 2. Phone → code → 2FA password (only when the
-// account has one) → pick chats to monitor.
+// account has one) → pick chats to monitor. Instead of a phone number the
+// account can sign in by scanning a QR code with a Telegram app where it
+// is already logged in (/api/accounts/auth/qr, then the page polls the
+// wizard state for a refreshed code, the password prompt or `done`).
 //
 // Same server flow as add-account.html (/api/accounts/auth/begin, /phone,
 // /code, /2fa, /cancel), which stays for old links. The server keeps the
@@ -25,6 +28,7 @@ import { renderChatResultRow, wireChatResultRows, humanWait } from './add-sheet.
 import { accessFor, isBlockedAccess } from './chat-access.js';
 
 const RESEND_AFTER_S = 60;
+const QR_POLL_MS = 1500;
 const STEPS = ['phone', 'code', 'password', 'chats'];
 
 let open = null; // the one wizard that may be open
@@ -33,6 +37,7 @@ function stepLabel(s) {
     return {
         phone: i18nT('acct.step.phone', 'Phone'),
         code: i18nT('acct.step.code', 'Code'),
+        qr: i18nT('acct.step.qr', 'Scan'),
         password: i18nT('acct.step.password', 'Password'),
         chats: i18nT('acct.step.chats', 'Chats'),
     }[s];
@@ -70,6 +75,13 @@ function errorText(r, step) {
         return i18nT('acct.err.password_invalid', 'Wrong password.');
     }
     const msg = r?.error || r?.message || '';
+    if (step === 'qr') {
+        return i18nTf(
+            'acct.err.qr_failed',
+            { msg },
+            `The QR sign-in didn't finish (${msg}). Try again, or use the phone number.`,
+        );
+    }
     return i18nTf('acct.err.generic', { msg }, `Something went wrong: ${msg}`);
 }
 
@@ -97,6 +109,7 @@ export function openAccountWizard() {
         size: 'sm',
         onClose: () => {
             clearInterval(w.tick);
+            stopQrPoll();
             window.removeEventListener('pagehide', onPageHide);
             if (!w.done) cancelSession(true);
             open = null;
@@ -132,9 +145,11 @@ export function openAccountWizard() {
     // ---- rendering -----------------------------------------------------
 
     function stepper() {
-        const idx = STEPS.indexOf(w.step);
+        // A QR sign-in takes the place of the code step.
+        const idx = STEPS.indexOf(w.step === 'qr' ? 'code' : w.step);
         return `<ol class="aw-steps" aria-label="${escapeHtml(i18nT('acct.progress', 'Progress'))}">
-            ${STEPS.map((s, i) => {
+            ${STEPS.map((step, i) => {
+                const s = step === 'code' && w.viaQr && w.step !== 'phone' ? 'qr' : step;
                 // The 2FA step only applies to accounts with a cloud password.
                 const skipped = s === 'password' && i < idx && !w.passwordUsed;
                 const cls = skipped
@@ -187,7 +202,27 @@ export function openAccountWizard() {
                             aria-label="${escapeHtml(i18nT('acct.label.label', 'Name this account (optional)'))}">
                     </details>
                     ${errorBox(e, w.noApi ? noApiHtml : errHtml)}
+                    <div class="aw-links">
+                        <button type="button" class="cr-link" data-aw-qr ${w.noApi || w.busy ? 'disabled' : ''}><i class="ri-qr-code-line" aria-hidden="true"></i> ${escapeHtml(i18nT('acct.qr.start', 'Sign in with a QR code instead'))}</button>
+                    </div>
                     ${footer(primaryLabel())}
+                </form>`;
+        } else if (w.step === 'qr') {
+            body = `
+                <form class="aw-form" data-aw-form novalidate>
+                    <p class="aw-lead">${escapeHtml(i18nT('acct.qr.help', 'On a phone where this account is logged in, open Telegram → Settings → Devices → Link Desktop Device, then scan this code.'))}</p>
+                    <div class="aw-qr">
+                        <img data-aw-qr-img alt="${escapeHtml(i18nT('acct.qr.alt', 'Telegram login QR code'))}" src="${escapeHtml(w.qrImage || '')}" width="232" height="232">
+                    </div>
+                    <p class="cd-help aw-qr-note" role="status" aria-live="polite">${escapeHtml(i18nT('acct.qr.waiting', 'Waiting for the scan… The code refreshes by itself.'))}</p>
+                    ${errorBox(err, errHtml)}
+                    <div class="aw-links">
+                        <button type="button" class="cr-link" data-aw-change>${escapeHtml(i18nT('acct.qr.use_phone', 'Use a phone number instead'))}</button>
+                    </div>
+                    <div class="aw-footer">
+                        <button type="button" class="aw-cancel" data-aw-cancel>${escapeHtml(i18nT('common.cancel', 'Cancel'))}</button>
+                        <span></span>
+                    </div>
                 </form>`;
         } else if (w.step === 'code') {
             body = `
@@ -322,6 +357,98 @@ export function openAccountWizard() {
             return;
         }
         showError(errorText(e?.data || { error: e?.message }, w.step));
+    }
+
+    // ---- QR sign-in --------------------------------------------------------
+
+    function stopQrPoll() {
+        clearTimeout(w.qrPoll);
+        w.qrPoll = null;
+    }
+
+    async function startQr() {
+        w.label = box.querySelector('#aw-label')?.value.trim() || '';
+        setBusy(true);
+        try {
+            if (!w.sessionId) {
+                const b = await api.post(
+                    '/api/accounts/auth/begin',
+                    { label: w.label },
+                    { timeoutMs: 90_000 },
+                );
+                w.sessionId = b.sessionId;
+            }
+            const r = await api.post(
+                '/api/accounts/auth/qr',
+                { sessionId: w.sessionId },
+                { timeoutMs: 90_000 },
+            );
+            setBusy(false);
+            if (r.state === 'qr') {
+                w.viaQr = true;
+                w.step = 'qr';
+                w.qrImage = r.qrImage || '';
+                render();
+                scheduleQrPoll();
+            } else if (r.state === 'error') {
+                w.sessionId = null;
+                render(errorText(r, 'qr'));
+            } else {
+                showError(errorText(r, 'qr'));
+            }
+        } catch (e) {
+            setBusy(false);
+            handleHttpError(e);
+        }
+    }
+
+    function scheduleQrPoll() {
+        stopQrPoll();
+        w.qrPoll = setTimeout(pollQr, QR_POLL_MS);
+    }
+
+    async function pollQr() {
+        const sid = w.sessionId;
+        if (!sid || w.step !== 'qr') return;
+        let r;
+        try {
+            r = await api.get(`/api/accounts/auth/${encodeURIComponent(sid)}`);
+        } catch (e) {
+            if (w.sessionId !== sid || w.step !== 'qr') return;
+            if (e?.status === 404 || /not found/i.test(e?.data?.error || '')) {
+                handleHttpError(e);
+                return;
+            }
+            scheduleQrPoll(); // a dropped request: keep waiting
+            return;
+        }
+        if (w.sessionId !== sid || w.step !== 'qr') return;
+        if (r.state === 'qr') {
+            if (r.qrImage && r.qrImage !== w.qrImage) {
+                w.qrImage = r.qrImage;
+                const img = box.querySelector('[data-aw-qr-img]');
+                if (img) img.src = r.qrImage;
+            }
+            scheduleQrPoll();
+            return;
+        }
+        if (r.state === 'password') {
+            w.step = 'password';
+            w.passwordUsed = true;
+            w.hint = r.hint || null;
+            render();
+            return;
+        }
+        if (r.state === 'done') return finish(r.accountId);
+        // The scan failed or the sign-in expired; the next try starts fresh.
+        w.sessionId = null;
+        w.step = 'phone';
+        const expired = !r.code && /deadline|cancel/i.test(r.error || '');
+        render(
+            expired
+                ? i18nT('acct.err.session', 'This sign-in expired. Please start again.')
+                : errorText(r, 'qr'),
+        );
     }
 
     async function sendPhone() {
@@ -472,6 +599,7 @@ export function openAccountWizard() {
         const sid = w.sessionId;
         w.sessionId = null;
         clearInterval(w.tick);
+        stopQrPoll();
         w.step = 'chats';
         render();
         // The first status poll after `done` loads the new account into
@@ -554,13 +682,19 @@ export function openAccountWizard() {
             navigate('#/settings/card-tg-api');
             return;
         }
+        if (e.target.closest('[data-aw-qr]')) {
+            if (!w.busy && !w.noApi) startQr();
+            return;
+        }
         if (e.target.closest('[data-aw-resend]')) {
             if (!w.busy) resend();
             return;
         }
         if (e.target.closest('[data-aw-change]')) {
+            stopQrPoll();
             await cancelSession();
             clearInterval(w.tick);
+            w.viaQr = false;
             w.step = 'phone';
             render();
             return;

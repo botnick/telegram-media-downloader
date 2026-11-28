@@ -16,7 +16,7 @@ port to listen on and how to sit behind a proxy.
 | Where | What |
 |---|---|
 | **Settings → Telegram API** | `apiId` and `apiHash` from [my.telegram.org](https://my.telegram.org) |
-| **Settings → Accounts** | Telegram accounts (phone, login code, optional 2FA) |
+| **Settings → Accounts** | Telegram accounts (phone and login code, or a QR code scanned from the Telegram app; optional 2FA) |
 | **Settings → Downloads** | Concurrent downloads (1–50, the starting point of the [adaptive concurrency](#advanced-settings)), attempts per file (1–20, counting the first), bandwidth limit (0 = unlimited) |
 | **Settings → Downloads** (disk) | Library size cap (`maxTotalSize`) and **Auto-rotate when full**, see [disk rotation](#advanced-settings) |
 | **Settings** (other sections) | Proxy (SOCKS5, SOCKS4, HTTP, MTProxy), dashboard and guest passwords, share links, CSP and HTTPS policy, rescue mode, appearance |
