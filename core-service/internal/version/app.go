@@ -2,4 +2,4 @@ package version
 
 // AppVersion identifies the embedded dashboard and its API contract. Release
 // builds may override it with -ldflags alongside the core component version.
-var AppVersion = "3.5.3"
+var AppVersion = "3.6.0"

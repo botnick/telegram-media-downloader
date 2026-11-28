@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] — 2026-11-28
+Requested by **[@sampotter123](https://github.com/sampotter123)** in #118. Thank you!
+### Added
+- **Sign in with a QR code.** Settings → Accounts → Add has *Sign in with a QR code instead*: scan the code from a phone where the account is already logged in (Telegram → Settings → Devices → Link Desktop Device). No SMS or login code is needed, which helps when the code never arrives. The code refreshes by itself before it expires, accounts with two-step verification are asked for their cloud password after the scan, and accounts on another Telegram data centre are handled. API: `POST /api/accounts/auth/qr`, then poll `GET /api/accounts/auth/{sessionId}` (see docs/API.md).
+### Changed
+- Service worker cache version `v36000`.
+
 ## [3.5.3] — 2026-11-24
 
 ### Fixed
