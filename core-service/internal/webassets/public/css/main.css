@@ -9425,3 +9425,51 @@ html.theme-light .access-badge[data-access="migrated"] {
 }
 .chat-leave-status[data-kind="warning"] { color: var(--tg-orange, #f0a43a); }
 .tg-btn.chat-leave-danger { background: var(--tg-red); }
+/* Whole-app backup card (js/full-backup.js) */
+.fb-banner {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.fb-banner > i {
+    font-size: 18px;
+    line-height: 1.2;
+}
+.fb-banner--pending {
+    background: rgba(255, 152, 0, 0.12);
+    color: var(--tg-text);
+}
+.fb-banner--pending > i {
+    color: var(--tg-orange);
+}
+.fb-banner--ok {
+    background: rgba(76, 175, 80, 0.12);
+    color: var(--tg-text);
+}
+.fb-banner--ok > i {
+    color: var(--tg-green);
+}
+.fb-banner--error {
+    background: rgba(229, 57, 53, 0.1);
+    color: var(--tg-red);
+}
+.fb-progress {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--tg-bg);
+    overflow: hidden;
+}
+.fb-progress.hidden {
+    display: none;
+}
+.fb-progress-bar {
+    height: 100%;
+    width: 0;
+    background: var(--tg-blue);
+    transition: width 0.2s;
+}

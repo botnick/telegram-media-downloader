@@ -133,6 +133,8 @@ examples: [Install and deploy](docs/DEPLOY.md).
   verified database snapshot first, or scheduled automatic updates
 - Backups to local disk, S3-compatible storage, SFTP, FTP/FTPS, Google Drive
   and Dropbox, with encrypted archives and offline restore
+- Whole-app backup and restore in the dashboard: one encrypted file with the
+  database, settings and Telegram accounts
 - Cluster mode: pair instances, browse each other's files, cross-peer
   duplicate sweep
 - Optional disk rotation (deletes the oldest downloads over a size cap),
@@ -303,7 +305,9 @@ for old setups; they only call the launcher, which downloads that binary.
 Under `data/downloads/<chat>/`, or `TGDL_DOWNLOADS_DIR` on another disk.
 Backups go to a local folder, S3-compatible storage (AWS, R2, B2, Wasabi,
 MinIO), SFTP, FTP/FTPS, Google Drive or Dropbox, with optional encryption and
-an offline restore command. See
+an offline restore command. Maintenance → Backup → **Whole-app backup**
+downloads the database, settings and Telegram accounts as one encrypted file
+and restores it from the dashboard. See
 [Backup](docs/BACKUP.md).
 
 ## ภาษาไทย

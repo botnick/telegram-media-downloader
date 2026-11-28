@@ -17,7 +17,7 @@ This page lists what the current 3.x release (3.5) does. Detailed guides:
 
 | Guide | What it covers |
 |---|---|
-| [Backup](BACKUP.md) | Local, S3, SFTP, FTP/FTPS, Google Drive and Dropbox destinations, encrypted archives, offline restore |
+| [Backup](BACKUP.md) | Local, S3, SFTP, FTP/FTPS, Google Drive and Dropbox destinations, encrypted archives, whole-app backup and restore in the dashboard, offline restore |
 | [Cluster mode](CLUSTER.md) | Pairing several instances into one library |
 | [Forward queue](GO-FORWARD-QUEUE.md) | How forwards are queued, retried, paced and recovered after a restart |
 | [AI: faces, NSFW and previews](AI.md) | Seekbar previews, the `tgdl-nsfw` and `tgdl-faces` sidecars |
@@ -152,6 +152,10 @@ Details and setup: [AI: faces, NSFW and previews](AI.md).
 - [Backups](BACKUP.md) to a local disk, S3-compatible storage, SFTP, FTP/FTPS,
   Google Drive and Dropbox, as a continuous mirror or scheduled snapshots,
   optionally encrypted, with an offline restore command.
+- [Whole-app backup and restore](BACKUP.md#whole-app-backup-and-restore) from
+  the dashboard: one encrypted file with the database, settings and Telegram
+  accounts (no media), restored with a verified, crash-safe swap at the next
+  start.
   `tgdl-server backup-oauth gdrive|dropbox` gets a refresh token on a headless
   server.
 - [Cluster mode](CLUSTER.md): pair instances, browse and stream each other's
@@ -223,8 +227,9 @@ do them. Saved settings are kept, so nothing is lost if they return.
 - **Cluster**: LAN discovery, relay through a third peer, backup peer and
   failover, settings replication and the *direct* stream mode. See
   [Cluster mode](CLUSTER.md#limitations).
-- **Backups**: in-dashboard restore (restore is offline with
-  `tgdl-server backup-restore`). See [Backup](BACKUP.md#limits-and-whats-not-in-3x).
+- **Backups**: in-dashboard restore of destination snapshots (those restore
+  offline with `tgdl-server backup-restore`; whole-app backup files restore
+  in the dashboard). See [Backup](BACKUP.md#limits-and-whats-not-in-3x).
 - **Live log viewer**: Maintenance → Logs only browses log files left by 2.x
   (and shows the processing history); 3.x logs to standard output
   (`docker compose logs`).

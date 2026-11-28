@@ -21,6 +21,10 @@ var schemaFS embed.FS
 
 const schemaVersion = 1
 
+// SchemaVersion is the database schema this build writes. A full backup
+// records it, and restore refuses a backup from a newer schema.
+func SchemaVersion() int { return schemaVersion }
+
 // DB contains the writer and read-only query pool used by the Go server.
 type DB struct {
 	Writer *sql.DB

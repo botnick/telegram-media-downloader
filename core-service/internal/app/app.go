@@ -47,12 +47,18 @@ type Config struct {
 	SecureCookies          bool
 	Output                 io.Writer
 	RequireMonitorForwards bool
+	// Restart asks the process supervisor (Docker, systemd, PM2) for a fresh
+	// start; nil when the host cannot restart the server.
+	Restart func()
 	// manualForwards leaves the background forward workers off so a test
 	// can drive the forward queue itself (test-only; unexported).
 	manualForwards bool
 }
 type App struct {
 	historyNotifyPending atomic.Bool
+	restart              func()
+	bootID               string
+	fullBackups          fullBackupDownloads
 	httpOptions          HTTPOptions
 	proxyPolicy          proxyPolicy
 	webPolicy            webPolicyCache
@@ -211,6 +217,14 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A restore verified in the dashboard is swapped in here, before the
+	// database opens. It never fails startup.
+	backup.ApplyPendingRestore(cfg.DataDir, func(format string, args ...any) {
+		if cfg.Output != nil {
+			fmt.Fprintf(cfg.Output, format+"\n", args...)
+		}
+	})
+	backup.CleanupRestoreUploads(cfg.DataDir)
 	db, err := store.Open(ctx, cfg.DataDir)
 	if err != nil {
 		release()
@@ -227,6 +241,11 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	read := dbread.NewHandler(filepath.Join(cfg.DataDir, "db.sqlite"), nil)
 	a := &App{db: db, sessions: auth.NewSessionStore(db.Writer, cookie, ttl), hub: ws.NewHub(64), read: read, config: auth.ConfigStore{DB: db.Writer}, jobs: jobs.NewTracker(), dataDir: cfg.DataDir, loginRL: newRateLimiter(10, 15*time.Minute), setupRL: newRateLimiter(20, 15*time.Minute), secureCookies: cfg.SecureCookies, output: cfg.Output, resetTokens: make(map[string]time.Time), dedupLastScan: map[string]any{}, dedupScanStatus: dedupIdleStatus("dedupScan"), dedupDeleteStatus: dedupIdleStatus("dedupDelete"), leaveBatchStatus: dedupIdleStatus("chatLeaveBatch"), updateStatus: dedupIdleStatus("autoUpdate"), faststartStatus: faststartIdleStatus(), faststartLastRun: map[string]any{}, thumbBuildStatus: thumbsIdleStatus("thumbsBuild"), thumbRebuildStatus: thumbsIdleStatus("thumbsRebuild"), dbIntegrityStatus: maintenanceIdleStatus("dbIntegrity"), filesVerifyStatus: maintenanceIdleStatus("filesVerify"), reindexStatus: maintenanceIdleStatus("reindex"), vacuumStatus: maintenanceIdleStatus("dbVacuum"), nsfw: newNSFWRuntime()}
 	a.gateForwards = cfg.RequireMonitorForwards
+	a.restart = cfg.Restart
+	// bootID tells the dashboard that a restart has finished.
+	if id, idErr := randomID(); idErr == nil {
+		a.bootID = id
+	}
 	a.manualForwards = cfg.manualForwards
 	a.httpOptions, a.proxyPolicy, a.apiRL = cfg.HTTP, proxy, newRateLimiter(10000, time.Minute)
 	a.seekbar = newSeekbarState()
@@ -324,6 +343,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	registerMediaRoutes(mux, a)
 	registerArchiveRoutes(mux, a)
 	registerBackupRoutes(mux, a)
+	registerFullBackupRoutes(mux, a)
 	registerShareRoutes(mux, a)
 	registerReadRoutes(mux, read, a.requireSession)
 	mux.HandleFunc("GET /ws", a.handleWebSocket)

@@ -104,6 +104,7 @@ ignored.
 | `TGDL_BIND_HOST` | all interfaces | Literal IPv4/IPv6 address to listen on, e.g. `127.0.0.1` behind a reverse proxy on the same host. |
 | `TGDL_SESSION_TTL_DAYS` | `7` | Lifetime of a new dashboard sign-in, 1–3650 days. |
 | `TGDL_SECURE_COOKIES` | `0` | Set to `1` when the dashboard is served over HTTPS. |
+| `TGDL_RESTART_ON_EXIT` | detected | `1` when a supervisor starts the server again after it exits with code 75 (needed for *Restart now and restore* after a whole-app restore); `0` turns the button off. Docker/Podman, systemd and PM2 are detected. |
 | `TRUST_PROXY` | `loopback` when unset | Which proxies may set `X-Forwarded-*`: a hop count (`1`), a comma list of IPs, CIDRs or `loopback`, `linklocal`, `uniquelocal`, or empty to trust none. The Compose file sets `1`. |
 | `TGDL_CSP` | on | `off` disables the Content-Security-Policy header (emergency use only). |
 | `COMPRESSION_LEVEL` | `6` | gzip/deflate response compression level, 0–9. |

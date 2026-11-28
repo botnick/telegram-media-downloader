@@ -26,7 +26,7 @@ Run it with Docker or as a native binary on Linux, Windows or macOS.
 | Page | Covers |
 |---|---|
 | [Features](FEATURES.md) | Everything 3.x does, and what is still missing |
-| [Backup](BACKUP.md) | Local, S3, SFTP, FTP/FTPS, Google Drive and Dropbox backups, encryption, offline restore |
+| [Backup](BACKUP.md) | Local, S3, SFTP, FTP/FTPS, Google Drive and Dropbox backups, encryption, whole-app backup and restore in the dashboard, offline restore |
 | [Cluster mode](CLUSTER.md) | Pair several instances into one library |
 | [Forward queue](GO-FORWARD-QUEUE.md) | Auto-forward jobs: states, retries, FloodWait, restart recovery, uncertain deliveries |
 | [Small hosts](LOW-MEMORY-BUILDS.md) | Running on a Raspberry Pi and building the image with little memory |

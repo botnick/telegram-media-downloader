@@ -183,6 +183,9 @@ func encryptPayloadNonce(ctx context.Context, dst io.Writer, src io.Reader, size
 // It is deliberately private: callers may ONLY pass a private temporary file,
 // never a parser, network response, stdout, or final destination. Do not expose
 // that file before this function returns nil; discard it on every error.
+// errPayloadAuth is a failed authentication tag: a wrong key or a damaged file.
+var errPayloadAuth = errors.New("incorrect backup key or corrupt TGDB payload")
+
 func decryptPayload(ctx context.Context, dst io.Writer, src io.Reader, size int64, key []byte) error {
 	reader := &contextReader{ctx, src}
 	if size < payloadHeaderSize+payloadTagSize {
@@ -225,7 +228,7 @@ func decryptPayload(ctx context.Context, dst io.Writer, src io.Reader, size int6
 	}
 	actual := p.tag(plainSize)
 	if subtle.ConstantTimeCompare(actual[:], expected[:]) != 1 {
-		return errors.New("incorrect backup key or corrupt TGDB payload")
+		return errPayloadAuth
 	}
 	var extra [1]byte
 	if n, e := io.ReadFull(reader, extra[:]); n != 0 || e != io.EOF {

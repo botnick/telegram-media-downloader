@@ -1,16 +1,12 @@
 package backup
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -69,106 +65,13 @@ func (m *Manager) prepareSnapshot(ctx context.Context, d destination, j job) (st
 		unlock := m.opts.LockSnapshot()
 		defer unlock()
 	}
-	staging, err := os.MkdirTemp(folder, ".snapshot-stage-")
-	if err != nil {
-		return "", "", err
-	}
-	defer os.RemoveAll(staging)
-	snap, err := Snapshot(ctx, m.opts.Writer, staging, "database")
-	if err != nil {
-		return "", "", err
-	}
 	out, err := os.CreateTemp(folder, ".snapshot-archive-")
 	if err != nil {
 		return "", "", err
 	}
 	defer os.Remove(out.Name())
 	defer out.Close()
-	zw := gzip.NewWriter(out)
-	tw := tar.NewWriter(zw)
-	appendFile := func(name string, file *os.File) error {
-		defer file.Close()
-		info, e := file.Stat()
-		if e != nil {
-			return e
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("snapshot entry %q is not a regular file", name)
-		}
-		header := &tar.Header{Name: name, Mode: 0600, Size: info.Size(), ModTime: info.ModTime(), Typeflag: tar.TypeReg}
-		if e = tw.WriteHeader(header); e != nil {
-			return e
-		}
-		n, e := io.Copy(tw, contextReader{ctx, file})
-		if e != nil {
-			return e
-		}
-		if n != info.Size() {
-			return errors.New("snapshot source size changed")
-		}
-		return nil
-	}
-	f, err := os.Open(snap.Path)
-	if err != nil {
-		return "", "", err
-	}
-	if err = appendFile("db.sqlite", f); err != nil {
-		return "", "", err
-	}
-	root, err := os.OpenRoot(m.opts.DataDir)
-	if err != nil {
-		return "", "", err
-	}
-	defer root.Close()
-	// The native session key is essential to restore encrypted account sessions.
-	for _, name := range []string{"config.json", "secret.key"} {
-		info, e := root.Lstat(name)
-		if errors.Is(e, fs.ErrNotExist) {
-			continue
-		}
-		if e != nil {
-			return "", "", e
-		}
-		if !info.Mode().IsRegular() {
-			return "", "", fmt.Errorf("snapshot entry %s is not regular", name)
-		}
-		f, e := root.Open(name)
-		if e != nil {
-			return "", "", e
-		}
-		if e = appendFile(name, f); e != nil {
-			return "", "", e
-		}
-	}
-	err = fs.WalkDir(root.FS(), "sessions", func(name string, entry fs.DirEntry, e error) error {
-		if errors.Is(e, fs.ErrNotExist) && name == "sessions" {
-			return fs.SkipAll
-		}
-		if e != nil {
-			return e
-		}
-		if e = ctx.Err(); e != nil {
-			return e
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("snapshot refuses session symlink %s", name)
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		f, e := root.Open(name)
-		if e != nil {
-			return e
-		}
-		return appendFile(strings.ReplaceAll(name, "\\", "/"), f)
-	})
-	if err != nil {
-		return "", "", err
-	}
-	if err = tw.Close(); err != nil {
-		return "", "", err
-	}
-	if err = zw.Close(); err != nil {
+	if _, err = writeStateArchive(ctx, m.opts.Writer, m.opts.DataDir, folder, out, nil); err != nil {
 		return "", "", err
 	}
 	if err = out.Sync(); err != nil {

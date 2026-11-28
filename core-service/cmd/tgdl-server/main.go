@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -63,7 +64,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 2
 	}
-	a, err := app.New(ctx, app.Config{HTTP: httpOptions, DataDir: cfg.DataDir, DownloadsDir: cfg.DownloadsDir, Port: cfg.Port, Static: static, CookieName: cfg.CookieName, SessionTTL: cfg.SessionTTL, Output: stdout, SecureCookies: os.Getenv("TGDL_SECURE_COOKIES") == "1", RequireMonitorForwards: true})
+	// A dashboard restore finishes at the next start. Exiting non-zero lets
+	// Docker (restart: unless-stopped), systemd (Restart=on-failure) or PM2
+	// start the server again.
+	var restartRequested atomic.Bool
+	var restart func()
+	if supervisedRestart(os.Getenv, fileExists) {
+		restart = func() {
+			restartRequested.Store(true)
+			stop()
+		}
+	}
+	a, err := app.New(ctx, app.Config{Restart: restart, HTTP: httpOptions, DataDir: cfg.DataDir, DownloadsDir: cfg.DownloadsDir, Port: cfg.Port, Static: static, CookieName: cfg.CookieName, SessionTTL: cfg.SessionTTL, Output: stdout, SecureCookies: os.Getenv("TGDL_SECURE_COOKIES") == "1", RequireMonitorForwards: true})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
@@ -76,8 +88,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
+	if restartRequested.Load() {
+		_, _ = fmt.Fprintln(stdout, "Restarting to finish the restore")
+		return restartExitCode
+	}
 	return 0
 }
+
+// restartExitCode asks the supervisor to start the server again.
+const restartExitCode = 75
 
 func serve(ctx context.Context, server *http.Server) error {
 	listener, err := net.Listen("tcp", server.Addr)

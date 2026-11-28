@@ -16,6 +16,7 @@ import { api } from './api.js';
 import { showToast, escapeHtml, formatBytes, formatRelativeTime } from './utils.js';
 import { openSheet, confirmSheet } from './sheet.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
+import { init as initFullBackup } from './full-backup.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -847,6 +848,7 @@ function _wirePage() {
 export async function init() {
     _wireWs();
     _wirePage();
+    initFullBackup().catch(() => {});
     await _refreshDestinations();
     await _refreshRecent();
 }

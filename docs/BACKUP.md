@@ -28,6 +28,10 @@ Every destination can encrypt on this host before anything is uploaded, and
 encrypted backups can be decrypted and restored offline with the server
 binary alone.
 
+Without any destination, **Whole-app backup** on the Backup page downloads the
+whole state as one encrypted file and restores it from the dashboard. See
+[Whole-app backup and restore](#whole-app-backup-and-restore).
+
 ## What gets backed up
 
 Each destination runs in one of three modes.
@@ -60,6 +64,61 @@ A few details about mirror mode:
   uploaded again under its current path.
 - If you set `TGDL_DOWNLOADS_DIR` (media on another disk), the mirror reads
   from there. See [Configuration](CONFIGURATION.md).
+
+## Whole-app backup and restore
+
+Maintenance → Backup → **Whole-app backup** keeps the server's state in one
+file you download, without setting up a destination. Use it to move to a new
+machine, or to go back after a mistake.
+
+**What is in the file:** the same state as a snapshot (`db.sqlite` with all
+settings, chats, history and the dashboard password; `secret.key`;
+`sessions/`; `config.json` if present) plus a manifest with the app version,
+the database schema version and a SHA-256 for every file. **Media files are
+not included**: copy the downloads folder yourself, or keep a mirror
+destination.
+
+**Download:**
+
+1. Click **Download full backup**.
+2. Choose a backup password (at least 8 characters) and enter the dashboard
+   password again.
+3. The browser saves `tgdl-YYYYMMDD-HHMMSS.tgdl-backup`.
+
+The file is encrypted with AES-256-GCM under a key derived from your backup
+password (PBKDF2-HMAC-SHA256, 200,000 rounds, a random salt stored in the
+file). Nobody can restore it without that password, and nobody can recover
+a lost password. The server keeps the built file for one hour at most.
+
+**Restore:**
+
+1. Click **Restore from a file**, choose the `.tgdl-backup` file, and enter
+   its password and the dashboard password.
+2. The server uploads the file and checks it while everything keeps running:
+   the password, every file against the manifest, the database integrity, and
+   that the backup is not from a newer version. Free space is checked first:
+   the server needs about three times the file size on the data volume. A
+   refused backup changes nothing.
+3. Click **Restart now and restore**. At the next start, before the database
+   opens, the server moves the current state to
+   `data/restore/previous-YYYYMMDD-HHMMSS/` and puts the backup in its place.
+   The page reloads by itself. Sign in with the dashboard password **from the
+   backup**.
+
+The swap is journaled: if the power fails during it, the next start finishes
+it. If it cannot finish, the server puts the previous state back, starts
+normally and shows why on the Backup page. The newest `previous-…` folder is
+kept until the next restore; delete it yourself once you are happy.
+
+**Restarting:** the server exits with code 75 and relies on its supervisor
+to start it again. Docker and Compose with `restart: unless-stopped` (the
+default in our compose files), systemd with `Restart=on-failure` and PM2 all
+do this. The server offers the button only when it finds one: inside a
+Docker or Podman container, a systemd unit (`INVOCATION_ID`) or PM2 (`pm_id`).
+Otherwise the Backup page asks you to stop and start the server yourself to
+finish the restore. Set `TGDL_RESTART_ON_EXIT=1` for another supervisor that
+restarts on a non-zero exit, or `TGDL_RESTART_ON_EXIT=0` for a container
+without a restart policy.
 
 ## Providers
 
@@ -481,8 +540,9 @@ sqlite3 data/db.sqlite "SELECT hex(encryption_salt) FROM backup_destinations WHE
 
 ## Restore
 
-The dashboard has no restore button. You restore offline with the
-`tgdl-server` binary, which works without a running server or any server
+To restore a whole-app backup file, use the dashboard (see
+[Whole-app backup and restore](#whole-app-backup-and-restore)). Snapshots
+from a destination are restored offline with the `tgdl-server` binary, which works without a running server or any server
 configuration. It is the same binary as the server: it is on the `PATH` in
 the Docker image, and it is included in each release archive.
 
@@ -651,8 +711,9 @@ For other problems, see [Troubleshooting](TROUBLESHOOTING.md).
   `scripts/setup-dropbox.js` are replaced by `tgdl-server backup-oauth`, and
   the `npm install googleapis` / `dropbox` / `basic-ftp` steps are no longer
   part of the setup.
-- **Restore is offline only.** It uses `tgdl-server backup-restore` and
-  `backup-decrypt`, with no in-dashboard restore.
+- **Destination snapshots restore offline only**, with
+  `tgdl-server backup-restore` and `backup-decrypt`. The dashboard restores
+  whole-app backup files (`.tgdl-backup`), up to 16 GiB.
 - **One upload at a time per destination.** The 2.x
   `BACKUP_WORKERS_PER_DEST` variable is ignored.
 - **Passphrases can't be rotated**, and turning encryption on doesn't

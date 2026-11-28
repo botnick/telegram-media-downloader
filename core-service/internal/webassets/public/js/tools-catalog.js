@@ -111,9 +111,9 @@ export const TOOLS = {
         name: ['nav.maintenance.backup', 'Backup'],
         desc: [
             'maintenance.hub.backup.body',
-            'NAS / S3 / SFTP / Google Drive / Dropbox mirror + scheduled snapshots.',
+            'NAS / S3 / SFTP / Google Drive / Dropbox mirror + scheduled snapshots, and a whole-app backup file.',
         ],
-        words: 'backup mirror s3 sftp nas drive dropbox snapshot',
+        words: 'backup mirror s3 sftp nas drive dropbox snapshot restore whole full migrate',
     },
     cluster: {
         icon: 'ri-broadcast-line',

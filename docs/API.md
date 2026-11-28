@@ -315,8 +315,15 @@ Destinations and modes are covered in [Backup](BACKUP.md).
 | `GET` | `/api/backup/jobs/recent` | Admin | Recent jobs across destinations. |
 | `POST` | `/api/backup/jobs/{id}/retry` | Admin | Retry a failed job. |
 | `GET` | `/api/backup/cleanup` | Admin | Cleanup state. |
+| `POST` | `/api/backup/full` | Admin | Build a whole-app backup, `{passphrase, password}` (the dashboard password). Returns `{id, name, size}`. |
+| `GET` | `/api/backup/full/{id}` | Admin | Download that file (kept for one hour). |
+| `POST` | `/api/backup/full/restore/upload` | Admin | Upload a `.tgdl-backup` file as the raw request body (`application/octet-stream`, up to 16 GiB). Returns `{uploadId}`. |
+| `POST` | `/api/backup/full/restore/verify` | Admin | Check it, `{uploadId, passphrase, password}`. On success it waits for the next start. Error codes: `WRONG_BACKUP_PASSWORD`, `NOT_A_BACKUP`, `NEWER_BACKUP`, `BAD_PASSWORD`, `NO_SPACE`. |
+| `GET` | `/api/backup/full/restore/status` | Admin | `{pending, last, canRestart, bootId}`. |
+| `POST` | `/api/backup/full/restore/cancel` | Admin | Drop the waiting restore and uploads. |
+| `POST` | `/api/backup/full/restore/restart` | Admin | Restart the server to apply the waiting restore. |
 
-Restoring is done offline with `tgdl-server backup-restore` (and `backup-decrypt` for encrypted archives), not over HTTP.
+Whole-app backups are restored through the endpoints above ([details](BACKUP.md#whole-app-backup-and-restore)). Destination snapshots are restored offline with `tgdl-server backup-restore` (and `backup-decrypt` for encrypted archives).
 
 ## Cluster
 

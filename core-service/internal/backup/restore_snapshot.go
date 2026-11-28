@@ -26,10 +26,17 @@ type RestoreOptions struct {
 	Plaintext  bool
 	MaxBytes   int64
 	MaxFiles   int
+	// Offset skips a container header before the TGDB payload.
+	Offset int64
+	// Manifest requires a full-backup manifest, verifies every file against
+	// it and refuses a schema newer than MaxSchema.
+	Manifest  bool
+	MaxSchema int
 }
 type RestoreResult struct {
-	Files int
-	Bytes int64
+	Files    int
+	Bytes    int64
+	Manifest *Manifest
 }
 
 // RestoreSnapshot restores into a new, inactive data directory. Authentication,
@@ -85,36 +92,51 @@ func RestoreSnapshot(ctx context.Context, input, output string, opts RestoreOpti
 	if !info.Mode().IsRegular() {
 		return result, errors.New("snapshot input is not a regular file")
 	}
-	archive := source
-	if !opts.Plaintext {
+	if opts.Offset < 0 || opts.Offset > info.Size() {
+		return result, errors.New("invalid backup payload offset")
+	}
+	var archive io.ReadSeeker = io.NewSectionReader(source, opts.Offset, info.Size()-opts.Offset)
+	encrypted := !opts.Plaintext
+	if encrypted {
 		key, e := payloadKey(opts.Passphrase, opts.Salt)
 		if e != nil {
 			return result, e
 		}
 		defer clear(key)
-		archive, err = private.OpenFile(".archive", os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
-		if err != nil {
+		plain, e := private.OpenFile(".archive", os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+		if e != nil {
+			return result, e
+		}
+		defer plain.Close()
+		if err = decryptPayload(ctx, plain, archive, info.Size()-opts.Offset, key); err != nil {
 			return result, err
 		}
-		defer archive.Close()
-		if err = decryptPayload(ctx, archive, source, info.Size(), key); err != nil {
+		if _, err = plain.Seek(0, io.SeekStart); err != nil {
 			return result, err
 		}
-		if _, err = archive.Seek(0, io.SeekStart); err != nil {
-			return result, err
-		}
+		archive = plain
 	}
 	result, err = extractSnapshot(ctx, archive, private, opts)
 	if err != nil {
 		return result, err
 	}
-	if archive != source {
-		if err = archive.Close(); err != nil {
+	if encrypted {
+		if err = archive.(*os.File).Close(); err != nil {
 			return result, err
 		}
 		if err = private.Remove(".archive"); err != nil {
 			return result, err
 		}
+	}
+	if opts.Manifest {
+		m, e := checkManifest(private, opts.MaxSchema)
+		if e != nil {
+			return result, e
+		}
+		if err = private.Remove(manifestName); err != nil {
+			return result, err
+		}
+		result.Manifest = &m
 	}
 	if err = validateRestoredDatabase(ctx, filepath.Join(parent, stage, "db.sqlite")); err != nil {
 		return result, err
@@ -195,7 +217,7 @@ func extractSnapshot(ctx context.Context, src io.Reader, root *os.Root, opts Res
 		if e = validObject(name); e != nil {
 			return result, e
 		}
-		allowed := name == "db.sqlite" || name == "config.json" || name == "secret.key" || name == "sessions" || strings.HasPrefix(name, "sessions/")
+		allowed := (opts.Manifest && name == manifestName) || name == "db.sqlite" || name == "config.json" || name == "secret.key" || name == "sessions" || strings.HasPrefix(name, "sessions/")
 		if !allowed {
 			return result, fmt.Errorf("unsupported snapshot entry %q", name)
 		}
