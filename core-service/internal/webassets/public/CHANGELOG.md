@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] — 2026-11-28
+### Added
+- **Back up and restore the whole app from the dashboard.** Settings → Maintenance → Backup has a new *Whole-app backup* card. *Download a backup* makes one encrypted `.tgdl-backup` file holding the database, settings, encryption key and Telegram sign-ins (no media), protected by a password you choose. *Restore* uploads such a file: the server checks the password, every file's SHA-256, the database integrity, that the backup is not from a newer database version, and that there is free disk space, then offers *Restart to apply*. The swap happens at the next start before the database opens, survives a crash or power loss half-way, keeps the replaced data in `data/restore/previous-<time>/`, and on any failure puts the previous data back and still starts. Both steps ask for the dashboard password again. The restart needs a supervisor: the button appears inside Docker/Podman (`restart: unless-stopped` as in our compose files), under systemd or PM2, or with `TGDL_RESTART_ON_EXIT=1`; otherwise the page asks you to restart by hand. API: `POST /api/backup/full`, `GET /api/backup/full/{id}` and `/api/backup/full/restore/*` (see docs/API.md and docs/BACKUP.md).
+### Changed
+- Destination snapshots and the new whole-app backup share one archive writer; snapshot contents are unchanged.
+- Service worker cache version `v37000`.
+
 ## [3.6.0] — 2026-11-28
 Requested by **[@sampotter123](https://github.com/sampotter123)** in #118. Thank you!
 ### Added
